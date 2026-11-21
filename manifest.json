@@ -1,0 +1,16 @@
+{
+  "name": "Club der Fettsäcke",
+  "short_name": "Fettsäcke",
+  "description": "Abnehm-Wettbewerb: montags wiegen, täglich Gewohnheiten abhaken, Ranking und Kasse.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#13120f",
+  "theme_color": "#13120f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

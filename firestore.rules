@@ -103,5 +103,40 @@ service cloud.firestore {
       // zurückziehen nur solange unbestätigt
       allow delete: if member() && ownOld() && resource.data.confirmedBy == null;
     }
+
+    // ---------- Teamwoche ----------
+    // Ziel nur für die NÄCHSTE Woche, eins pro Woche (ID = Wochennummer), nicht überschreibbar
+    match /teamgoals/{w} {
+      allow read: if member();
+      allow create: if member() && request.resource.data.setBy == me()
+        && request.resource.data.week is int && w == string(request.resource.data.week)
+        && request.resource.data.week >= 1 && request.resource.data.week <= 24
+        && request.resource.data.text is string && request.resource.data.text.size() <= 80
+        && request.resource.data.kind in ['sum', 'count']
+        && request.resource.data.target is int && request.resource.data.target >= 1 && request.resource.data.target <= 10000000
+        && request.resource.data.unit is string && request.resource.data.unit.size() <= 20
+        // vor Beginn der Woche, frühestens in der Vorwoche (+1 Std. Toleranz wegen Sommerzeit)
+        && (TESTMODE() || (request.time < at(START_MS() + (request.resource.data.week - 1) * WEEK() + HOUR())
+        && (request.resource.data.week == 1 || request.time >= at(START_MS() + (request.resource.data.week - 2) * WEEK() - HOUR()))));
+    }
+    // eigener Tageswert: nur eigene Einträge, 2 Tage nachtragen, spätestens Montag 12 Uhr nach der Woche
+    match /teamlogs/{id} {
+      allow read: if member();
+      allow create, update: if member() && ownNew()
+        && request.resource.data.day is int && request.resource.data.week is int
+        && id == me() + '_' + string(request.resource.data.day)
+        && request.resource.data.day >= (request.resource.data.week - 1) * 7
+        && request.resource.data.day < request.resource.data.week * 7
+        && exists(/databases/$(database)/documents/teamgoals/$(string(request.resource.data.week)))
+        && request.resource.data.value is number && request.resource.data.value >= 0 && request.resource.data.value <= 1000000
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
+        && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())
+        && request.time <= at(START_MS() + request.resource.data.week * WEEK() + 13 * HOUR())));
+    }
+
+    // Hinweise:
+    // - players/{uid}.lastActive schreibt die App selbst (Update-Regel oben erlaubt das Feld).
+    // - Push-Tokens liegen in players/{uid}/private/tokens (nur Besitzer, Regel "private" oben).
+    // - reminderRuns/* schreibt nur das Erinnerungs-Skript mit Admin-Rechten; ohne Regel kein Client-Zugriff.
   }
 }

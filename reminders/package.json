@@ -1,0 +1,10 @@
+{
+  "name": "fettsaecke-reminders",
+  "private": true,
+  "type": "module",
+  "description": "Push-Erinnerungen per GitHub Actions (siehe README.md)",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

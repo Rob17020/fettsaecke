@@ -1,0 +1,49 @@
+name: Erinnerungen
+
+# GitHub-Cron läuft in UTC. Jede Zeit ist doppelt eingetragen (Sommer- und Winterzeit),
+# das Skript prüft selbst die Uhrzeit in Berlin und verschickt pro Tag nur einmal.
+on:
+  schedule:
+    - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 12 Uhr
+    - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Gewohnheiten noch offen
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'Art der Nachricht'
+        type: choice
+        options: [test, weigh, habits, auto]
+        default: test
+      dry_run:
+        description: 'Nur zählen, nichts senden'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: reminders
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten
+        working-directory: reminders
+        run: npm install --omit=dev --no-audit --no-fund
+      - name: Senden
+        working-directory: reminders
+        run: node send.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || 'auto' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}

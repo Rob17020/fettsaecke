@@ -1,0 +1,6 @@
+node_modules/
+# Service-Account-Schlüssel niemals committen (gehört als Secret nach GitHub)
+*firebase-adminsdk*.json
+service-account*.json
+serviceAccount*.json
+.env
