@@ -126,6 +126,7 @@ const CONFIG = {
     messagingSenderId: "121079785562",
     appId: "1:121079785562:web:a808ec1074af013dd49063"
   },
+  testMode: false,   // TEST: true = Zeit per URL ?now=2026-11-30T09:00 simulierbar. VOR DEM START WIEDER AUF false!
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
@@ -145,6 +146,7 @@ const DAY = 864e5;
 const START = new Date(CONFIG.start.y, CONFIG.start.m - 1, CONFIG.start.d);
 const COLORS = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 const DEMO = !CONFIG.firebase;
+const TIMETRAVEL = DEMO || CONFIG.testMode;
 
 /* ---------- Zeit ---------- */
 let NOW_OVERRIDE = null;
@@ -441,6 +443,7 @@ function header() {
     ${me ? `<button class="avatar" data-act="profile" title="Profil">${esc(me.name.slice(0, 1).toUpperCase())}</button>` : ''}</header>`;
 }
 function banner() {
+  if (!DEMO && CONFIG.testMode) return `<div class="banner"><b>TESTMODUS</b> Simulierte Zeit: ${NOW_OVERRIDE ? fmtD(new Date(NOW_OVERRIDE)) + ' ' + new Date(NOW_OVERRIDE).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'echt'}. Ändern per URL, z. B. <b>?now=2026-11-30T09:00</b></div>`;
   if (!DEMO) return '';
   const v = NOW_OVERRIDE ? toLocalInput(new Date(NOW_OVERRIDE)) : '';
   return `<div class="banner"><b>Demo-Modus</b> Daten nur in diesem Browser, Siggi &amp; Julian sind simuliert.
@@ -818,6 +821,8 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target
     else { const t = dayDate(14); t.setHours(9); NOW_OVERRIDE = Math.max(Date.now(), t.getTime()); }
     DB = makeDemoDB(onState);
   } else {
+    const q = new URLSearchParams(location.search).get('now');
+    if (CONFIG.testMode && q) NOW_OVERRIDE = new Date(q).getTime();
     try { DB = await makeFirebaseDB(CONFIG.firebase, onState); }
     catch (e) { console.error(e); document.getElementById('app').innerHTML = `<div class="card"><h2>Verbindung fehlgeschlagen</h2><p class="t2">Firebase konnte nicht geladen werden. Prüf die Config in der index.html.</p></div>`; }
   }
