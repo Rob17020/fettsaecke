@@ -1,0 +1,107 @@
+rules_version = '2';
+// Club der Fettsäcke – Firestore-Sicherheitsregeln
+// 1) EINLADUNGSCODE unten ändern (Zeile mit 'FETTSACK2026')
+// 2) START_MS muss zum Start in der index.html passen (Mo 23.11.2026 00:00 Uhr deutscher Zeit)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function START_MS() { return 1795388400000; }   // Mo 23.11.2026 00:00 MEZ
+    function WEEK()     { return 604800000; }
+    function DAY()      { return 86400000; }
+    function HOUR()     { return 3600000; }
+    function TESTMODE() { return true; }   // TEST: true = Zeitfenster aus. VOR DEM START WIEDER AUF false!
+    function INVITE()   { return 'FETTSACK2026'; }  // <- euren Code hier eintragen
+
+    function signedIn() { return request.auth != null; }
+    function me()       { return request.auth.uid; }
+    function member()   { return signedIn() && exists(/databases/$(database)/documents/players/$(me())); }
+    function player()   { return get(/databases/$(database)/documents/players/$(me())).data; }
+    function ownNew()   { return request.resource.data.uid == me(); }
+    function ownOld()   { return resource.data.uid == me(); }
+    function at(ms)     { return timestamp.value(ms); }
+
+    // ---------- Spieler ----------
+    match /players/{uid} {
+      allow read: if member() || (signedIn() && uid == me());
+      allow create: if signedIn() && uid == me()
+        && request.resource.data.invite == INVITE()
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.habits is list && request.resource.data.habits.size() == 3
+        && request.resource.data.joinedSlot is int;
+      allow update: if signedIn() && uid == me()
+        && request.resource.data.invite == resource.data.invite
+        && request.resource.data.joinedAt == resource.data.joinedAt
+        && request.resource.data.joinedSlot >= resource.data.joinedSlot
+        && request.resource.data.name.size() <= 20
+        && request.resource.data.habits.size() == 3;
+
+      // private Gewichte (kg) – nur für den Besitzer
+      match /private/{doc} {
+        allow read, write: if signedIn() && uid == me();
+      }
+    }
+
+    // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 0–12 Uhr) ----------
+    match /weighins/{id} {
+      allow read: if member();
+      allow create, update: if member() && ownNew()
+        && request.resource.data.slot is int
+        && id == me() + '_' + string(request.resource.data.slot)
+        && request.resource.data.slot >= player().joinedSlot
+        && request.resource.data.slot <= 24
+        && request.resource.data.lossPct is number
+        // Toleranz von 1 Std. wegen Sommerzeit
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.slot * WEEK() - HOUR())
+        && request.time <= at(START_MS() + request.resource.data.slot * WEEK() + 13 * HOUR())));
+    }
+
+    // ---------- Gewohnheiten (max. 2 Tage nachtragen) ----------
+    match /habitlogs/{id} {
+      allow read: if member();
+      allow create, update: if member() && ownNew()
+        && request.resource.data.day is int
+        && id == me() + '_' + string(request.resource.data.day)
+        && request.resource.data.done is list && request.resource.data.done.size() >= 3 && request.resource.data.done.size() <= 4
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
+        && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())));
+    }
+
+    // ---------- Wochen-Challenge (einmal festlegen, wer zuerst kommt – nicht überschreibbar) ----------
+    match /weekly/{w} {
+      allow read: if member();
+      allow create: if member() && request.resource.data.setBy == me()
+        && request.resource.data.text is string && request.resource.data.text.size() <= 80
+        && request.resource.data.kind in ['daily', 'count']
+        && request.resource.data.target is int && request.resource.data.target >= 1 && request.resource.data.target <= 7;
+    }
+    match /weeklyDone/{id} {
+      allow read: if member();
+      allow create: if member() && ownNew() && id == me() + '_' + string(request.resource.data.week);
+      allow delete: if member() && ownOld();
+    }
+
+    // ---------- Extra-Aufgaben ----------
+    match /tasks/{id} {
+      allow read: if member();
+      // genau 1 Aufgabe pro Spieler und Etappe: ID = e<Etappe>_<uid>
+      allow create: if member() && request.resource.data.createdBy == me()
+        && request.resource.data.text is string && request.resource.data.text.size() <= 80
+        && request.resource.data.etappe is int
+        && id == 'e' + string(request.resource.data.etappe) + '_' + me();
+      allow delete: if member() && resource.data.createdBy == me();
+    }
+    match /taskDone/{id} {
+      allow read: if member();
+      // eigene Erledigung melden (unbestätigt)
+      allow create: if member() && ownNew() && request.resource.data.confirmedBy == null
+        && id == request.resource.data.taskId + '_' + me();
+      // nur JEMAND ANDERES darf bestätigen
+      allow update: if member() && resource.data.uid != me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmedBy', 'confirmedByName'])
+        && request.resource.data.confirmedBy == me();
+      // zurückziehen nur solange unbestätigt
+      allow delete: if member() && ownOld() && resource.data.confirmedBy == null;
+    }
+  }
+}
