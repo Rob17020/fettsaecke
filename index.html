@@ -5,115 +5,144 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Club der Fettsäcke</title>
 <meta name="theme-color" content="#121211">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23ff7a1a'/><path d='M11 24V8h11M11 16h8' fill='none' stroke='%231d0e00' stroke-width='4'/></svg>">
 <style>
 :root{
   color-scheme: dark;
-  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --line:#2e2e2b;
+  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --line:#2e2e2b; --line-2:#4a4a45;
   --text:#f0efec; --text-2:#c3c2b7; --muted:#8c8b83;
-  --accent:#ff7a1a; --accent-ink:#1d0e00; --accent-soft:rgba(255,122,26,.14);
-  --good:#0ca30c; --warn:#c98500; --bad:#e66767;
+  --accent:#ff7a1a; --accent-ink:#1d0e00;
+  --ch:#e6b34d; --good:#7fd67f; --bad:#ec8080;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#0ca30c; --s7:#9085e9; --s8:#e66767;
-  --r:16px;
+  --r:10px; --r-sm:6px;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
-button,input{font:inherit;color:inherit}
-.wrap{max-width:640px;margin:0 auto;padding:0 14px calc(90px + env(safe-area-inset-bottom))}
-header{padding:18px 0 10px;display:flex;align-items:center;gap:12px}
-.logo{font-weight:900;font-size:22px;letter-spacing:-.02em;line-height:1.05}
-.logo span{color:var(--accent)}
-.sub{color:var(--text-2);font-size:13px;margin-top:3px}
-.avatar{margin-left:auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);font-weight:800;cursor:pointer}
-.banner{background:var(--accent-soft);border:1px solid rgba(255,122,26,.35);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text-2);margin:6px 0 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px calc(96px + env(safe-area-inset-bottom))}
+header{padding:20px 0 12px;display:flex;align-items:center;gap:12px}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em;line-height:1.2}
+.sub{color:var(--text-2);font-size:13px;margin-top:2px;font-variant-numeric:tabular-nums}
+.avatar{margin-left:auto;width:40px;height:40px;flex:none;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);font-weight:800;cursor:pointer}
+.banner{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;font-size:13px;color:var(--text-2);margin:0 0 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .banner b{color:var(--text)}
-.banner input{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:13px}
+.banner input{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 6px;font-size:13px}
+.loading{color:var(--muted);padding:24px 0;margin:0}
+.muted{color:var(--muted)} .t2{color:var(--text-2)} .small{font-size:13px} .ok{color:var(--good)} .bad{color:var(--bad)}
+.row{display:flex;gap:8px;align-items:center}
+.row.top{align-items:flex-start}
+.grow{flex:1;min-width:0}
+.stack{display:grid;gap:8px}
+.cd{font-variant-numeric:tabular-nums}
+/* Karten: ein vertikaler Rhythmus statt Einzel-Margins */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:12px 0}
-.card h2{margin:0 0 4px;font-size:17px;font-weight:800;letter-spacing:-.01em}
-.card h3{margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.muted{color:var(--muted)} .t2{color:var(--text-2)} .small{font-size:13px}
-.row{display:flex;gap:10px;align-items:center}
-.grow{flex:1}
-.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
-.btn:disabled{opacity:.4;cursor:default}
+.card>*,.sheet>*{margin-top:0;margin-bottom:0}
+.card>*+*,.sheet>*+*{margin-top:12px}
+.card>label.f+*,.sheet>label.f+*{margin-top:6px}
+.card>.btn,.card>.link,.sheet>.btn,.sheet>.link,.lead>.btn{display:block}
+.card h2,.sheet h2{margin:0;font-size:17px;font-weight:800;letter-spacing:-.01em;line-height:1.3}
+.card h3{margin:20px 0 0;font-size:14px;font-weight:700;line-height:1.4}
+.card h3+*{margin-top:8px}
+label.f{display:block;font-size:13px;color:var(--text-2)}
+/* Buttons: ein Primär-Button pro Bereich, Rest ghost oder Link */
+.btn{border:0;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-ink);white-space:nowrap}
+.btn:disabled{opacity:.35;cursor:default}
 .btn.ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--line)}
-.btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
-.inp{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none}
-.inp:focus{border-color:var(--accent)}
-label.f{display:block;font-size:13px;color:var(--text-2);margin:10px 0 4px}
-.big{font-size:34px;font-weight:900;letter-spacing:-.03em;line-height:1}
-.pill{display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--text-2);white-space:nowrap}
-.pill.ok{color:#7fd67f;border-color:rgba(12,163,12,.45)}
-.pill.warn{color:#e6b34d;border-color:rgba(201,133,0,.5)}
-.pill.acc{color:var(--accent);border-color:rgba(255,122,26,.45)}
-/* habit grid */
+.btn.sm{padding:6px 12px;font-size:13px;border-radius:var(--r-sm)}
+.btn.full{width:100%}
+.link{border:0;background:none;padding:0;color:var(--text-2);font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.link:hover{color:var(--text)}
+.inp{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:11px 12px;outline:none}
+.inp:focus{border-color:var(--text-2)}
+select.inp{appearance:auto}
+.num{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.num small{display:block;font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted);margin-top:4px}
+.tag{display:inline-block;border:1px solid var(--line-2);border-radius:4px;padding:0 6px;font-size:12px;line-height:20px;color:var(--text-2);white-space:nowrap}
+.tag.ok{color:var(--good);border-color:rgba(127,214,127,.4)}
+.tag.bad{color:var(--bad);border-color:rgba(236,128,128,.45)}
+/* Fokus oben auf "Heute": das eine Element in Akzentfarbe */
+.lead{padding:4px 0 20px;border-bottom:1px solid var(--line)}
+.lead>*{margin:0}
+.lead>*+*{margin-top:8px}
+.lead>.row{margin-top:16px}
+.lead .k{font-size:13px;color:var(--text-2)}
+.lead .big{font-size:44px;font-weight:900;letter-spacing:-.03em;line-height:1.05;color:var(--accent);font-variant-numeric:tabular-nums}
+.lead .big span{font-size:18px;font-weight:700;letter-spacing:0;color:var(--text-2)}
+.lead .s{font-size:16px;font-weight:600}
+.lead .n{font-size:13px;color:var(--text-2)}
+/* Gewohnheiten-Grid */
 .hgrid{display:grid;grid-template-columns:minmax(64px,1.4fr) repeat(7,minmax(0,1fr));gap:4px;align-items:center}
-.hgrid .dh{font-size:11px;color:var(--muted);text-align:center}
-.hgrid .dh.today{color:var(--accent);font-weight:800}
+.hgrid .dh{font-size:11px;line-height:1.3;color:var(--muted);text-align:center}
+.hgrid .dh.today{color:var(--text);font-weight:800}
 .hname{font-size:12px;line-height:1.25;color:var(--text-2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
-.hc{aspect-ratio:1;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center;font-weight:900;font-size:15px;padding:0;width:100%}
-.hc.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.hname.ch{color:var(--ch);font-weight:700}
+.hc{aspect-ratio:1;width:100%;padding:0;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center;font-weight:800;font-size:15px;color:var(--accent)}
+.hc.on{background:rgba(255,122,26,.16);border-color:rgba(255,122,26,.6)}
+.hc.chc{color:var(--ch)}
+.hc.chc.on{background:rgba(230,179,77,.14);border-color:rgba(230,179,77,.6)}
 .hc.edit{cursor:pointer}
-.hc.edit:not(.on){border-color:#4a4a45}
+.hc.edit:not(.on){border-color:var(--line-2)}
 .hc.lock{opacity:.45}
 .hc.off{opacity:.15}
-.hc.chc.on{background:#e6b34d;border-color:#e6b34d;color:#1d1300}
-.hname.ch{color:#e6b34d;font-weight:700}
-select.inp{appearance:auto}
-table.t.k td,table.t.k th{font-size:12px;padding:6px 3px}
-table.t tr.sum td{font-weight:800;border-bottom:0}
-/* ranking */
-.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
-.seg button{flex:1;border:0;background:transparent;padding:8px;border-radius:9px;font-weight:700;cursor:pointer;color:var(--text-2)}
-.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--line)}
-.rk{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
-.rk:first-of-type{border-top:0}
-.rk .pos{font-weight:900;font-size:18px;color:var(--muted);text-align:center}
+.score{font-size:13px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.score b{color:var(--text)}
+ol.plain{padding-left:20px;color:var(--text-2)}
+.chtext{font-size:18px;font-weight:800;line-height:1.3}
+/* Ranking */
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;padding:8px 4px;border-radius:var(--r-sm);font-weight:700;cursor:pointer;color:var(--text-2)}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.rk{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 0;border-top:1px solid var(--line)}
+.rk:first-child{border-top:0;padding-top:0}
+.rk:last-child{padding-bottom:0}
+.rk .pos{font-weight:900;font-size:18px;line-height:1.3;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
 .rk.first .pos{color:var(--accent)}
-.rk>div:nth-child(2){min-width:0}
-.rk .nm{font-weight:800;display:flex;flex-wrap:wrap;align-items:center;gap:7px}
-.dot{width:10px;height:10px;border-radius:50%;flex:none}
-.rk .br{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-.rk .pts{font-weight:900;font-size:22px;text-align:right;line-height:1}
-.rk .pts small{display:block;white-space:nowrap;font-size:11px;color:var(--muted);font-weight:600;margin-top:3px}
-.nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 4px}
-.nav b{font-size:15px}
-/* tasks */
-.task{border-top:1px solid var(--line);padding:12px 0}
-.task:first-of-type{border-top:0}
-.task .tt{font-weight:800}
-.task .who{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-/* chart */
+.rk .nm{font-weight:700;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.rk .br{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px;font-size:12px;color:var(--muted)}
+.rk .br b{color:var(--text-2);font-weight:700}
+.rk .pts{font-weight:800;font-size:22px;line-height:1.1;text-align:right;font-variant-numeric:tabular-nums}
+.rk .pts small{display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);white-space:nowrap}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nav b{font-size:15px;text-align:center}
+.wrap>.nav{margin:12px 0}
+.foot{font-size:13px;color:var(--muted);margin:0 0 12px}
+/* Aufgaben */
+.task{border-top:1px solid var(--line);padding-top:12px}
+.task .tt{font-weight:700}
+.task .who{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
+.wk{flex:none;width:32px;font-size:13px;font-weight:800;color:var(--muted);line-height:22px}
+/* Verlauf */
 .chart{position:relative}
 .chart svg{width:100%;height:auto;display:block;touch-action:pan-y}
-.tip{position:absolute;pointer-events:none;background:#0b0b0b;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;min-width:120px;display:none;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.tip{position:absolute;pointer-events:none;background:#0b0b0b;border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;font-size:12px;min-width:120px;display:none;z-index:5}
 .tip .tr{display:flex;align-items:center;gap:6px;justify-content:space-between}
-.legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 0;font-size:13px;color:var(--text-2)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--text-2)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
-table.t{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.tscroll{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 table.t th,table.t td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
 table.t th:first-child,table.t td:first-child{text-align:left}
 table.t th{color:var(--muted);font-weight:600}
-/* bottom nav */
-.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(18,18,17,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:10}
+table.t.k td,table.t.k th{font-size:12px;padding:6px 3px}
+table.t tr.sum td{font-weight:800;border-bottom:0}
+/* Navigation unten */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--bg);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
 .tabs .in{max-width:640px;margin:0 auto;display:flex}
-.tabs button{flex:1;border:0;background:transparent;padding:6px 2px;cursor:pointer;color:var(--muted);font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px}
-.tabs button .i{font-size:20px;line-height:1;filter:grayscale(1);opacity:.7}
-.tabs button.on{color:var(--text)}
-.tabs button.on .i{filter:none;opacity:1}
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#0b0b0b;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;z-index:30;display:none;max-width:90vw}
+.tabs button{flex:1;border:0;background:transparent;padding:8px 2px 6px;border-radius:var(--r-sm);cursor:pointer;color:var(--muted);font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:4px}
+.tabs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button.on{color:var(--text);font-weight:700}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));max-width:608px;margin:0 auto;background:#0b0b0b;border:1px solid var(--line-2);border-radius:8px;padding:10px 14px;font-size:14px;z-index:30;display:none}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
-.modal .sheet{background:var(--surface);border:1px solid var(--line);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:18px 16px calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+.modal .sheet{background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 0 0;width:100%;max-width:640px;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
 .rules p,.rules li{color:var(--text-2)} .rules b{color:var(--text)}
-.rules ul{padding-left:18px;margin:6px 0}
-.hero{text-align:center;padding:26px 16px}
-.hero .big{font-size:42px}
-.center{text-align:center}
-.cd{font-variant-numeric:tabular-nums}
+.rules ul{margin:8px 0 0;padding-left:20px}
+.rules li+li{margin-top:4px}
 </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="hero"><div class="big">🔥</div><p class="muted">Lade…</p></div></div>
+<div class="wrap" id="app"><p class="loading">Lade…</p></div>
 <div class="tabs" id="tabs" style="display:none"></div>
 <div class="toast" id="toast"></div>
 <div id="modal"></div>
@@ -360,7 +389,7 @@ function makeDemoDB(emit) {
     async deleteTask(id) { delete mine.tasks[id]; for (const k of Object.keys(mine.taskDone)) if (k.startsWith(id + '_')) delete mine.taskDone[k]; commit(); },
     async markTask(id, on) {
       const k = id + '_' + ME;
-      if (on) { mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null }; setTimeout(() => { if (mine.taskDone[k]) { mine.taskDone[k].confirmedBy = 'bot-julian'; mine.taskDone[k].confirmedByName = 'Julian'; commit(); toast('Julian hat deine Aufgabe bestätigt 💪'); } }, 2500); }
+      if (on) { mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null }; setTimeout(() => { if (mine.taskDone[k]) { mine.taskDone[k].confirmedBy = 'bot-julian'; mine.taskDone[k].confirmedByName = 'Julian'; commit(); toast('Julian hat deine Aufgabe bestätigt.'); } }, 2500); }
       else delete mine.taskDone[k];
       commit();
     },
@@ -433,6 +462,13 @@ async function makeFirebaseDB(cfg, emit) {
 let S = emptyState(), C = {}, DB = null;
 const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, modal: null };
 let pendingRender = false, bumping = false;
+const TAB_ICONS = { // 24er-Strichicons, Farbe über currentColor
+  heute: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15.2l2 2 4-4"/>',
+  ranking: '<path d="M3 20.5h18M5 20.5v-6h4v6M10 20.5v-12h4v12M15 20.5v-4h4v4"/>',
+  challenges: '<path d="M5.5 21V4M5.5 4.5h12l-2.5 4 2.5 4h-12"/>',
+  verlauf: '<path d="M3.5 4v16.5H21"/><path d="M7 8.5l4 4 3-3 5 5.5"/>',
+  regeln: '<path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12.5h7M9 16.5h7"/>',
+};
 
 function onState(ns) {
   S = ns; C = compute(S);
@@ -453,8 +489,8 @@ function render() {
   const tabs = document.getElementById('tabs');
   if (S.member) {
     tabs.style.display = '';
-    const T = [['heute', '🔥', 'Heute'], ['ranking', '🏆', 'Ranking'], ['challenges', '⚡', 'Challenges'], ['verlauf', '📉', 'Verlauf'], ['regeln', '📜', 'Regeln']];
-    tabs.innerHTML = `<div class="in">${T.map(([k, i, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-tab="${k}"><span class="i">${i}</span>${l}</button>`).join('')}</div>`;
+    const T = [['heute', 'Heute'], ['ranking', 'Ranking'], ['challenges', 'Challenges'], ['verlauf', 'Verlauf'], ['regeln', 'Regeln']];
+    tabs.innerHTML = `<div class="in">${T.map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-tab="${k}"${UI.tab === k ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[k]}</svg>${l}</button>`).join('')}</div>`;
   } else tabs.style.display = 'none';
   if (UI.tab === 'verlauf' && S.member) wireChart();
   renderModal();
@@ -468,94 +504,130 @@ function header() {
   else if (seasonOver()) sub = `Saison beendet · Topf ${eur(po.total)}`;
   else sub = `Woche ${Math.min(cw, CONFIG.weeks)}/${CONFIG.weeks} · Etappe ${etappeOf(Math.min(cw, CONFIG.weeks))}/${NUM_ETAPPEN} · Topf ${eur(po.total)}`;
   const me = S.players[S.me];
-  return `<header><div><div class="logo">Club der <span>Fettsäcke</span></div><div class="sub">${sub}</div></div>
-    ${me ? `<button class="avatar" data-act="profile" title="Profil">${esc(me.name.slice(0, 1).toUpperCase())}</button>` : ''}</header>`;
+  return `<header><div><div class="logo">Club der Fettsäcke</div><div class="sub">${sub}</div></div>
+    ${me ? `<button class="avatar" data-act="profile" aria-label="Profil öffnen">${esc(me.name.slice(0, 1).toUpperCase())}</button>` : ''}</header>`;
 }
 function banner() {
-  if (!DEMO && CONFIG.testMode) return `<div class="banner"><b>TESTMODUS</b> Simulierte Zeit: ${NOW_OVERRIDE ? fmtD(new Date(NOW_OVERRIDE)) + ' ' + new Date(NOW_OVERRIDE).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'echt'}. Ändern per URL, z. B. <b>?now=2026-11-30T09:00</b></div>`;
+  if (!DEMO && CONFIG.testMode) return `<div class="banner"><b>Testmodus</b> Simulierte Zeit: ${NOW_OVERRIDE ? fmtDT(new Date(NOW_OVERRIDE)) : 'echt'}. Ändern per URL, z. B. <b>?now=2026-11-30T09:00</b></div>`;
   if (!DEMO) return '';
   const v = NOW_OVERRIDE ? toLocalInput(new Date(NOW_OVERRIDE)) : '';
   return `<div class="banner"><b>Demo-Modus</b> Daten nur in diesem Browser, Siggi &amp; Julian sind simuliert.
-    <span class="row" style="gap:6px">Zeit: <input type="datetime-local" id="demoTime" value="${v}"></span>
-    <button class="btn ghost sm" data-act="demoMon">Nächster Mo 9:00</button>
-    <button class="btn ghost sm" data-act="demoReset">Zurücksetzen</button></div>`;
+    <span class="row">Zeit: <input type="datetime-local" id="demoTime" value="${v}"></span>
+    <button class="link" data-act="demoMon">Nächster Mo 9:00</button>
+    <button class="link" data-act="demoReset">Zurücksetzen</button></div>`;
 }
 const toLocalInput = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const andJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
+const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
 
 function body() {
-  if (!S.ready || (S.member && !S.synced)) return `<div class="hero"><p class="muted">Lade…</p></div>`;
+  if (!S.ready || (S.member && !S.synced)) return `<p class="loading">Lade…</p>`;
   if (!S.authed) return viewLogin();
   if (!S.member) return viewRegister();
   return ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, regeln: viewRegeln })[UI.tab]();
 }
 
 function viewLogin() {
-  return `<div class="card hero"><div class="big">🔥</div><h2 style="margin-top:12px">Willkommen im Club</h2>
-  <p class="t2">Abnehmen als Wettkampf, fair für jede Größe. Jede Woche zählen Prozent, Gewohnheiten und Challenges.</p>
-  <button class="btn" data-act="signin">Mit Google anmelden</button></div>` + viewRegeln(true);
+  return `<div class="card"><h2>Anmelden</h2>
+  <p class="t2">Mit deinem Google-Konto anmelden, danach Name, 3 Gewohnheiten und den Einladungscode aus der Gruppe eintragen. Die Regeln stehen unten.</p>
+  <button class="btn" data-act="signin">Mit Google anmelden</button></div>` + viewRegeln();
 }
 function viewRegister() {
   const k = nextJoinSlot();
   if (k === null) return `<div class="card"><h2>Saison vorbei</h2><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></div>`;
-  return `<div class="card"><h2>Einsteigen</h2>
-    <p class="t2 small">Du startest am <b>${fmtD(slotStart(k))}</b> mit deinem Startgewicht (00–${CONFIG.deadlineHour} Uhr). Einsatz: ${eur(CONFIG.einsatz)}.</p>
-    <label class="f">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
+  return `<div class="card"><h2>Beitreten</h2>
+    <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen 0 und ${CONFIG.deadlineHour} Uhr eintragen. Einsatz: ${eur(CONFIG.einsatz)}.</p>
+    <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
     <label class="f">Deine 3 Gewohnheiten <span class="muted">(je 1 Punkt pro Tag)</span></label>
-    <input class="inp" id="rH0" maxlength="40" placeholder="z. B. 8.000 Schritte" style="margin-bottom:6px">
-    <input class="inp" id="rH1" maxlength="40" placeholder="z. B. Kein Fast Food" style="margin-bottom:6px">
-    <input class="inp" id="rH2" maxlength="40" placeholder="z. B. Training oder 30 Min Bewegung">
+    <div class="stack"><input class="inp" id="rH0" maxlength="40" placeholder="z. B. 8.000 Schritte" aria-label="Gewohnheit 1">
+    <input class="inp" id="rH1" maxlength="40" placeholder="z. B. Kein Fast Food" aria-label="Gewohnheit 2">
+    <input class="inp" id="rH2" maxlength="40" placeholder="z. B. Training oder 30 Min Bewegung" aria-label="Gewohnheit 3"></div>
     <p class="muted small">Wähl etwas, das dich wirklich Überwindung kostet. Die Gruppe darf zu leichte Gewohnheiten ablehnen.</p>
-    ${DEMO ? '' : `<label class="f">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
-    <div class="row" style="margin-top:14px"><button class="btn grow" data-act="register">Ich bin dabei</button>${DEMO ? '' : `<button class="btn ghost" data-act="signout">Abmelden</button>`}</div></div>`;
+    ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
+    <button class="btn full" data-act="register">Beitreten</button>
+    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</div>`;
 }
 
 /* ---------- HEUTE ---------- */
+const WEIGH_HINT = 'Morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente.';
 function viewHeute() {
   const me = C[S.me]; const p = S.players[S.me];
-  let h = '';
   if (seasonOver()) {
-    const r = rankTotal(C); const w = r[0];
-    h += `<div class="card hero"><div class="big">🏆</div><h2 style="margin-top:10px">${w ? esc(w.name) + ' gewinnt die Saison!' : 'Saison vorbei'}</h2>
-      <p class="t2">${w ? `${w.total} Punkte · ${lossStr(w.latest)} · kassiert ${eur(pot(C).total)}` : ''}</p></div>`;
-    return h + viewRanking();
+    const w = rankTotal(C)[0];
+    return `<section class="lead"><p class="k">Saison beendet</p>${w ? `<p class="big">${esc(w.name)}</p>
+      <p class="s">gewinnt mit ${w.total} Punkten und ${lossStr(w.latest)} seit Start.</p><p class="n">Bekommt den Topf: ${eur(pot(C).total)}.</p>` : ''}</section>` + viewRanking();
   }
-  h += weighCard(me, p);
-  h += habitsCard(me, p);
-  h += weeklyCard(me);
-  return h;
+  // oben steht genau eine Sache in Akzentfarbe: Wiegen (wenn fällig) oder der Wochenstand
+  const lead = weighLead(me, p);
+  return (lead || standingLead(me)) + (lead ? '' : weighCard(me, p)) + habitsCard(me, p) + weeklyCard(me);
+}
+function weighInput(slot, label, val, primary) {
+  return `<div class="row"><input class="inp grow" id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="kg" aria-label="Gewicht in kg" value="${val ?? ''}"><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
+}
+function weighLead(me, p) {
+  const js = p.joinedSlot || 0; const os = openSlot();
+  if (!me.active) {
+    if (os === js) return `<section class="lead"><p class="k">Startgewicht · offen bis ${CONFIG.deadlineHour}:00 Uhr</p>
+      <p class="big cd">${countdown(slotDeadline(js))} <span>übrig</span></p>
+      ${weighInput(js, 'Speichern', '', true)}<p class="n">${WEIGH_HINT}</p></section>`;
+    return `<section class="lead"><p class="k">Startgewicht am ${fmtD(slotStart(js))}, 0–${CONFIG.deadlineHour} Uhr</p>
+      <p class="big cd">in ${countdown(slotStart(js))}</p><p class="n">${WEIGH_HINT}</p></section>`;
+  }
+  if (os === null || os <= js || me.wb[os] !== undefined) return '';
+  return `<section class="lead"><p class="k">Wiegen für Woche ${os} · offen bis ${CONFIG.deadlineHour}:00 Uhr</p>
+    <p class="big cd">${countdown(slotDeadline(os))} <span>übrig</span></p>
+    ${weighInput(os, 'Eintragen', '', true)}<p class="n">${WEIGH_HINT} Verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)} in den Topf.</p></section>`;
+}
+function standingLead(me) {
+  const cw = curWeek(); if (!me.active || cw < 1 || cw > CONFIG.weeks) return '';
+  let w = cw;
+  if (dayIdx() === 7 * (cw - 1) && cw - 1 > me.js) w = cw - 1; // Montag: Ergebnis der Vorwoche
+  const r = rankWeek(C, w); const mine = r.find(x => x.uid === S.me); if (!mine) return '';
+  const names = xs => andJoin(xs.map(x => esc(x.name)));
+  const others = r.filter(x => x.uid !== S.me);
+  const above = others.filter(x => x.total > mine.total), below = others.filter(x => x.total < mine.total), tied = others.filter(x => x.total === mine.total);
+  const parts = [ptsStr(mine.total)];
+  if (tied.length) parts.push('gleichauf mit ' + names(tied));
+  if (above.length) { const t = Math.min(...above.map(x => x.total)); parts.push(`${t - mine.total} hinter ${names(above.filter(x => x.total === t))}`); }
+  else if (below.length) { const t = Math.max(...below.map(x => x.total)); parts.push(`${mine.total - t} vor ${names(below.filter(x => x.total === t))}`); }
+  let k, n;
+  if (w < cw) {
+    const closed = lastClosedSlot() >= w;
+    k = closed ? `Woche ${w} · Endstand` : `Woche ${w} · vorläufig bis ${CONFIG.deadlineHour}:00 Uhr`;
+    if (closed) {
+      const l = weekLosers(C, w);
+      n = !l.length ? 'Kein Wochenletzter, alle haben gleich viele Punkte.'
+        : l.includes(S.me) ? `Du zahlst ${eur(CONFIG.loserFee)} und wählst die Challenge für diese Woche.`
+        : `${names(r.filter(x => l.includes(x.uid)))} ${l.length > 1 ? 'zahlen je' : 'zahlt'} ${eur(CONFIG.loserFee)} und ${l.length > 1 ? 'wählen' : 'wählt'} die Challenge für diese Woche.`;
+    } else {
+      const open = r.filter(x => !x.weighed);
+      n = open.length ? `Noch nicht gewogen: ${names(open)}.` : 'Alle haben gewogen.';
+    }
+  } else {
+    k = `Woche ${w} läuft · ${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}`;
+    n = `Waage-Punkte kommen am ${fmtD(slotStart(w))} dazu. Der Wochenletzte zahlt ${eur(CONFIG.loserFee)} und wählt die nächste Challenge.`;
+  }
+  if (r.length < 2) return `<section class="lead"><p class="k">${k}</p><p class="big">${mine.total} <span>${mine.total === 1 ? 'Punkt' : 'Punkte'}</span></p><p class="n">Noch niemand sonst in der Wertung.</p></section>`;
+  return `<section class="lead"><p class="k">${k}</p><p class="big">Platz ${above.length + 1} <span>von ${r.length}</span></p><p class="s">${parts.join(', ')}.</p><p class="n">${n}</p></section>`;
 }
 function weighCard(me, p) {
-  const js = p.joinedSlot || 0; const t = now(); const os = openSlot();
-  const input = (slot, label, val) => `<div class="row" style="margin-top:12px"><input class="inp grow" id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="kg" value="${val ?? ''}"><button class="btn" data-act="weigh" data-slot="${slot}">${label}</button></div>
-     <p class="muted small" style="margin-bottom:0">Morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe! Andere sehen nur deine Prozente.</p>`;
-  if (!me.active) {
-    if (os === js) return `<div class="card"><h2>⚖️ Startgewicht</h2><p class="t2 small">Fenster offen bis ${CONFIG.deadlineHour}:00 Uhr, noch ${countdown(slotDeadline(js))}.</p>${input(js, 'Start!')}</div>`;
-    return `<div class="card"><h2>⚖️ Startgewicht</h2><p class="t2">Am <b>${fmtD(slotStart(js))}</b> zwischen 0 und ${CONFIG.deadlineHour} Uhr trägst du dein Startgewicht ein.</p>
-      <p class="muted small cd">Noch ${countdown(slotStart(js))}. Bis dahin: Gewohnheiten festlegen, die Waage bereitstellen.</p></div>`;
-  }
+  if (!me.active) return '';
+  const js = p.joinedSlot || 0; const os = openSlot();
+  const head = `<div class="row"><h2 class="grow">Waage</h2><div class="num">${lossStr(me.latest)}<small>seit Start</small></div></div>`;
+  const fix = `Korrigieren bis ${CONFIG.deadlineHour}:00 Uhr.`;
+  if (os !== null && os === js) return `<div class="card">${head}<p class="small"><span class="ok">Startgewicht gespeichert.</span> <span class="muted">${fix}</span></p>${weighInput(js, 'Korrigieren', S.myWeights[js], false)}</div>`;
+  if (os !== null && os > js) return `<div class="card">${head}<p class="small"><span class="ok">Woche ${os} gewogen: +${ptsStr(me.weeks[os]?.weigh ?? 0)}.</span> <span class="muted">${fix}</span></p>${weighInput(os, 'Korrigieren', S.myWeights[os], false)}</div>`;
   const last = Math.max(...Object.keys(me.wb).map(Number));
-  const head = `<div class="row"><div class="grow"><h2>⚖️ Waage</h2><div class="muted small">Gesamt seit Start</div></div><div class="big">${lossStr(me.latest)}</div></div>`;
-  if (os !== null && os === js) {
-    return `<div class="card">${head}<p><span class="pill ok">✓ Startgewicht gespeichert</span> <span class="muted small">Korrigieren bis ${CONFIG.deadlineHour}:00 Uhr.</span></p>${input(js, 'Korrigieren', S.myWeights[js])}</div>`;
-  }
-  if (os !== null && os > js) {
-    const done = me.wb[os] !== undefined;
-    const pts = me.weeks[os]?.weigh ?? 0;
-    return `<div class="card">${head}<h3>Wiegen Woche ${os} · offen bis ${CONFIG.deadlineHour}:00 (noch ${countdown(slotDeadline(os))})</h3>
-      ${done ? `<p><span class="pill ok">✓ gewogen</span> <span class="pill acc">+${pts} Punkte</span> <span class="muted small">Du kannst bis ${CONFIG.deadlineHour} Uhr korrigieren.</span></p>` : `<p class="t2 small">Noch nicht eingetragen. Verpasst = 0 Waage-Punkte + ${eur(CONFIG.strafe)} in den Topf.</p>`}
-      ${input(os, done ? 'Korrigieren' : 'Eintragen', done ? S.myWeights[os] : '')}</div>`;
-  }
-  let nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (dayIdx() < 0) nk = 0;
-  const nextTxt = nk <= CONFIG.weeks ? `Nächstes Wiegen: <b>${fmtD(slotStart(nk))}</b> 0–${CONFIG.deadlineHour} Uhr · <span class="cd">in ${countdown(slotStart(nk))}</span>` : 'Kein Wiegen mehr.';
+  const nk = dayIdx() < 0 ? 0 : Math.floor(dayIdx() / 7) + 1;
+  const next = nk <= CONFIG.weeks ? `Nächstes Wiegen: <b>${fmtD(slotStart(nk))}</b>, 0–${CONFIG.deadlineHour} Uhr <span class="cd">(in ${countdown(slotStart(nk))})</span>.` : 'Kein Wiegen mehr in dieser Saison.';
   const lastPts = last > js ? me.weeks[last]?.weigh : null;
-  return `<div class="card">${head}<p class="t2 small" style="margin:10px 0 0">${nextTxt}</p>
-    ${lastPts !== null ? `<p class="small muted" style="margin:6px 0 0">Letztes Wiegen (Woche ${last}): +${lastPts} Punkte</p>` : ''}
-    ${me.missed ? `<p class="small" style="margin:6px 0 0"><span class="pill warn">${me.missed}× verpasst · ${eur(me.missed * CONFIG.strafe)}</span></p>` : ''}</div>`;
+  return `<div class="card">${head}<p class="small t2">${next}${lastPts != null ? ` Letztes Wiegen (Woche ${last}): +${ptsStr(lastPts)}.` : ''}</p>
+    ${me.missed ? `<p class="small bad">${me.missed}× verpasst: ${eur(me.missed * CONFIG.strafe)} Strafe.</p>` : ''}</div>`;
 }
 function habitsCard(me, p) {
   const today = dayIdx(); const cw = curWeek();
   const habits = p.habits || [];
-  if (cw === 0) return `<div class="card"><h2>✅ Deine Gewohnheiten</h2>${habits.map(x => `<div class="pill" style="margin:4px 4px 0 0">${esc(x)}</div>`).join('')}<p class="muted small">Abhaken geht ab ${fmtD(START)}. Ändern kannst du sie über dein Profil (oben rechts).</p></div>`;
+  if (cw === 0) return `<div class="card"><h2>Deine Gewohnheiten</h2><ol class="plain">${habits.map(x => `<li>${esc(x)}</li>`).join('')}</ol><p class="muted small">Ab ${fmtD(START)} kannst du abhaken. Ändern über dein Profil (Kreis oben rechts).</p></div>`;
   const cur = Math.min(cw, CONFIG.weeks);
   const minW = Math.min(cur, Math.max(1, (p.joinedSlot || 0) + 1));
   const w = clamp(UI.habitWeek ?? cur, minW, cur);
@@ -566,7 +638,7 @@ function habitsCard(me, p) {
   const canEdit = d => d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
   const prevEditable = w === cur && w > minW && [1, 2, 3].some(i => canEdit(d0 - i));
   const rows = habits.map((hn, hi) => [hn, hi, false]);
-  if (ch) rows.push(['🎯 ' + ch.text, 3, true]);
+  if (ch) rows.push([ch.text, 3, true]);
   let g = `<div class="hgrid"><div></div>${[0, 1, 2, 3, 4, 5, 6].map(i => `<div class="dh ${d0 + i === today ? 'today' : ''}">${WD[(i + 1) % 7]}<br>${dayDate(d0 + i).getDate()}.</div>`).join('')}`;
   for (const [hn, hi, isCh] of rows) {
     g += `<div class="hname ${isCh ? 'ch' : ''}" title="${esc(hn)}">${esc(hn)}</div>`;
@@ -574,15 +646,15 @@ function habitsCard(me, p) {
       const d = d0 + i; const on = !!me.hl[d]?.[hi];
       const edit = canEdit(d);
       const cls = d > today || d < minDay ? 'off' : edit ? 'edit' : 'lock';
-      g += `<button class="hc ${on ? 'on' : ''} ${isCh ? 'chc' : ''} ${cls}" ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-label="${esc(hn)} ${fmtD(dayDate(d))}">${on ? '✓' : ''}</button>`;
+      g += `<button class="hc ${on ? 'on' : ''} ${isCh ? 'chc' : ''} ${cls}" ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-pressed="${on}" aria-label="${esc(hn)} ${fmtD(dayDate(d))}">${on ? '✓' : ''}</button>`;
     }
   }
   g += '</div>';
-  const nav = `<div class="nav" style="margin:10px 0 10px"><button class="btn ghost sm" data-act="hw" data-d="-1" ${w <= minW ? 'disabled' : ''}>‹</button><b class="small">${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${fmtD(dayDate(d0))}–${fmtD(dayDate(d0 + 6))}</b><button class="btn ghost sm" data-act="hw" data-d="1" ${w >= cur ? 'disabled' : ''}>›</button></div>`;
-  return `<div class="card"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 class="grow">✅ Gewohnheiten</h2><span class="pill acc">${wk ? wk.habits : 0}/21</span>${ch ? `<span class="pill warn">🎯 ${wk ? wk.weekly : 0}/${CONFIG.challengePts}</span>` : ''}</div>
-    ${nav}
-    ${prevEditable ? `<button class="btn ghost sm" data-act="hw" data-d="-1" style="width:100%;margin-bottom:10px">‹ Vorwoche kannst du noch nachtragen</button>` : ''}
-    ${g}<p class="muted small" style="margin:10px 0 0">Antippen zum Abhaken, bis zu ${CONFIG.backfillDays} Tage nachtragen.${ch ? ' Die 🎯-Zeile ist die Wochen-Challenge.' : ''}</p></div>`;
+  const nav = `<div class="nav"><button class="btn ghost sm" data-act="hw" data-d="-1" ${w <= minW ? 'disabled' : ''} aria-label="Woche zurück">‹</button><b class="small">${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${fmtD(dayDate(d0))}–${fmtD(dayDate(d0 + 6))}</b><button class="btn ghost sm" data-act="hw" data-d="1" ${w >= cur ? 'disabled' : ''} aria-label="Woche vor">›</button></div>`;
+  const score = `<span class="score"><b>${wk ? wk.habits : 0}</b>/21${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
+  return `<div class="card"><div class="row"><h2 class="grow">Gewohnheiten</h2>${score}</div>
+    ${nav}${g}
+    <p class="muted small">Antippen zum Abhaken, bis zu ${CONFIG.backfillDays} Tage nachtragen.${ch ? ' Die gelbe Zeile ist die Wochen-Challenge.' : ''}${prevEditable ? ` <button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen</button>` : ''}</p></div>`;
 }
 function weeklyCard(me) {
   const cw = curWeek(); const w = cw === 0 ? 1 : Math.min(cw, CONFIG.weeks);
@@ -590,19 +662,19 @@ function weeklyCard(me) {
   let inner;
   if (ch) {
     const per = ch.kind === 'daily' ? '1 Punkt pro Tag' : `${Math.round(CONFIG.challengePts / chTarget(ch))} Punkte pro Mal`;
+    const lbl = chLabel(ch);
     const stand = Object.values(C).filter(p => p.active && p.js < w).map(p => `${esc(p.name)} ${p.weeks[w]?.weekly || 0}/${CONFIG.challengePts}`);
-    inner = `<p style="font-size:18px;font-weight:800;margin:6px 0">${esc(ch.text)}</p>
-      <p class="small" style="margin:0 0 8px"><span class="pill warn">${chLabel(ch)}</span> <span class="muted">${per}, max. ${CONFIG.challengePts} · von ${esc(ch.setByName)}</span></p>
-      <p class="t2 small" style="margin:0">${cw === 0 ? 'Startet am Montag.' : 'Abhaken in der 🎯-Zeile bei den Gewohnheiten.'}</p>
-      ${stand.length && cw > 0 ? `<p class="small t2" style="margin:8px 0 0">Stand: ${stand.join(' · ')}</p>` : ''}`;
+    inner = `<p class="chtext">${esc(ch.text)}</p>
+      <p class="small t2">${lbl[0].toUpperCase() + lbl.slice(1)}, ${per}, max. ${CONFIG.challengePts}. Gewählt von ${esc(ch.setByName)}.</p>
+      <p class="small t2">${cw === 0 ? 'Startet am Montag.' : `Abhaken in der gelben Zeile oben.${stand.length ? ' Stand: ' + stand.join(' · ') : ''}`}</p>`;
   } else if (canSetWeekly(S, C, w)) {
     const excl = w > 1 ? exclusiveUntil(w) : null;
     const why = w === 1 ? 'Die erste Challenge darf jeder festlegen. Wer zuerst kommt, entscheidet.'
       : now() < excl ? `Du warst letzte Woche Letzter und darfst bis <b>${fmtDT(excl)}</b> (noch ${countdown(excl)}) die Challenge bestimmen. Danach darf jeder.`
       : 'Der Letzte hat nichts festgelegt. Jetzt darf jeder, wer zuerst kommt, entscheidet.';
     inner = `<p class="t2 small">${why}</p>
-      <input class="inp" id="wText" maxlength="60" placeholder="z. B. Treppe statt Aufzug">
-      <div class="row" style="margin-top:8px"><select class="inp grow" id="wKind">
+      <input class="inp" id="wText" maxlength="60" placeholder="z. B. Treppe statt Aufzug" aria-label="Challenge">
+      <div class="row"><select class="inp grow" id="wKind" aria-label="Wie oft">
         <option value="daily">Täglich (1 P./Tag, max. ${CONFIG.challengePts})</option>
         <option value="1">1× diese Woche (${CONFIG.challengePts} P.)</option>
         <option value="2">2× diese Woche (je ${Math.round(CONFIG.challengePts / 2)} P.)</option>
@@ -614,41 +686,41 @@ function weeklyCard(me) {
     const names = s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') || 'Der Wochenletzte';
     inner = `<p class="t2 small"><b>${names}</b> war letzte Woche Letzter und darf bis ${fmtDT(exclusiveUntil(w))} die Challenge wählen. Danach darf jeder, wer zuerst kommt.</p>`;
   }
-  return `<div class="card"><h2>🎯 Wochen-Challenge</h2>${inner}</div>`;
+  return `<div class="card"><h2>Wochen-Challenge</h2>${inner}</div>`;
 }
 /* ---------- RANKING ---------- */
 function viewRanking() {
   const cw = curWeek(); const cwc = clamp(cw, 1, CONFIG.weeks);
   if (UI.rankWeek === null) UI.rankWeek = cwc;
   if (UI.rankEtappe === null) UI.rankEtappe = etappeOf(cwc);
-  const seg = `<div class="seg">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt'], ['kasse', '💸 Kasse']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}">${l}</button>`).join('')}</div>`;
-  const etNav = e => `<div class="nav"><button class="btn ghost sm" data-act="re" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}</b><button class="btn ghost sm" data-act="re" data-d="1" ${e >= etappeOf(cwc) ? 'disabled' : ''}>›</button></div>`;
+  const seg = `<div class="seg">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt'], ['kasse', 'Kasse']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}" aria-pressed="${UI.rankMode === k}">${l}</button>`).join('')}</div>`;
+  const etNav = e => `<div class="nav"><button class="btn ghost sm" data-act="re" data-d="-1" ${e <= 1 ? 'disabled' : ''} aria-label="Etappe zurück">‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}</b><button class="btn ghost sm" data-act="re" data-d="1" ${e >= etappeOf(cwc) ? 'disabled' : ''} aria-label="Etappe vor">›</button></div>`;
   if (UI.rankMode === 'kasse') return seg + viewKasse(etNav);
   let list, title, note = '', losers = [];
   if (UI.rankMode === 'woche') {
     const w = UI.rankWeek; list = rankWeek(C, w);
-    title = `<div class="nav"><button class="btn ghost sm" data-act="rw" data-d="-1" ${w <= 1 ? 'disabled' : ''}>‹</button><b>Woche ${w} · ${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}</b><button class="btn ghost sm" data-act="rw" data-d="1" ${w >= cwc ? 'disabled' : ''}>›</button></div>`;
-    if (lastClosedSlot() < w) note = `<p class="muted small">Läuft noch. Die Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu, dann steht auch der Letzte fest (${eur(CONFIG.loserFee)} in den Topf).</p>`;
+    title = `<div class="nav"><button class="btn ghost sm" data-act="rw" data-d="-1" ${w <= 1 ? 'disabled' : ''} aria-label="Woche zurück">‹</button><b>Woche ${w} · ${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}</b><button class="btn ghost sm" data-act="rw" data-d="1" ${w >= cwc ? 'disabled' : ''} aria-label="Woche vor">›</button></div>`;
+    if (lastClosedSlot() < w) note = `<p class="muted small">Läuft noch. Die Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu, dann steht der Letzte fest (zahlt ${eur(CONFIG.loserFee)}).</p>`;
     else losers = weekLosers(C, w);
   } else if (UI.rankMode === 'etappe') {
     list = rankEtappe(C, UI.rankEtappe); title = etNav(UI.rankEtappe);
   } else {
     list = rankTotal(C);
-    const po = pot(C);
-    title = `<div class="nav"><b>Gesamtwertung</b><span class="pill acc">Topf ${eur(po.total)}</span></div><p class="muted small" style="margin:0">Der Gesamtsieger nach Woche ${CONFIG.weeks} kassiert den Topf. Wer was zahlt, steht unter 💸 Kasse.</p>`;
+    title = `<div class="nav"><b>Gesamtwertung</b><span class="small t2">Topf ${eur(pot(C).total)}</span></div>`;
+    note = `<p class="muted small">Wer nach Woche ${CONFIG.weeks} vorne liegt, bekommt den Topf. Wer was zahlt, steht unter Kasse.</p>`;
   }
-  const rows = list.length ? list.map((r, i) => {
-    const pos = i > 0 && list[i - 1].total === r.total ? '' : i + 1;
-    const chips = [`⚖️ ${r.weigh}`, `✅ ${r.habits}`, `🎯 ${r.weekly}`];
-    if (UI.rankMode !== 'woche') chips.push(`⚡ ${r.tasks}`);
-    if (UI.rankMode === 'gesamt') { const f = fees(C[r.uid], null).strafen; if (f) chips.push(`💸 ${eur(f)}`); }
-    return `<div class="rk ${i === 0 ? 'first' : ''}"><div class="pos">${i === 0 ? '👑' : pos}</div>
-      <div><div class="nm"><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="pill warn">👎 Letzter · ${eur(CONFIG.loserFee)} · wählt Challenge</span>` : ''}</div>
-      <div class="br">${chips.map(c => `<span class="pill">${c}</span>`).join('')}</div></div>
+  const rows = list.length ? list.map(r => {
+    const pos = 1 + list.filter(x => x.total > r.total).length;
+    const br = [['Waage', r.weigh], ['Gewohnheiten', r.habits], ['Challenge', r.weekly]];
+    if (UI.rankMode !== 'woche') br.push(['Aufgaben', r.tasks]);
+    if (UI.rankMode === 'gesamt') { const f = fees(C[r.uid], null).strafen; if (f) br.push(['Strafen', eur(f)]); }
+    return `<div class="rk ${pos === 1 ? 'first' : ''}"><div class="pos">${pos}</div>
+      <div><div class="nm"><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="tag bad">Letzter · zahlt ${eur(CONFIG.loserFee)}</span>` : ''}</div>
+      <div class="br">${br.map(([l, v]) => `<span>${l} <b>${v}</b></span>`).join('')}</div></div>
       <div class="pts">${r.total}<small>${lossStr(r.latest)}</small></div></div>`;
   }).join('') : `<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>`;
-  return `${seg}<div class="card">${title}${note}<div style="margin-top:6px">${rows}</div></div>
-    <p class="muted small center">⚖️ Waage · ✅ Gewohnheiten · 🎯 Wochen-Challenge · ⚡ Extra-Aufgaben · 💸 Strafen<br>Die Zahl unter den Punkten ist die Abnahme seit Start.</p>`;
+  return `${seg}<div class="card">${title}${note}<div>${rows}</div></div>
+    <p class="foot">Die kleine Zahl unter den Punkten ist die Abnahme seit Start.</p>`;
 }
 function viewKasse(etNav) {
   const e = UI.rankEtappe;
@@ -656,13 +728,12 @@ function viewKasse(etNav) {
   const po = pot(C);
   const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
   let sumE = 0, sumG = 0;
-  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row" style="gap:6px"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
   return `<div class="card">${etNav(e)}
-    ${ps.length ? `<div style="overflow-x:auto"><table class="t k"><tr><th>Name</th><th>Einsatz</th><th>⚖️ verpasst</th><th>👎 Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
+    ${ps.length ? `<div class="tscroll"><table class="t k"><tr><th>Name</th><th>Einsatz</th><th>Verpasst</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
     <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
-    <p class="muted small" style="margin:10px 0 0">Einsatz ${eur(CONFIG.einsatz)} (einmalig, in der Etappe deines Einstiegs) · verpasstes Wiegen ${eur(CONFIG.strafe)} · Wochenletzter ${eur(CONFIG.loserFee)}. Am besten am Ende jeder Etappe einsammeln.</p></div>
-    <div class="card center"><div class="muted small">Topf gesamt</div><div class="big" style="margin-top:6px">${eur(po.total)}</div>
-    <p class="muted small" style="margin:8px 0 0">${po.players} × ${eur(CONFIG.einsatz)} Einsatz · ${po.missed}× verpasst · ${po.losers}× Letzter</p></div>`;
+    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz, ${po.missed}× verpasst, ${po.losers}× Letzter). Der Gesamtsieger nach Woche ${CONFIG.weeks} bekommt alles.</p>
+    <p class="muted small">Einsatz ${eur(CONFIG.einsatz)} einmalig in der Etappe deines Einstiegs · verpasstes Wiegen ${eur(CONFIG.strafe)} · Wochenletzter ${eur(CONFIG.loserFee)}. Am besten am Ende jeder Etappe einsammeln.</p></div>`;
 }
 /* ---------- CHALLENGES ---------- */
 function viewChallenges() {
@@ -672,36 +743,36 @@ function viewChallenges() {
   const tasks = Object.entries(S.tasks).filter(([, t]) => t.etappe === e).sort((a, b) => tsNum(a[1].ts) - tsNum(b[1].ts));
   const ed = taskEditable(e) && S.member;
   const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
-  let h = `<div class="nav"><button class="btn ghost sm" data-act="ev" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}</b><button class="btn ghost sm" data-act="ev" data-d="1" ${e >= ce ? 'disabled' : ''}>›</button></div>`;
-  h += `<div class="card"><h2>⚡ Extra-Aufgaben</h2><p class="muted small" style="margin:0 0 6px">Raus aus der Komfortzone: Jeder stellt <b>1 Aufgabe pro Etappe</b>, alle dürfen jede machen. Je +${CONFIG.taskPts} Punkte, zählt erst, wenn jemand anderes bestätigt (Beweis in die Gruppe).</p>`;
+  let h = `<div class="nav"><button class="btn ghost sm" data-act="ev" data-d="-1" ${e <= 1 ? 'disabled' : ''} aria-label="Etappe zurück">‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}</b><button class="btn ghost sm" data-act="ev" data-d="1" ${e >= ce ? 'disabled' : ''} aria-label="Etappe vor">›</button></div>`;
+  h += `<div class="card"><h2>Extra-Aufgaben</h2><p class="muted small">Jeder stellt <b>1 Aufgabe pro Etappe</b>, alle dürfen jede machen. +${CONFIG.taskPts} Punkte pro Aufgabe, sobald jemand anderes bestätigt (Beweis in die Gruppe).</p>`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
   for (const [id, t] of tasks) {
     const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
     const mine = S.taskDone[id + '_' + S.me];
     let my;
-    if (!mine) my = ed && cw > 0 ? `<button class="btn sm" data-act="mark" data-id="${id}" data-on="1">Hab ich geschafft</button>` : '';
-    else if (!mine.confirmedBy) my = `<span class="pill warn">⏳ wartet auf Bestätigung</span> ${ed ? `<button class="btn ghost sm" data-act="mark" data-id="${id}" data-on="0">zurückziehen</button>` : ''}`;
-    else my = `<span class="pill ok">✓ +${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
+    if (!mine) my = ed && cw > 0 ? `<button class="btn ghost sm" data-act="mark" data-id="${id}" data-on="1">Hab ich geschafft</button>` : '';
+    else if (!mine.confirmedBy) my = `<span class="tag">Wartet auf Bestätigung</span>${ed ? `<button class="link" data-act="mark" data-id="${id}" data-on="0">Zurückziehen</button>` : ''}`;
+    else my = `<span class="tag ok">✓ +${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
     const others = tds.filter(([, d]) => d.uid !== S.me).map(([tid, d]) => {
       const n = esc(C[d.uid]?.name || '?');
-      return d.confirmedBy ? `<span class="pill ok">✓ ${n}</span>` : `<span class="pill warn">⏳ ${n}</span> <button class="btn ghost sm" data-act="confirm" data-id="${tid}">${n} bestätigen</button>`;
-    }).join(' ');
+      return d.confirmedBy ? `<span class="tag ok">✓ ${n}</span>` : `<button class="btn ghost sm" data-act="confirm" data-id="${tid}">${n} bestätigen</button>`;
+    }).join('');
     const canDel = t.createdBy === S.me && !tds.length;
-    h += `<div class="task"><div class="row"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="muted small">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="btn ghost sm" data-act="delTask" data-id="${id}">✕</button>` : ''}</div>
-      <div class="who">${my} ${others}</div></div>`;
+    h += `<div class="task"><div class="row top"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="muted small">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="link" data-act="delTask" data-id="${id}">Löschen</button>` : ''}</div>
+      ${my + others ? `<div class="who">${my}${others}</div>` : ''}</div>`;
   }
   const nAct = Object.values(C).filter(p => p.active || p.uid === S.me).length;
-  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e} (${tasks.length}/${nAct} gestellt)</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen"><button class="btn" data-act="addTask" data-e="${e}">+</button></div>`;
-  else if (tasks.length) h += `<p class="muted small" style="margin:10px 0 0">${tasks.length}/${nAct} Aufgaben gestellt.</p>`;
+  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e} <span class="muted">(${tasks.length}/${nAct} gestellt)</span></h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Aufgabe"><button class="btn" data-act="addTask" data-e="${e}">Stellen</button></div>`;
+  else if (tasks.length) h += `<p class="muted small">${tasks.length}/${nAct} Aufgaben gestellt.</p>`;
   h += `</div>`;
   // Wochen-Challenges der Etappe
   let wl = '';
   for (let w = ws; w <= we; w++) {
     const ch = S.weekly[w]; if (!ch) continue;
     const who = Object.values(C).filter(p => p.weeks[w]?.weekly).map(p => `${esc(p.name)} ${p.weeks[w].weekly}/${CONFIG.challengePts}`).join(' · ');
-    wl += `<div class="task"><div class="row"><span class="pill">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)} <span class="pill warn">${chLabel(ch)}</span></div><div class="muted small">von ${esc(ch.setByName)}${who ? ' · ' + who : ''}</div></div></div></div>`;
+    wl += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="muted small">${chLabel(ch)} · von ${esc(ch.setByName)}${who ? ' · ' + who : ''}</div></div></div></div>`;
   }
-  h += `<div class="card"><h2>🎯 Wochen-Challenges</h2>${wl || '<p class="t2">Noch keine.</p>'}</div>`;
+  h += `<div class="card"><h2>Wochen-Challenges</h2>${wl || '<p class="t2">Noch keine.</p>'}</div>`;
   return h;
 }
 
@@ -709,12 +780,12 @@ function viewChallenges() {
 function viewVerlauf() {
   const players = Object.values(C).filter(p => p.active);
   const me = C[S.me];
-  let h = `<div class="card"><div class="row"><h2 class="grow">📉 Abnahme seit Start</h2><button class="btn ghost sm" data-act="ctab">${UI.chartTable ? 'Diagramm' : 'Tabelle'}</button></div>
-    <p class="muted small" style="margin:0 0 8px">In Prozent vom Startgewicht. So ist es für jede Größe vergleichbar.</p>`;
+  let h = `<div class="card"><div class="row"><h2 class="grow">Abnahme seit Start</h2><button class="btn ghost sm" data-act="ctab">${UI.chartTable ? 'Diagramm' : 'Tabelle'}</button></div>
+    <p class="muted small">In Prozent vom eigenen Startgewicht.</p>`;
   if (!players.length) h += `<p class="t2">Noch keine Daten.</p>`;
   else if (UI.chartTable) {
     const maxS = Math.max(...players.flatMap(p => Object.keys(p.wb).map(Number)));
-    h += `<div style="overflow-x:auto"><table class="t"><tr><th>Woche</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr>`;
+    h += `<div class="tscroll"><table class="t"><tr><th>Woche</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr>`;
     for (let k = 0; k <= maxS; k++) h += `<tr><td>${k === 0 ? 'Start' : k}</td>${players.map(p => `<td>${p.wb[k] !== undefined ? lossStr(p.wb[k]) : '–'}</td>`).join('')}</tr>`;
     h += `</table></div>`;
   } else {
@@ -724,8 +795,8 @@ function viewVerlauf() {
   h += `</div>`;
   if (me?.active) {
     const ks = Object.keys(S.myWeights).map(Number).sort((a, b) => a - b);
-    h += `<div class="card"><h2>🔒 Deine Gewichte</h2><p class="muted small" style="margin:0">Nur für dich sichtbar.</p><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
-      ${ks.map(k => `<tr><td>${k === me.js ? 'Start' : k}</td><td>${fmt1(S.myWeights[k])}</td><td>${me.wb[k] !== undefined ? lossStr(me.wb[k]) : '–'}</td><td>${k > me.js && me.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
+    h += `<div class="card"><h2>Deine Gewichte</h2><p class="muted small">Nur für dich sichtbar, die anderen sehen nur Prozente.</p><div class="tscroll"><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
+      ${ks.map(k => `<tr><td>${k === me.js ? 'Start' : k}</td><td>${fmt1(S.myWeights[k])}</td><td>${me.wb[k] !== undefined ? lossStr(me.wb[k]) : '–'}</td><td>${k > me.js && me.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div></div>`;
   }
   return h;
 }
@@ -777,44 +848,44 @@ function wireChart() {
 }
 
 /* ---------- REGELN ---------- */
-function viewRegeln(compact) {
+function viewRegeln() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
   const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
-  return `<div class="card rules"><h2>📜 Regeln</h2>
+  return `<div class="card rules"><h2>Regeln</h2>
   <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
-  <h3>⚖️ Wiegen (max. ${wMax} P./Woche)</h3><ul>
+  <h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
    <li>Jeden <b>Montag 0–${CONFIG.deadlineHour} Uhr</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe.</li>
    <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
    <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
    <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
-  <h3>✅ Gewohnheiten (max. 21 P./Woche)</h3><ul>
+  <h3>Gewohnheiten (max. 21 P./Woche)</h3><ul>
    <li>Jeder wählt <b>3 eigene</b>. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
    <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
-  <h3>🎯 Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
+  <h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
    <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
    <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, ein Tag Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken wie eine Gewohnheit.</li></ul>
-  <h3>⚡ Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
+  <h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
    <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
    <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
-  <h3>💸 Topf</h3><ul>
+  <h3>Topf</h3><ul>
    <li>${eur(CONFIG.einsatz)} Einsatz (einmalig) + ${eur(CONFIG.strafe)} pro verpasstem Wiegen + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
-   <li>Wer was zahlt, steht unter Ranking → 💸 Kasse, aufgeteilt nach Etappe. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
-   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
-  ${compact ? '' : `<p class="muted small">Wer eine Woche nichts meldet, zahlt trotzdem. Kein „hab's vergessen“.</p>`}</div>`;
+   <li>Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
+   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul></div>`;
 }
 /* ---------- PROFIL-MODAL ---------- */
 function renderModal() {
   const m = document.getElementById('modal');
   if (UI.modal !== 'profile' || !S.member) { m.innerHTML = ''; return; }
   const p = S.players[S.me]; const he = habitsEditable();
-  const code = p.invite && !DEMO ? `<p class="small t2">Einladungscode für neue Leute: <b>${esc(p.invite)}</b>. Schick ihnen einfach den Link plus den Code.</p>` : '';
+  const code = p.invite && !DEMO ? `<p class="small t2">Einladungscode für neue Leute: <b>${esc(p.invite)}</b>. Schick ihnen den Link und den Code.</p>` : '';
   m.innerHTML = `<div class="modal" data-act="closeModal"><div class="sheet" data-stop>
-    <div class="row"><h2 class="grow" style="margin:0">Profil</h2><button class="btn ghost sm" data-act="closeModal">✕</button></div>
-    <label class="f">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
+    <div class="row"><h2 class="grow">Profil</h2><button class="btn ghost sm" data-act="closeModal" aria-label="Schließen">✕</button></div>
+    <label class="f" for="pName">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
     <label class="f">Gewohnheiten ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'}</label>
-    ${[0, 1, 2].map(i => `<input class="inp" id="pH${i}" maxlength="40" value="${esc(p.habits?.[i] || '')}" ${he ? '' : 'disabled'} style="margin-bottom:6px">`).join('')}
+    <div class="stack">${[0, 1, 2].map(i => `<input class="inp" id="pH${i}" maxlength="40" value="${esc(p.habits?.[i] || '')}" ${he ? '' : 'disabled'} aria-label="Gewohnheit ${i + 1}">`).join('')}</div>
     ${code}
-    <div class="row" style="margin-top:12px"><button class="btn grow" data-act="saveProfile">Speichern</button>${DEMO ? '' : `<button class="btn ghost" data-act="signout">Abmelden</button>`}</div></div></div>`;
+    <button class="btn full" data-act="saveProfile">Speichern</button>
+    ${DEMO ? '' : `<button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
 }
 
 /* ---------- EVENTS ---------- */
@@ -835,7 +906,7 @@ document.addEventListener('click', async ev => {
         if (habits.some(h => !h)) return toast('Bitte alle 3 Gewohnheiten eintragen.');
         const k = nextJoinSlot(); if (k === null) return;
         await DB.register({ name, habits, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
-        toast('Willkommen im Club! 🔥'); break;
+        toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} bis ${CONFIG.deadlineHour} Uhr eintragen.`); break;
       }
       case 'weigh': {
         const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
@@ -845,7 +916,7 @@ document.addEventListener('click', async ev => {
         if (slot !== js) { const st = S.myWeights[js]; if (!st) return toast('Startgewicht fehlt.'); loss = Math.round((st - kg) / st * 10000) / 100; }
         document.activeElement?.blur();
         await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss);
-        toast(slot === js ? 'Startgewicht gespeichert. Los geht\'s!' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
+        toast(slot === js ? 'Startgewicht gespeichert.' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
       case 'habit': {
         const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
@@ -859,12 +930,12 @@ document.addEventListener('click', async ev => {
         const t = val('wText'); if (!t) return toast('Text fehlt.');
         const k = document.getElementById('wKind')?.value || 'daily';
         document.activeElement?.blur();
-        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge steht 🎯'); break;
+        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge gespeichert.'); break;
       }
       case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
-      case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt ✓'); break;
+      case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt.'); break;
       case 'rmode': UI.rankMode = el.dataset.m; render(); break;
       case 'rw': UI.rankWeek = clamp(UI.rankWeek + +el.dataset.d, 1, CONFIG.weeks); render(); break;
       case 're': UI.rankEtappe = clamp(UI.rankEtappe + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
