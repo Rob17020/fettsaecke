@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
 // Muss zu CONFIG in app.js passen.
-const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, deadlineHour: 14, backfillDays: 2, strafe: 1, habitFee: 0.5 };
+const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, holdBand: 1, deadlineHour: 14, backfillDays: 2, strafe: 1, habitFee: 0.5 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';
 
@@ -73,6 +73,11 @@ async function main() {
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
+      // Haltephase (Ziel bei einem früheren Wiegen erreicht): Gewohnheiten sind freiwillig, keine Erinnerung
+      if (typeof p.maxLossPct === 'number') {
+        const ws = await db.collection('weighins').where('uid', '==', p.uid).get();
+        if (ws.docs.some(d => { const x = d.data(); return x.slot > js && x.slot <= Math.floor(t.day / 7) && x.lossPct >= p.maxLossPct - 1e-9; })) continue;
+      }
       // Haken dieser Woche zählen (Mo bis heute): offen = Wochenziel noch nicht erreicht und heute noch nicht abgehakt
       const w = Math.floor(t.day / 7) + 1, d0 = 7 * (w - 1), H = habitsFor(p, w);
       const logs = await db.getAll(...Array.from({ length: t.day - d0 + 1 }, (_, i) => db.doc(`habitlogs/${p.uid}_${d0 + i}`)));

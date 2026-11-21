@@ -361,6 +361,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .meta .stk{display:inline-flex;align-items:center;gap:2px;color:var(--text-2)}
 .meta .stk .ico{width:14px;height:14px;color:var(--lime)}
 .meta .ms{padding:0 5px;border:1px solid var(--line-2);border-radius:var(--r-xs);line-height:18px;color:var(--text-2)}
+.meta .ms.hold{border-color:rgba(255,45,120,.5);color:var(--text)}
 
 /* ---------- Listen, Tabellen, Diagramm ---------- */
 .task{padding-top:12px;border-top:1px solid var(--line)}

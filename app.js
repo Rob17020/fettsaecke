@@ -22,6 +22,7 @@ const CONFIG = {
   habitFee: 0.5,      // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
   loserFee: 0.5,      // € für den Letzten im Wochenranking
   habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
+  holdBand: 1,        // Haltephase (Ziel erreicht): Woche zählt, wenn das Wiegen höchstens so viele Prozentpunkte vom Ziel abweicht
   weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
   deadlineHour: 14,   // … bis 14:00 Uhr
   chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
@@ -150,19 +151,25 @@ function compute(S) {
     const hl = hlBy[uid] || {};
     const weeks = {};
     let best = 0;
+    /* Haltephase: ab der Woche nach dem Erreichen des Ziels. Nur das Wiegen ist Pflicht. Liegt es höchstens holdBand Prozentpunkte
+       neben dem Ziel: volle Waage-Punkte + Bonus (3 × habitMaxPts), dazu Gewohnheiten/Challenge, alles zusammen höchstens das normale
+       Wochenmaximum. Daneben: 0 Waage-Punkte, kein Bonus. */
+    const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, cap = wMax + habitMax() + CONFIG.challengePts;
     for (let w = js + 1; w <= CONFIG.weeks; w++) {
-      const has = wb[w] !== undefined;
-      const weigh = has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
+      const has = wb[w] !== undefined, hold = goalWeek !== null && w > goalWeek;
+      const inBand = hold && has && Math.abs(wb[w] - goal) <= CONFIG.holdBand + 1e-9;
+      const weigh = hold ? (inBand ? wMax : 0) : has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
       if (has) best = Math.max(best, wb[w]);
       const H = habitsFor(p, w), cnt = tickCounts(hl, w);
       const habits = H.reduce((s, h, i) => s + habitPts(cnt[i], h.target), 0);
       const met = H.every((h, i) => cnt[i] >= h.target);
       const weekly = challengePoints(S.weekly[w], cnt[3]);
-      weeks[w] = { weigh, habits, weekly, chCnt: cnt[3], cnt, targets: H.map(h => h.target), met, total: weigh + habits + weekly, weighed: has };
+      const bonus = inBand ? Math.max(0, Math.min(habitMax(), cap - weigh - habits - weekly)) : 0;
+      weeks[w] = { weigh, habits, bonus, weekly, chCnt: cnt[3], cnt, targets: H.map(h => h.target), met, hold, inBand, total: weigh + bonus + habits + weekly, weighed: has };
     }
-    // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee)
+    // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee; in der Haltephase freiwillig)
     const missedHabitWeeks = [];
-    if (active) for (let w = js + 1; w <= CONFIG.weeks && weekFinal(w); w++) if (!weeks[w].met) missedHabitWeeks.push(w);
+    if (active) for (let w = js + 1; w <= CONFIG.weeks && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold) missedHabitWeeks.push(w);
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
@@ -176,7 +183,7 @@ function compute(S) {
     // längste Serie Wiegen ohne Verpassen (für Meilensteine)
     let run = 0, weighRun = 0;
     if (active) for (let k = js + 1; k <= CONFIG.weeks; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
-    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
+    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, hold: active && goalWeek !== null, weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
       weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
     x.streak = active ? streakOf(x) : { cur: 0, best: 0, joker: true, jokerWeek: null };
     x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
@@ -216,12 +223,12 @@ const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.choo
 function tsNum(t) { if (!t) return 0; if (typeof t === 'number') return t; if (t.toMillis) return t.toMillis(); if (t.seconds) return t.seconds * 1000; return 0; }
 function sortRank(arr) { return arr.sort((a, b) => b.total - a.total || b.latest - a.latest || a.name.localeCompare(b.name)); }
 function rankWeek(C, w) {
-  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
+  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], habits: p.weeks[w].habits + p.weeks[w].bonus, uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
 }
 function rankRange(C, wFrom, wTo, etappen) {
   return sortRank(Object.values(C).filter(p => p.active && p.js < wTo).map(p => {
     const r = { uid: p.uid, name: p.name, color: p.color, latest: p.latest, weigh: 0, habits: 0, weekly: 0, team: 0, tasks: 0, missed: p.missed };
-    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits; r.weekly += p.weeks[w].weekly; }
+    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits + p.weeks[w].bonus; r.weekly += p.weeks[w].weekly; }
     for (const e of etappen) { r.tasks += p.taskPts[e] || 0; r.team += p.teamPts[e] || 0; }
     r.total = r.weigh + r.habits + r.weekly + r.team + r.tasks;
     return r;
@@ -308,7 +315,7 @@ function streakOf(x) {
   for (let w = x.js + 1; w <= last; w++) {
     const wk = x.weeks[w]; if (!wk) continue;
     if (wk.met) { best = Math.max(best, ++cur); continue; }
-    if (!weekFinal(w)) continue; // läuft noch
+    if (!weekFinal(w) || wk.hold) continue; // läuft noch bzw. Haltephase (Gewohnheiten freiwillig)
     const e = etappeOf(w);
     if (cur > 0 && used[e] === undefined) { used[e] = w; continue; }
     cur = 0;
@@ -804,8 +811,15 @@ const goalHint = 'z. B. 10 % = bei 100 kg Startgewicht 10 kg. Ab dem Startgewich
 const readGoal = id => { const g = Math.round(parseFloat(val(id).replace(',', '.')) * 10) / 10; return g >= GOAL_MIN && g <= GOAL_MAX ? g : null; };
 // Ändern geht bis zum Startgewicht. Wer (aus Testzeiten) noch kein Ziel hat, darf es im Demo-/Testmodus auch danach einmal setzen.
 const goalEditable = (me, p) => !me?.active || (typeof p?.maxLossPct !== 'number' && (DEMO || CONFIG.testMode));
+const HOLD_LBL = 'Haltephase – nur Montag wiegen';
+const exitBtn = () => '';
 function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
+  if (me.hold) {
+    const inb = Math.abs(me.latest - g) <= CONFIG.holdBand + 1e-9;
+    return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))} %</b></div>
+      <p class="small t2">Halten zwischen ${tn(pct(g - CONFIG.holdBand))} und ${tn(pct(g + CONFIG.holdBand))} % (Ziel ${tn(pct(g))} % ± ${tn(pct(CONFIG.holdBand))}): volle ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte + ${habitMax()} Bonus. Daneben 0. Gewohnheiten sind freiwillig.</p>${exitBtn(me)}</div>`;
+  }
   return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
     <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div></div>`;
 }
@@ -905,7 +919,7 @@ function statusCard(me) {
   if (mine) {
     const wk = me.weeks[w] || {};
     const defs = [
-      { c: 'var(--lime)', v: wk.habits || 0, max: habitMax(), l: 'Gewohnheiten' },
+      { c: 'var(--lime)', v: Math.min(habitMax(), (wk.habits || 0) + (wk.bonus || 0)), max: habitMax(), l: wk.bonus ? 'Gewohnheiten + Bonus' : 'Gewohnheiten' },
       { c: 'var(--cyan)', v: wk.weekly || 0, max: CONFIG.challengePts, l: 'Challenge', off: !S.weekly[w] && 'keine' },
       { c: 'var(--pink)', v: wk.weigh || 0, max: CONFIG.weighMaxTenths * CONFIG.weighPerTenth, l: 'Waage', off: !wk.weighed && !closed && (w === cw ? 'ab ' + fmtD(slotStart(w)) : 'offen') },
     ];
@@ -991,16 +1005,17 @@ function habitsCard(me, p, focus) {
   }
   g += '</div>';
   const st = me.streak;
+  const hold = me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Gewohnheiten sind freiwillig und bringen weiter Punkte, bis das Wochenmaximum voll ist.</p>` : '';
   const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span></p>` : '';
   const score = `<span class="aside"><b>${wk ? wk.habits : 0}</b>/${habitMax()}${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
   // Warnung: Vorwoche kann noch nachgetragen werden, aber nicht alle Wochenziele sind erreicht (sonst Strafe)
   const pw = cur - 1, pwk = me.weeks[pw];
   let warn = '';
-  if (me.active && CONFIG.habitFee && pwk && !pwk.met && !weekFinal(pw)) {
+  if (me.active && CONFIG.habitFee && pwk && !pwk.met && !pwk.hold && !weekFinal(pw)) {
     const Hp = habitsFor(p, pw), miss = Hp.map((h, i) => pwk.cnt[i] < h.target ? `${esc(h.name)} ${pwk.cnt[i]}/${h.target}` : null).filter(Boolean);
     warn = `<p class="small bad">Woche ${pw} nicht geschafft: ${miss.join(', ')}. Nachtragen geht bis ${fmtD(dayDate(7 * pw - 1 + CONFIG.backfillDays))}, sonst ${eur(CONFIG.habitFee)}.</p>`;
   }
-  return `<section class="card" data-k="habits"><div class="hd"><h2>Gewohnheiten</h2>${score}</div>${streak}
+  return `<section class="card" data-k="habits"><div class="hd"><h2>Gewohnheiten</h2>${score}</div>${streak}${hold}
     ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${warn}
     ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen</button>` : ''}</section>`;
 }
@@ -1091,7 +1106,7 @@ function feedEvents() {
     const start = w.slot === p.js;
     ev.push({ id: 'w' + id, k: 'weigh', t: tsNum(w.ts) || slotStart(w.slot).getTime() + 9 * 36e5, approx: !tsNum(w.ts),
       html: start ? `${nm(w.uid)} hat das Startgewicht eingetragen` : `${nm(w.uid)} hat gewogen`,
-      sub: start ? `startet in Woche ${w.slot + 1}` : `Woche ${w.slot} · ${tn(lossStr(w.lossPct))} · +${p.weeks[w.slot]?.weigh ?? 0} P.` });
+      sub: start ? `startet in Woche ${w.slot + 1}` : `Woche ${w.slot} · ${tn(lossStr(w.lossPct))}${p.weeks[w.slot]?.hold ? (p.weeks[w.slot].inBand ? ' · Haltephase, im Ziel' : ' · Haltephase, daneben') : ''} · +${(p.weeks[w.slot]?.weigh ?? 0) + (p.weeks[w.slot]?.bonus ?? 0)} P.` });
   }
   // Wochenziel geschafft: an dem Tag, dessen Haken das Ziel erreicht hat (Zeit = letzte Änderung dieses Tages)
   for (const p of Object.values(C)) {
@@ -1150,6 +1165,7 @@ function metaLine(p) {
   if (!p) return '';
   const a = activity(p.lastActive); const out = [];
   if (a) out.push(`<span class="${a.still ? 'still' : ''}">${a.t}</span>`);
+  if (p.hold) out.push(`<span class="ms hold">${HOLD_LBL}</span>`);
   if (p.streak.cur > 0) out.push(`<span class="stk" title="Streak: ${wochen(p.streak.cur)} am Stück alle Wochenziele, Rekord ${p.streak.best}">${svg('flame')}${p.streak.cur}</span>`);
   for (const m of topMilestones(p)) out.push(`<span class="ms" title="Meilenstein: ${m.label}">${m.short || m.label}</span>`);
   return out.length ? `<span class="meta">${out.join('')}</span>` : '';
@@ -1423,7 +1439,7 @@ function kgCard(me) {
   const goalKg = me?.goal && kg.start ? kg.start * (1 - me.goal / 100) : null;
   if (UI.kgTable) {
     h += `<div class="tscroll"><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
-      ${kg.ks.slice().reverse().map(k => `<tr><td>${k === js ? 'Start' : k}</td><td>${tn(fmt1(S.myWeights[k]))}</td><td>${me?.wb[k] !== undefined ? tn(lossStr(me.wb[k])) : '–'}</td><td>${k > js && me?.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
+      ${kg.ks.slice().reverse().map(k => `<tr><td>${k === js ? 'Start' : k}</td><td>${tn(fmt1(S.myWeights[k]))}</td><td>${me?.wb[k] !== undefined ? tn(lossStr(me.wb[k])) : '–'}</td><td>${k > js && me?.weeks[k] ? '+' + (me.weeks[k].weigh + me.weeks[k].bonus) : ''}</td></tr>`).join('')}</table></div>`;
   } else {
     CHARTS.kg = {
       series: [{ uid: S.me, name: 'Du', color: 'var(--pink)', pts: kg.ks.map(k => [k, S.myWeights[k]]) }], zero: false, area: true, labels: false, x0: js, xMin: 4, minSpan: 2,
