@@ -48,27 +48,117 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 .num,.tnum,.rk .pos,.rk .pts b,.rk .br,table.t td,.cd,.lb .v,.lb .n,.tile b,.hm-sum b{font-variant-numeric:tabular-nums}
 .pp,::marker{font-variant-numeric:normal}
 
-/* ---------- Gerüst ---------- */
+/* ---------- Gerüst ----------
+   Kein max-width: der Inhalt nutzt immer die ganze Breite. Handy/Tablet: Seite scrollt.
+   Desktop (Seitenleiste): Inhaltsbereich = Fensterhöhe, jede Spalte eines Boards scrollt für sich. */
 .wrap{padding:12px var(--wrap) calc(88px + env(safe-area-inset-bottom));padding-left:max(var(--wrap),env(safe-area-inset-left));padding-right:max(var(--wrap),env(safe-area-inset-right))}
-@media (min-width:640px){.wrap{max-width:calc(760px + 2 * var(--wrap));margin-inline:auto;padding-top:20px}}
+@media (min-width:640px){.wrap{padding-top:20px}}
+/* kurzer Inhalt: Board bis zum unteren Rand strecken (Handy/Tablet scrollt sonst ganz normal) */
+body.has-nav .wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+body.has-nav .page{flex:1 0 auto;display:flex;flex-direction:column}
+body.has-nav .page>.view{flex:1 0 auto}
+body.has-nav .view>.board{flex:1 0 auto}
+.page{container:page/inline-size}
+.view{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
 @media (min-width:1025px){
-  .wrap{max-width:calc(1760px + 2 * var(--wrap));margin:0;padding:32px var(--wrap) 56px}
-  body.has-nav .wrap{margin-left:var(--side)}
+  body.has-nav .wrap{margin-left:var(--side);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:clamp(16px,3vh,32px) var(--wrap) clamp(16px,2.5vh,28px)}
+  body.has-nav .page{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+  body.has-nav .page>.view{flex:1 1 0;min-height:0}
+  body.has-nav .view>.board{flex:1 1 0;min-height:0}
 }
-.view{display:grid;gap:var(--gap);align-content:start;min-width:0}
-.split{display:grid;gap:var(--gap);align-items:start;min-width:0}
-@media (min-width:1025px){.split{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}.split.rank{grid-template-columns:minmax(0,1.8fr) minmax(0,1fr)}.login{grid-template-columns:minmax(0,440px) minmax(0,1fr);align-items:start}.narrow{max-width:520px}}
-.only-wide{display:none}
-@media (min-width:1025px){.only-wide{display:block}}
+
+/* ---------- Boards: Spalten 1 → 2 → 3 → 4 nach verfügbarer Breite (Container Query auf .page) ----------
+   .pane = Block/Spalte, .grp = Gruppe: eigene Spalte oder aufgelöst (display:contents). Reihenfolge per order. */
+.board{display:grid;gap:var(--gap);grid-template-columns:minmax(0,1fr);align-items:start;min-width:0}
+.pane,.grp{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.board.two .grp,.dash .grp,.chal .grp,.ich .grp{display:contents}
+@media (min-width:1025px){
+  /* feste Höhe: eine Zeile, Spalten so hoch wie der Inhaltsbereich, jede scrollt für sich */
+  body.has-nav .board{grid-auto-rows:minmax(0,1fr);align-items:stretch}
+  body.has-nav .board>*,body.has-nav .board .grp>*{min-height:0}
+  /* Rand für Leuchten und Fokusrahmen, ohne das Raster zu verschieben */
+  body.has-nav .pane,body.has-nav .grp{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--card-3) transparent;padding:10px;margin:-10px}
+  body.has-nav .grp>.pane{flex-shrink:0}
+}
+/* Spalten füllen: Diagramm-Karten wachsen, sonst die letzte Karte. Keine schwarzen Löcher unter kurzen Spalten. */
+@container page (min-width:44rem){
+  .board{align-items:stretch}
+  .pane>.fillc{flex:1 0 auto;display:flex;flex-direction:column}
+  .pane:not(:has(.fillc))>.card:last-child:not(.loser){flex-grow:1}
+  .pane>.status:has(+ .loser:last-child){flex-grow:1}
+  .grp:not(:has(.fillc))>.pane:last-child,.grp>.pane:has(.fillc){flex-grow:1}
+}
+/* Diagramme füllen ab 2 Spalten ihr Panel in Breite UND Höhe (drawChart liest --fill), einspaltig gilt das Seitenverhältnis */
+.chart{--fill:0}
+@container page (min-width:44rem){
+  body.has-nav .fillc>.chart.fill{--fill:1;flex:1 1 0;min-height:240px}
+  body.has-nav .fillc>.chart.fill>svg{position:absolute;inset:0}
+}
+
+/* Heute: 1 = f a b c · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c] */
+.dash .f{order:1}.dash .a{order:2}.dash .b{order:3}.dash .c{order:4}
+.dash .b .heat,.dash .c .msc{display:none}
+@container page (min-width:44rem){
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)}
+  .dash .gL{display:flex}
+  .dash .b .heat,.dash .c .msc{display:block}
+}
+@container page (min-width:68rem){
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr)}
+  .dash .gL{display:contents}
+  .dash .gF{display:flex;order:1}
+}
+@container page (min-width:92rem){
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
+  .dash .gF{display:contents}
+}
+/* Liveticker teilt sich die Spalte: Liste begrenzt (Desktop: Anteil der Höhe), als eigene Spalte (4) voll */
+@media (min-width:1025px){
+  body.has-nav .dash{container:dash/size}
+  body.has-nav .dash .f .flist{max-height:max(9rem,32cqb);overflow-y:auto;scrollbar-width:thin}
+}
+@container page (min-width:92rem){body.has-nav .dash .f .flist{max-height:none;overflow:visible}}
+
+/* Ranking: Liste | Diagramm (Diagramm erst ab 2 Spalten) */
+.rank .rc{display:none}
+@container page (min-width:52rem){
+  .rank{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+  .rank .rc{display:flex}
+}
+/* Challenges: [Aufgaben] [Team + Challenges] → [Aufgaben] [Team] [Challenges] */
+@container page (min-width:44rem){.chal{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.chal .gT{display:flex}}
+@container page (min-width:72rem){.chal{grid-template-columns:repeat(3,minmax(0,1fr))}.chal .gT{display:contents}}
+/* Verlauf (eigener Tab auf Handy/Tablet): Diagramm | Chronik */
+@container page (min-width:44rem){.verl{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}}
+/* Ich: 1 = Ziel, kg, Heatmap, Meilensteine · 2 = [Ziel, Meilensteine] [kg, Heatmap];
+   mit Verlauf (Desktop): 2 = [Ich] [Verlauf] · 3 = [Ziel, MS] [kg, Heatmap] [Verlauf] · 4 = Verlauf auf zwei Spalten */
+.ich .goal{order:1}.ich .kg{order:2}.ich .heat{order:3}.ich .ms{order:4}
+@container page (min-width:44rem){
+  .ich{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}
+  .ich .gI1,.ich .gI2{display:flex}
+  .ich.wv .gI,.ich.wv .gV{display:flex}
+  .ich.wv .gI1,.ich.wv .gI2{display:contents}
+}
+@container page (min-width:72rem){
+  .ich.wv{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.3fr)}
+  .ich.wv .gI{display:contents}
+  .ich.wv .gI1,.ich.wv .gI2{display:flex}
+}
+@container page (min-width:100rem){
+  .ich.wv{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,.9fr)}
+  .ich.wv .gV{display:contents}
+}
+/* zwei gleichwertige Spalten (Anmeldung, Saisonende) */
+@container page (min-width:52rem){.board.two{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)}}
+.narrow{max-width:60ch}
 
 /* Seitenwechsel: nur beim Tab-Wechsel, nicht bei jedem Daten-Update */
 .page.enter{animation:pageIn .45s var(--out) both}
 @keyframes pageIn{from{opacity:0;transform:translate3d(calc(var(--dir,0) * 28px),calc((1 - var(--dir,0) * var(--dir,0)) * 10px),0)}to{opacity:1;transform:none}}
-.page.enter .dash>.col,.page.enter .ich>*{animation:rise .55s var(--out) both}
-.page.enter .dash>.col.a,.page.enter .ich>:nth-child(2){animation-delay:50ms}
-.page.enter .dash>.col.b,.page.enter .ich>:nth-child(3){animation-delay:100ms}
-.page.enter .dash>.col.c{animation-delay:150ms}
-.page.enter .ich>:nth-child(n+4){animation-delay:150ms}
+.page.enter .pane{animation:rise .55s var(--out) both}
+.page.enter .a,.page.enter .b,.page.enter .kg,.page.enter .tm{animation-delay:50ms}
+.page.enter .c,.page.enter .heat,.page.enter .wc,.page.enter .rc{animation-delay:100ms}
+.page.enter .ms,.page.enter .loss,.page.enter .chron{animation-delay:150ms}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
 .apphead{display:flex;align-items:center;gap:8px;padding:4px 0 var(--gap)}
@@ -80,6 +170,7 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 /* Regeln: auf Handy/Tablet als beschrifteter Knopf oben rechts */
 .hrules{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:36px;padding:0 10px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:transform .35s var(--spring),background-color .12s,border-color .12s}
 .hrules .ico{width:18px;height:18px}
+@media (max-width:359px){.hrules{padding:0 8px}.hrules span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
 .hrules:hover{background:var(--card-3)}
 .hrules:active{transform:scale(.95)}
 .hrules.on{border-color:var(--lime);color:var(--lime)}
@@ -90,7 +181,7 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 .ptitle{display:none}
 @media (min-width:1025px){
   body.has-nav .apphead{display:none}
-  body.has-nav .ptitle{display:block;margin-bottom:24px;font-size:44px;font-weight:900;letter-spacing:-.045em;line-height:1}
+  body.has-nav .ptitle{display:block;flex:none;margin-bottom:clamp(12px,2.4vh,24px);font-size:clamp(30px,4.4vh,48px);font-weight:900;letter-spacing:-.045em;line-height:1}
 }
 .banner{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-bottom:var(--gap);padding:8px 12px;background:var(--card);border:1px dashed var(--line-3);border-radius:var(--r-sm);font-size:12px;color:var(--muted)}
 .banner b{color:var(--lime);font-weight:800}
@@ -157,18 +248,8 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .dot{display:inline-block;width:10px;height:10px;flex:none;border-radius:50%}
 
 /* ---------- Heute ---------- */
-.dash{display:grid;gap:var(--gap);align-items:start}
-.dash .col{display:grid;gap:var(--gap);align-content:start;min-width:0}
-/* Handy: Liveticker, Wiegen/Status, Gewohnheiten, Challenge (DOM-Reihenfolge). Liveticker immer oben. */
-@media (orientation:landscape) and (max-height:520px){.dash>.col.b{order:-1}.dash>.col.f{order:-2}}
-@media (min-width:640px){
-  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"f f" "a c" "b b"}
-  .col.a{grid-area:a}.col.b{grid-area:b}.col.c{grid-area:c}.col.f{grid-area:f}
-}
-@media (min-width:640px) and (orientation:landscape) and (max-height:520px){.dash{grid-template-areas:"f f" "b b" "a c"}}
-@media (min-width:1025px){
-  .dash{grid-template-columns:minmax(280px,1fr) minmax(440px,1.6fr) minmax(280px,1fr);grid-template-areas:"f f f" "a b c"}
-}
+/* Handy quer (1 Spalte): Gewohnheiten direkt nach dem Liveticker */
+@media (orientation:landscape) and (max-height:520px){@container page (max-width:43.99rem){.dash .b{order:2}.dash .a{order:3}}}
 /* Fokus (Grün): montags die Wiege-Karte */
 .card.due{border-color:rgba(182,255,60,.55);box-shadow:0 0 0 1px rgba(182,255,60,.2),0 0 40px -16px var(--lime-glow)}
 .when{font-size:14px;color:var(--text-2)}
@@ -234,7 +315,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .hrow{display:grid;gap:6px}
 .hrow+.hrow{margin-top:10px}
 .hhead .hname{display:none}
-.hname{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:14px;font-weight:600;line-height:1.3;color:var(--text)}
+.hname{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:clamp(13px,2.6cqi,16px);font-weight:600;line-height:1.3;color:var(--text)}
 .hname .hn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Wochenfortschritt pro Gewohnheit: 2/4 */
 .hp{flex:none;margin-left:auto;font-size:12px;font-weight:800;color:var(--text-2);font-variant-numeric:tabular-nums}
@@ -243,11 +324,12 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .hlist li{display:flex;justify-content:space-between;gap:12px;font-weight:600}
 .hlist b{font-size:13px;color:var(--text-2);white-space:nowrap}
 .hin .inp.auto{flex:none;max-width:46%}
-.hcells{display:grid;grid-template-columns:repeat(7,minmax(36px,1fr));gap:6px}
-.dh{display:flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.25;color:var(--muted)}
-.dh b{font-size:13px;font-weight:700;color:var(--text-2)}
+/* Raster wächst mit seiner Karte: Zellen, Abstände und Schrift per clamp() und Container-Einheiten */
+.hcells{display:grid;grid-template-columns:repeat(7,minmax(36px,1fr));gap:clamp(4px,1.2cqi,8px)}
+.dh{display:flex;flex-direction:column;align-items:center;font-size:clamp(11px,2cqi,13px);line-height:1.25;color:var(--muted)}
+.dh b{font-size:clamp(13px,2.3cqi,15px);font-weight:700;color:var(--text-2)}
 .dh.today,.dh.today b{color:var(--lime);font-weight:800}
-.hc{display:grid;place-items:center;height:40px;padding:0;border:1px solid transparent;border-radius:var(--r-sm);background:var(--card-2);color:var(--lime-ink);cursor:pointer;transition:transform .45s var(--spring),background-color .18s,border-color .18s,box-shadow .25s}
+.hc{display:grid;place-items:center;height:clamp(40px,8cqi,54px);padding:0;border:1px solid transparent;border-radius:var(--r-sm);background:var(--card-2);color:var(--lime-ink);cursor:pointer;transition:transform .45s var(--spring),background-color .18s,border-color .18s,box-shadow .25s}
 .hc:active:not(:disabled){transform:scale(.95);transition-duration:.08s}
 .hc:hover:not(:disabled):not(.on){background:var(--card-3)}
 .hc .ck{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
@@ -325,8 +407,6 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .fe.new .fi{animation:fiPop .9s var(--spring) both}
 @keyframes feedIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 @keyframes fiPop{0%{transform:scale(.4);box-shadow:0 0 0 0 var(--fc)}50%{transform:scale(1.15);box-shadow:0 0 22px 2px var(--fc)}100%{transform:scale(1)}}
-.feed.top .flist{column-gap:40px}
-@media (min-width:1025px){.feed.top .flist{columns:2 340px}.feed.top .fe,.feed.top .fday{break-inside:avoid}.feed.top .fday{break-after:avoid}}
 .k-weigh{--fc:var(--pink)}.k-habits{--fc:var(--lime)}.k-task,.k-confirm,.k-challenge,.k-team{--fc:var(--cyan)}
 
 /* ---------- Ranking ---------- */
@@ -336,13 +416,13 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .seg button.on{background:var(--card-3);color:var(--text)}
 @media (min-width:1025px){.seg{max-width:440px}}
 .rlist{container-type:inline-size}
-.rk{display:grid;grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:"pos who pts" "pos br pts";align-items:start;gap:2px 12px;padding:14px 0;border-top:1px solid var(--line)}
+.rk{display:grid;grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:"pos who pts" "pos br pts";align-items:start;gap:2px 12px;padding:clamp(12px,1.8cqi,18px) 0;border-top:1px solid var(--line)}
 .rk .pos{grid-area:pos;font-size:22px;font-weight:900;letter-spacing:-.04em;line-height:1.1;color:var(--muted);text-align:center}
 .rk .who{grid-area:who;min-width:0}
 .rk .br{grid-area:br;display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px;font-size:13px;color:var(--text-2)}
 .rk .br span::before{content:attr(data-l) " ";color:var(--muted)}
 .rk .pts{grid-area:pts;text-align:right}
-.rk .pts b{display:block;font-size:26px;font-weight:900;letter-spacing:-.035em;line-height:1}
+.rk .pts b{display:block;font-size:clamp(24px,3.6cqi,32px);font-weight:900;letter-spacing:-.035em;line-height:1}
 .rk .pts small{display:block;margin-top:4px;font-size:12px;color:var(--muted);white-space:nowrap}
 .rk .nm{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-weight:800}
 .rk .nm>span:not(.dot):not(.tag){overflow:hidden;text-overflow:ellipsis}
@@ -378,9 +458,9 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .task .who{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
 .row.top{align-items:flex-start}
 .wk{flex:none;width:34px;font-size:13px;font-weight:900;line-height:22px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.t{width:100%;border-collapse:collapse;font-size:13px}
-table.t th,table.t td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;container-type:inline-size}
+table.t{width:100%;border-collapse:collapse;font-size:clamp(13px,1.6cqi,15px)}
+table.t th,table.t td{padding:clamp(8px,1.2cqi,12px) clamp(6px,1.2cqi,14px);border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 table.t th:first-child,table.t td:first-child{position:sticky;left:0;z-index:1;padding-left:0;background:var(--card);text-align:left}
 table.t th:last-child,table.t td:last-child{padding-right:0}
 table.t th{font-weight:700;color:var(--muted)}
@@ -404,7 +484,14 @@ table.t.chron th,table.t.chron td{text-align:left}
 .tip .tr b{font-variant-numeric:tabular-nums}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--text-2)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
-.rules{max-width:72ch}
+/* Regeln: Abschnitte laufen auf breiten Schirmen mehrspaltig, jede Spalte höchstens ~70 Zeichen */
+.rules{container-type:inline-size}
+.rcols{columns:1;column-gap:48px}
+@container (min-width:76ch){.rcols{columns:2}}
+@container (min-width:114ch){.rcols{columns:3}}
+@container (min-width:152ch){.rcols{columns:4}}
+.rs{break-inside:avoid;max-width:70ch;padding-bottom:20px}
+.rs h3{margin-top:0}
 .rules p,.rules li{color:var(--text-2)}
 .rules b{color:var(--text);font-weight:700}
 .rules ul{padding-left:20px}
@@ -416,11 +503,6 @@ table.t.chron th,table.t.chron td{text-align:left}
 .herot em{font-style:normal;color:var(--blood)}
 
 /* ---------- Ich (privat) ---------- */
-.ich{display:grid;gap:var(--gap);align-items:start;grid-template-areas:"goal" "kg" "heat" "ms"}
-.ich>.goal{grid-area:goal}.ich>.kg{grid-area:kg}.ich>.heat{grid-area:heat}.ich>.msc{grid-area:ms}
-@media (min-width:640px){.ich{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"goal ms" "kg kg" "heat heat"}}
-@media (min-width:1025px){.ich{grid-template-columns:minmax(300px,1fr) minmax(0,2fr);grid-template-areas:"goal kg" "heat heat" "ms ms"}}
-.sect{margin:32px 0 var(--gap);font-size:22px;font-weight:900;letter-spacing:-.03em}
 .privnote{display:inline-flex;align-items:center;gap:4px}
 .privnote .ico{width:14px;height:14px}
 .goalring{position:relative;display:grid;place-items:center;padding:4px 0}
@@ -438,7 +520,7 @@ table.t.chron th,table.t.chron td{text-align:left}
 .tile{min-width:0;padding:10px;background:var(--card-2);border-radius:var(--r-sm)}
 .tile b{display:block;overflow:hidden;font-size:clamp(18px,5vw,24px);font-weight:900;letter-spacing:-.04em;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
 .tile>span{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
-.heatbox{max-width:calc(var(--w) * 24px + 32px)}
+.heatbox{max-width:calc(var(--w) * 44px + 32px)}
 .heatg{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 6px;--hg:3px}
 .hm-top{grid-column:2;display:grid;grid-template-columns:repeat(var(--w),minmax(0,1fr));gap:var(--hg);font-size:11px;font-weight:700;color:var(--muted)}
 .hm-top span{grid-column:span var(--span,4);overflow:hidden;white-space:nowrap}

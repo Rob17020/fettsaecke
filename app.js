@@ -784,26 +784,26 @@ function body(enter, dir) {
     if (!slow && !body._t) body._t = setTimeout(() => { body._t = null; render(); }, 12500);
     return `<p class="loading"><span class="spin" aria-hidden="true"></span>Lade…</p>${slow ? `<section class="card narrow"><p class="t2">Das dauert ungewöhnlich lange. Meist hilft neu laden.</p><button class="btn" data-act="reload">Neu laden</button></section>` : ''}`;
   }
-  if (!S.authed) return viewLogin();
-  if (!S.member) return viewRegister();
+  if (!S.authed) return `<div class="page">${viewLogin()}</div>`;
+  if (!S.member) return `<div class="page">${viewRegister()}</div>`;
   const vt = viewTab();
   const title = { heute: fmtLong(now()), ranking: 'Ranking', challenges: 'Challenges', verlauf: 'Verlauf', ich: isDesk() ? 'Ich & Verlauf' : 'Mein Fortschritt', regeln: 'Regeln' }[vt];
-  const v = ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, ich: viewIch, regeln: viewRegeln })[vt]();
+  const v = ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, ich: viewIch, regeln: () => `<div class="view"><div class="board">${pane('', viewRegeln())}</div></div>` })[vt]();
   return `<div class="page${enter ? ' enter' : ''}" style="--dir:${dir}"><h1 class="ptitle">${title}</h1>${v}</div>`;
 }
 
 function viewLogin() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
-  return `<div class="view login"><section class="card hero">${logoImg('mark xl')}
+  return `<div class="view"><div class="board two login"><section class="card hero">${logoImg('mark xl')}
     <p class="kicker">${CONFIG.weeks} Wochen · ${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}</p>
     <h1 class="herot">Wer nachlässt, <em>zahlt.</em></h1>
     <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Ziel in Prozent, Gewohnheiten mit Wochenziel und den Einladungscode aus der Gruppe eintragen.</p>
-    <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div>`;
+    <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div></div>`;
 }
 function viewRegister() {
   const k = nextJoinSlot();
   if (k === null) return `<section class="card narrow"><div class="hd"><h2>Saison vorbei</h2></div><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></section>`;
-  return `<section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
+  return `<div class="view"><div class="board two login"><section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
     <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
     <label class="f" for="rGoal">Dein Ziel: so viel willst du abnehmen <span class="muted">(in % vom Startgewicht)</span></label>
@@ -814,7 +814,7 @@ function viewRegister() {
     ${habitInputs('r', null, false)}
     ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
     <button class="btn full" data-act="register">Beitreten</button>
-    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>`;
+    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>${viewRegeln()}</div></div>`;
 }
 
 // Ziel (max. Abnahme in %): Eingabe, Erklärung, wer es noch ändern darf
@@ -864,19 +864,24 @@ function ensureDefs() {
     <filter id="fx-glow" filterUnits="userSpaceOnUse" x="-200" y="-200" width="4000" height="2000"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs></svg>`);
 }
 
+/* ---------- LAYOUT ----------
+   Jeder Tab ist ein .board (CSS-Grid). Spaltenzahl 1–4 per Container Query auf die Inhaltsbreite (style.css, "Boards").
+   .pane = Spalte bzw. Block, .grp = Gruppe, die je nach Breite eine eigene Spalte ist oder sich auflöst (display: contents).
+   Auf dem Desktop ist der Inhaltsbereich genau so hoch wie das Fenster, jede Spalte scrollt für sich. */
+const pane = (cls, html) => html ? `<div class="pane ${cls}">${html}</div>` : '';
+
 /* ---------- HEUTE ---------- */
 function viewHeute() {
   const me = C[S.me]; const p = S.players[S.me];
   if (seasonOver()) return seasonEnd(me);
-  if (me.finished) return `<div class="dash"><div class="col f">${feedCard(true)}</div><div class="col a">${finishedCard(me)}</div>
-    <div class="col b">${me.active ? heatCard(me, p) : ''}</div><div class="col c">${weeklyCard(me)}${teamCard(me)}</div></div>`;
   // Fokus (Grün): montags das Wiegen, sonst die heutige Spalte im Gewohnheiten-Raster
-  const wc = weighCard(me, p), desk = isDesk();
-  // Liveticker ganz oben. Desktop zusätzlich Ziel-Ring und Heatmap aus "Ich", damit die Startseite nicht leer wirkt.
-  return `<div class="dash"><div class="col f">${feedCard(true)}</div>
-    <div class="col a">${wc.html}${statusCard(me)}${loserCard()}</div>
-    <div class="col b">${habitsCard(me, p, !wc.due)}${desk && me.active ? heatCard(me, p) : ''}</div>
-    <div class="col c">${weeklyCard(me)}${teamCard(me)}${desk && me.active ? msCard(me) : ''}</div></div>`;
+  const wc = me.finished ? { html: finishedCard(me), due: false } : weighCard(me, p);
+  // Spalten: 1 = f a b c untereinander · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c]
+  // Heatmap und Meilensteine nur ab 2 Spalten (style.css), damit die Startseite auf großen Schirmen nicht leer wirkt.
+  return `<div class="view"><div class="board dash">
+    <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', wc.html + (me.finished ? '' : statusCard(me) + loserCard()))}</div>
+    ${pane('c', weeklyCard(me) + teamCard(me) + (me.active ? msCard(me) : ''))}</div>
+    ${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}</div></div>`;
 }
 function finishedCard(me) {
   const f = fees(me, null);
@@ -887,10 +892,11 @@ function finishedCard(me) {
 }
 function seasonEnd(me) {
   const w = rankTotal(C)[0];
-  return `<div class="view"><section class="card" data-k="rank"><div class="hd"><h2>Saison beendet</h2></div>
+  const win = `<section class="card" data-k="rank"><div class="hd"><h2>Saison beendet</h2></div>
     ${w ? `<p class="lname" style="color:var(--lime);text-shadow:0 0 28px var(--lime-glow)">${esc(w.name)}</p>
     <p class="t2">gewinnt mit <b>${nf(w.total)} Punkten</b> und ${tn(lossStr(w.latest))} seit Start und kassiert den Topf: <b>${eur(pot(C).total)}</b>.</p>` : ''}
-    ${me?.active && !me.finished ? `<button class="btn" data-act="wrapped">${svg('spark')}Dein Saisonrückblick</button>` : ''}</section>${viewRanking()}${feedCard()}</div>`;
+    ${me?.active && !me.finished ? `<button class="btn" data-act="wrapped">${svg('spark')}Dein Saisonrückblick</button>` : ''}</section>`;
+  return `<div class="view"><div class="board two">${pane('', win + feedCard())}${pane('', rankCards('gesamt').list)}</div></div>`;
 }
 function weighInput(slot, label, val, primary) {
   return `<div class="row weighrow"><label class="kgin"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="0,0" aria-label="Gewicht in kg" value="${val ?? ''}"><span aria-hidden="true">kg</span></label><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
@@ -1162,7 +1168,7 @@ function feedEvents() {
   }
   return ev.filter(e => e.t >= from).sort((a, b) => b.t - a.t || a.id.localeCompare(b.id));
 }
-const feedBase = () => isDesk() ? 6 : 3; // oben auf Heute kompakt: Handy 3, Desktop 6 (zweispaltig)
+const feedBase = () => isDesk() ? 20 : matchMedia('(min-width:640px)').matches ? 5 : 3; // Desktop: eigene Spalte bzw. scrollende Liste
 function feedCard(top) {
   const all = feedEvents(), list = all.slice(0, UI.feedN ?? (top ? feedBase() : 8)), tnow = now().getTime(), today = dayIdx();
   const dayLbl = d => d === today ? 'Heute' : d === today - 1 ? 'Gestern' : fmtLong(dayDate(d));
@@ -1199,28 +1205,33 @@ function viewRanking() {
   if (UI.rankWeek === null) UI.rankWeek = cwc;
   if (UI.rankEtappe === null) UI.rankEtappe = etappeOf(cwc);
   const seg = `<div class="seg" role="group" aria-label="Wertung">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt'], ['kasse', 'Kasse']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}" aria-pressed="${UI.rankMode === k}">${l}</button>`).join('')}</div>`;
-  const etNav = e => navBar('re', e, 1, etappeOf(cwc), `Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}`);
-  if (UI.rankMode === 'kasse') return `<div class="view">${seg}${viewKasse(etNav)}</div>`;
+  if (UI.rankMode === 'kasse') return `<div class="view">${seg}<div class="board">${pane('', viewKasse(etNav))}</div></div>`;
+  const r = rankCards(UI.rankMode);
+  return `<div class="view">${seg}<div class="board rank">${pane('rl', r.list)}${pane('rc', r.chart)}</div></div>`;
+}
+const etNav = e => navBar('re', e, 1, etappeOf(clamp(curWeek(), 1, CONFIG.weeks)), `Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}`);
+function rankCards(mode) { // Liste (Woche/Etappe/Gesamt) und Diagramm "Punkte, aufsummiert"
+  const cwc = clamp(curWeek(), 1, CONFIG.weeks);
   let list, title, note = '', losers = [];
-  if (UI.rankMode === 'woche') {
-    const w = UI.rankWeek; list = rankWeek(C, w);
+  if (mode === 'woche') {
+    const w = UI.rankWeek ?? cwc; list = rankWeek(C, w);
     title = navBar('rw', w, 1, cwc, `Woche ${w} · ${weekRange(w)}`);
     if (lastClosedSlot() < w) note = `<p class="small muted">Vorläufig: Waage-Punkte kommen am ${fmtD(slotStart(w))} bis ${CONFIG.deadlineHour} Uhr dazu.</p>`;
     else losers = weekLosers(C, w);
-  } else if (UI.rankMode === 'etappe') {
-    list = rankEtappe(C, UI.rankEtappe); title = etNav(UI.rankEtappe);
+  } else if (mode === 'etappe') {
+    list = rankEtappe(C, UI.rankEtappe ?? etappeOf(cwc)); title = etNav(UI.rankEtappe ?? etappeOf(cwc));
   } else {
     list = rankTotal(C);
     title = `<div class="hd"><h2>Gesamtwertung</h2><span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
   }
   const cols = [['Waage', 'weigh'], ['Gewohn&shy;heiten', 'habits'], ['Chal&shy;lenge', 'weekly']];
-  if (UI.rankMode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks'], ['Team', 'team']);
-  if (UI.rankMode === 'gesamt') cols.push(['Strafen', 'fee']);
+  if (mode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks'], ['Team', 'team']);
+  if (mode === 'gesamt') cols.push(['Strafen', 'fee']);
   const top = list.length ? list[0].total : 0;
   const head = `<div class="rk head"><span class="pos">#</span><span class="who">Name</span><span class="br">${cols.map(([l]) => `<span>${l}</span>`).join('')}</span><span class="pts">Punkte</span></div>`;
   const rows = list.map(r => {
     const pos = 1 + list.filter(x => x.total > r.total).length;
-    const fee = UI.rankMode === 'gesamt' ? fees(C[r.uid], null).strafen : 0;
+    const fee = mode === 'gesamt' ? fees(C[r.uid], null).strafen : 0;
     const cls = ['rk', r.total === top && top > 0 && 'lead', r.uid === S.me && 'me', losers.includes(r.uid) && 'lo'].filter(Boolean).join(' ');
     return `<div class="${cls}"><span class="pos">${pos}</span>
       <span class="who"><span class="nm"><span class="dot" style="background:${r.color}"></span><span>${esc(r.name)}</span>${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="tag bad">Letzter · zahlt ${eur(CONFIG.loserFee)}</span>` : ''}</span>${metaLine(C[r.uid])}</span>
@@ -1228,15 +1239,15 @@ function viewRanking() {
       <span class="pts"><b>${nf(r.total)}</b><small>${tn(lossStr(r.latest))}</small></span></div>`;
   }).join('');
   // Gesamt: Ausgestiegene mit eingefrorenem Ergebnis in einem eigenen Abschnitt
-  const fin = UI.rankMode === 'gesamt' ? Object.values(C).filter(p => p.active && p.finished).sort((a, b) => (a.goalWeek - a.js) - (b.goalWeek - b.js) || a.name.localeCompare(b.name)) : [];
+  const fin = mode === 'gesamt' ? Object.values(C).filter(p => p.active && p.finished).sort((a, b) => (a.goalWeek - a.js) - (b.goalWeek - b.js) || a.name.localeCompare(b.name)) : [];
   const finHtml = fin.length ? `<h3>Ziel erreicht</h3><div class="rlist fin">${fin.map(p => `<div class="rk${p.uid === S.me ? ' me' : ''}"><span class="pos">${svg('check')}</span>
       <span class="who"><span class="nm"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)}</span>${p.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}</span><span class="meta"><span>${frozenLine(p)}</span><span>ausgestiegen nach Woche ${p.fw}</span></span></span>
       <span class="br"></span><span class="pts"><b>${nf(frozenPts(p))}</b><small>eingefroren</small></span></div>`).join('')}</div>` : '';
   const listCard = `<section class="card" style="--n:${cols.length}">${title}${note}${list.length ? `<div class="rlist">${head}${rows}</div>` : '<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>'}${finHtml}</section>`;
   const ps = Object.values(C).filter(p => p.active);
   CHARTS.points = { series: pointsSeries(), yFmt: v => nf(v), xFmt: k => k === 0 ? 'Start' : 'W' + k, tip: v => nf(v) + ' P.', tipHead: k => k === 0 ? 'Start' : `Woche ${k} · bis ${fmtD(dayDate(7 * k - 1))}`, xMin: 4, hi: 10, hl: S.me, aria: 'Punkte aufsummiert pro Woche' };
-  const chartCard = ps.length ? `<section class="card only-wide"><div class="hd"><h2>Punkte, aufsummiert</h2><span class="aside">pro Woche</span></div><div class="chart" data-chart="points"></div>${legend(ps)}</section>` : '';
-  return `<div class="view">${seg}<div class="split rank">${listCard}${chartCard}</div></div>`;
+  const chartCard = ps.length ? `<section class="card fillc"><div class="hd"><h2>Punkte, aufsummiert</h2><span class="aside">pro Woche</span></div><div class="chart fill" data-chart="points"></div>${legend(ps)}</section>` : '';
+  return { list: listCard, chart: chartCard };
 }
 function pointsSeries() {
   const last = clamp(curWeek(), 1, CONFIG.weeks);
@@ -1251,7 +1262,7 @@ function pointsSeries() {
   });
 }
 const legend = ps => ps.length > 4 ? `<div class="legend">${ps.map(p => `<span><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span>`).join('')}</div>` : '';
-function viewKasse(etNav) {
+function viewKasse() {
   const e = UI.rankEtappe;
   const ps = Object.values(C).filter(p => p.active).map(p => ({ p, f: fees(p, e), g: fees(p, null) })).sort((a, b) => b.f.total - a.f.total || a.p.name.localeCompare(b.p.name));
   const po = pot(C);
@@ -1304,7 +1315,8 @@ function viewChallenges() {
     wl += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="small muted">${chLabel(ch)} · von ${esc(ch.setByName)}</div>${who.length ? `<div class="who">${chips(who)}</div>` : ''}</div></div></div>`;
   }
   const wc = `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenges</h2></div>${wl || '<p class="t2">Noch keine.</p>'}</section>`;
-  return `<div class="view">${nav}<div class="split">${h}<div class="view">${teamSection(e, ce)}${wc}</div></div></div>`;
+  // Spalten: 1 = untereinander · 2 = [Aufgaben] [Team + Challenges] · 3 = [Aufgaben] [Team] [Challenges]
+  return `<div class="view">${nav}<div class="board chal">${pane('t', h)}<div class="grp gT">${pane('tm', teamSection(e, ce))}${pane('wc', wc)}</div></div></div>`;
 }
 function teamSection(e, ce) {
   const t = TEAM[e];
@@ -1328,9 +1340,12 @@ function ideasBlock(e) {
 }
 
 /* ---------- VERLAUF ---------- */
-function viewVerlauf() {
+function viewVerlauf() { // Handy/Tablet: eigener Tab
+  return `<div class="view"><div class="board verl">${pane('loss', lossCard())}${pane('chron', chronicleCard())}</div></div>`;
+}
+function lossCard() {
   const players = Object.values(C).filter(p => p.active);
-  let h = `<section class="card"><div class="hd"><h2>Abnahme seit Start</h2><button class="link" data-act="ctab">${UI.chartTable ? 'Als Diagramm' : 'Als Tabelle'}</button></div>
+  let h = `<section class="card fillc"><div class="hd"><h2>Abnahme seit Start</h2><button class="link" data-act="ctab">${UI.chartTable ? 'Als Diagramm' : 'Als Tabelle'}</button></div>
     <p class="small muted">In Prozent vom eigenen Startgewicht.${isDesk() ? '' : ' Deine kg-Werte stehen unter <button class="link" data-tab="ich">Ich</button>, nur für dich.'}</p>`;
   if (!players.length) h += `<p class="t2">Noch keine Daten.</p>`;
   else if (UI.chartTable) {
@@ -1344,10 +1359,9 @@ function viewVerlauf() {
       yFmt: v => Math.abs(v) < 1e-9 ? '0' : (v > 0 ? '−' : '+') + pct(Math.abs(v)), xFmt: k => k === 0 ? 'Start' : 'W' + k,
       tip: v => lossStr(v), tipHead: k => (k === 0 ? 'Start' : 'Woche ' + k) + ' · ' + fmtD(slotStart(k)), xMin: 4, hi: 2, hl: S.me, aria: 'Abnahme in Prozent pro Woche',
     };
-    h += `<div class="chart" data-chart="loss"></div>${legend(players)}`;
+    h += `<div class="chart fill" data-chart="loss"></div>${legend(players)}`;
   }
-  h += `</section>`;
-  return `<div class="split">${h}${chronicleCard()}</div>`;
+  return h + `</section>`;
 }
 // Sieger und Letzte jeder abgeschlossenen Woche, neueste oben
 function chronicleCard() {
@@ -1362,17 +1376,20 @@ function chronicleCard() {
   return rows ? `<section class="card"><div class="hd"><h2>Wochen-Chronik</h2><span class="aside">Sieger und Letzte</span></div><div class="tscroll"><table class="t chron"><tr><th>Woche</th><th>Sieger</th><th>Letzter</th></tr>${rows}</table></div></section>` : '';
 }
 
-/* Liniendiagramm: wird in echter Pixelbreite gezeichnet, damit die Schrift bei jeder Breite 12 px bleibt.
+/* Liniendiagramm: wird in echter Pixelgröße gezeichnet, damit die Schrift bei jeder Größe 12 px bleibt.
+   .chart.fill in einer Spalte mit fester Höhe (Desktop, CSS setzt dann --fill: 1) füllt Breite UND Höhe des Panels,
+   sonst ergibt sich die Höhe aus der Breite.
    Optionen: zero:false (y-Achse nicht ab 0, z. B. kg), x0 (erste Woche), area (Fläche bei 1 Linie), refs (Hilfslinien), hl (uid hervorheben) */
 const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(es => es.forEach(e => drawChart(e.target))) : null;
 function wireCharts() { RO?.disconnect(); document.querySelectorAll('#app .chart[data-chart]').forEach(el => { drawChart(el); RO?.observe(el); }); }
 function drawChart(el) {
   const c = CHARTS[el.dataset.chart]; const W = Math.floor(el.clientWidth);
-  if (!c || W < 120 || el._w === W) return; el._w = W;
+  const fill = getComputedStyle(el).getPropertyValue('--fill').trim() === '1';
+  const H = fill ? Math.max(180, Math.floor(el.clientHeight)) : clamp(Math.round(W * .55), 200, 320);
+  if (!c || W < 120 || el._sz === W + 'x' + H) return; el._sz = W + 'x' + H;
   const s = c.series.filter(x => x.pts.length);
   if (!s.length) { el.innerHTML = '<p class="t2">Noch keine Daten.</p>'; return; }
   const many = s.length > 6; el.classList.toggle('many', many);
-  const H = clamp(Math.round(W * .55), 200, 320);
   const names = c.labels ?? s.length <= 4;
   const R = names ? 14 + Math.max(...s.map(x => x.name.length * 7.4)) : 12, L = 44, T = 14, B = 26;
   const refs = c.refs || [];
@@ -1436,9 +1453,10 @@ function myKg() { // eigene kg aus players/{uid}/private/weights
 }
 function viewIch() {
   const me = C[S.me], p = S.players[S.me];
-  // Desktop: Ich und Verlauf in einem Tab
-  const grp = isDesk() ? `<h2 class="sect">Verlauf der Gruppe</h2>${viewVerlauf()}` : '';
-  return `<div class="ich">${goalCard(me)}${kgCard(me)}${heatCard(me, p)}${msCard(me)}</div>${grp}`;
+  // Desktop: Ich und Verlauf in einem Tab. Spalten: 2 = [Ich] [Verlauf] · 3 = [Ziel, Meilensteine] [kg, Heatmap] [Verlauf] · 4 = Verlauf geteilt
+  const v = isDesk() ? `<div class="grp gV">${pane('loss', lossCard())}${pane('chron', chronicleCard())}</div>` : '';
+  return `<div class="view"><div class="board ich${v ? ' wv' : ''}"><div class="grp gI"><div class="grp gI1">${pane('goal', goalCard(me))}${pane('ms', msCard(me))}</div>
+    <div class="grp gI2">${pane('kg', kgCard(me))}${pane('heat', heatCard(me, p))}</div></div>${v}</div></div>`;
 }
 function goalCard(me) {
   const p = S.players[S.me], g = me?.goal, act = !!me?.active, cur = act ? me.latest : 0, kg = myKg();
@@ -1464,7 +1482,7 @@ function goalCard(me) {
 }
 function kgCard(me) {
   const kg = myKg();
-  let h = `<section class="card kg" data-k="weigh"><div class="hd"><h2>Dein Gewicht</h2>${kg.ks.length ? `<button class="link" data-act="kgtab">${UI.kgTable ? 'Als Diagramm' : 'Als Tabelle'}</button>` : ''}</div>`;
+  let h = `<section class="card kg fillc" data-k="weigh"><div class="hd"><h2>Dein Gewicht</h2>${kg.ks.length ? `<button class="link" data-act="kgtab">${UI.kgTable ? 'Als Diagramm' : 'Als Tabelle'}</button>` : ''}</div>`;
   if (!kg.ks.length) return h + `<p class="t2">Noch keine Werte. Montags ${weighHours} wiegen, dann steht hier dein Verlauf in kg.</p></section>`;
   const js = me?.js ?? kg.ks[0];
   const goalKg = me?.goal && kg.start ? kg.start * (1 - me.goal / 100) : null;
@@ -1477,7 +1495,7 @@ function kgCard(me) {
       yFmt: v => pct(v), xFmt: k => k === js ? 'Start' : 'W' + k, tip: (v, k) => `${fmt1(v)} kg${k !== js && me?.wb[k] !== undefined ? ' · ' + lossStr(me.wb[k]) : ''}`,
       tipHead: k => (k === js ? 'Start' : 'Woche ' + k) + ' · ' + fmtD(slotStart(k)), refs: goalKg ? [{ v: goalKg, label: `Ziel ${fmt1(goalKg)} kg` }] : [], aria: 'Dein Gewicht in kg pro Woche',
     };
-    h += `<div class="chart" data-chart="kg"></div>`;
+    h += `<div class="chart fill" data-chart="kg"></div>`;
   }
   return h + `<p class="small muted">Nur du siehst die kg-Werte, die anderen sehen nur Prozente.</p></section>`;
 }
@@ -1581,39 +1599,39 @@ function runCountUps(root) {
 function viewRegeln() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
   const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
-  return `<section class="card rules"><div class="hd"><h2>Regeln</h2></div>
-  <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
-  <h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
+  return `<section class="card rules"><div class="hd"><h2>Regeln</h2></div><div class="rcols">
+  <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p></div>
+  <div class="rs"><h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
    <li>Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
    <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
    <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
-   <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
-  <h3>Gewohnheiten (max. ${habitMax()} P./Woche)</h3><ul>
+   <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul></div>
+  <div class="rs"><h3>Gewohnheiten (max. ${habitMax()} P./Woche)</h3><ul>
    <li>Jeder wählt <b>3 eigene</b>, die Überwindung kosten. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
    <li>Jeder Tag ohne alle 3 kostet <b>${eur(CONFIG.habitFee)}</b>, sobald er nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.</li>
-   <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
-  <h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
+   <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul></div>
+  <div class="rs"><h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
    <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
-   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, also ${7 - CONFIG.challengePts} Tage Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul>
-  <h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
+   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, also ${7 - CONFIG.challengePts} Tage Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul></div>
+  <div class="rs"><h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
    <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
-   <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
-  <h3>Team-Monat (+${CONFIG.teamPts} P. pro Etappe)</h3><ul>
+   <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul></div>
+  <div class="rs"><h3>Team-Monat (+${CONFIG.teamPts} P. pro Etappe)</h3><ul>
    <li>Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.</li>
    <li>Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (wer später einsteigt, zählt nur ab seinem Start).</li>
-   <li>Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b></li></ul>
-  <h3>Streak und Joker (keine Punkte)</h3><ul>
+   <li>Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b></li></ul></div>
+  <div class="rs"><h3>Streak und Joker (keine Punkte)</h3><ul>
    <li>Streak = Tage am Stück mit allen 3 Gewohnheiten. Die Challenge zählt nicht mit.</li>
-   <li>Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch den ersten verpassten Tag, an dem gerade eine Streak läuft.</li></ul>
-  <h3>Meilensteine und eigenes Ziel</h3><ul>
+   <li>Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch den ersten verpassten Tag, an dem gerade eine Streak läuft.</li></ul></div>
+  <div class="rs"><h3>Meilensteine und eigenes Ziel</h3><ul>
    <li>−2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 7 und 30 Tage.</li>
-   <li>Dein <b>Zielgewicht</b> gibst du beim Beitreten an, ändern im Tab <b>Ich</b>. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul>
-  <h3>Topf</h3><ul>
+   <li>Dein <b>Zielgewicht</b> gibst du beim Beitreten an, ändern im Tab <b>Ich</b>. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul></div>
+  <div class="rs"><h3>Topf</h3><ul>
    <li><b>${eur(CONFIG.einsatz)} Einsatz</b> (einmalig) + <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen + <b>${eur(CONFIG.habitFee)}</b> pro Tag ohne alle 3 Gewohnheiten + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
    <li>Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
-   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
-  <h3>Erinnerungen</h3><ul>
-   <li>Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn noch Gewohnheiten offen sind. Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).</li></ul></section>`;
+   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul></div>
+  <div class="rs"><h3>Erinnerungen</h3><ul>
+   <li>Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn noch Gewohnheiten offen sind. Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).</li></ul></div></div></section>`;
 }
 
 /* ---------- PROFIL / OVERLAYS ---------- */
