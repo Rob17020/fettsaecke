@@ -57,6 +57,11 @@ label.f{display:block;font-size:13px;color:var(--text-2);margin:10px 0 4px}
 .hc.edit:not(.on){border-color:#4a4a45}
 .hc.lock{opacity:.45}
 .hc.off{opacity:.15}
+.hc.chc.on{background:#e6b34d;border-color:#e6b34d;color:#1d1300}
+.hname.ch{color:#e6b34d;font-weight:700}
+select.inp{appearance:auto}
+table.t.k td,table.t.k th{font-size:12px;padding:6px 3px}
+table.t tr.sum td{font-weight:800;border-bottom:0}
 /* ranking */
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
 .seg button{flex:1;border:0;background:transparent;padding:8px;border-radius:9px;font-weight:700;cursor:pointer;color:var(--text-2)}
@@ -130,14 +135,16 @@ const CONFIG = {
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
-  einsatz: 10,        // € Einsatz pro Person
+  einsatz: 10,        // € Einsatz pro Person (einmalig)
   strafe: 2,          // € pro verpasstem Wiegen
+  loserFee: 1,        // € für den Letzten im Wochenranking
   deadlineHour: 12,   // Wiegen montags bis 12:00 Uhr
+  chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
   backfillDays: 2,    // Gewohnheiten bis zu 2 Tage nachtragen
-  weighCap: 10,       // max. Waage-Punkte pro Woche (= 1 %)
-  weeklyPts: 5,       // Punkte für die Wochen-Challenge
-  taskPts: 15,        // Punkte pro Extra-Aufgabe
-  tasksPerEtappe: 3,  // max. Extra-Aufgaben pro Etappe
+  weighPerTenth: 3,   // Waage-Punkte pro 0,1 % unter dem bisherigen Tiefstwert
+  weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte)
+  challengePts: 6,    // max. Punkte Wochen-Challenge
+  taskPts: 15,        // Punkte pro Extra-Aufgabe (jeder stellt 1 Aufgabe pro Etappe)
 };
 // Wenn du start/weeks änderst: auch START_MS in firestore.rules anpassen.
 
@@ -200,26 +207,48 @@ function compute(S) {
     let best = 0;
     for (let w = js + 1; w <= CONFIG.weeks; w++) {
       const has = wb[w] !== undefined;
-      const weigh = has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighCap) : 0;
+      const weigh = has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
       if (has) best = Math.max(best, wb[w]);
-      let habits = 0;
-      for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) habits += hl[d].filter(Boolean).length;
-      const weekly = S.weeklyDone[uid + '_' + w] ? CONFIG.weeklyPts : 0;
-      weeks[w] = { weigh, habits, weekly, total: weigh + habits + weekly, weighed: has };
+      let habits = 0, chCnt = 0;
+      for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) { habits += hl[d].slice(0, 3).filter(Boolean).length; if (hl[d][3]) chCnt++; }
+      const weekly = challengePoints(S.weekly[w], chCnt);
+      weeks[w] = { weigh, habits, weekly, chCnt, total: weigh + habits + weekly, weighed: has };
     }
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
       if (td.uid === uid && td.confirmedBy && t) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
     }
-    let missed = 0;
-    if (active) for (let k = js + 1; k <= Math.min(lc, CONFIG.weeks); k++) if (wb[k] === undefined) missed++;
+    const missedSlots = [];
+    if (active) for (let k = js + 1; k <= Math.min(lc, CONFIG.weeks); k++) if (wb[k] === undefined) missedSlots.push(k);
+    const missed = missedSlots.length;
     const slots = Object.keys(wb).map(Number).sort((a, b) => a - b);
     const latest = slots.length ? wb[slots[slots.length - 1]] : 0;
-    C[uid] = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, missed, latest, color: COLORS[idx % COLORS.length] };
+    C[uid] = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, missed, missedSlots, loserWeeks: [], latest, color: COLORS[idx % COLORS.length] };
   });
+  for (let w = 1; w <= Math.min(lc, CONFIG.weeks); w++) for (const u of weekLosers(C, w)) C[u].loserWeeks.push(w);
   return C;
 }
+function chTarget(ch) { return ch?.kind === 'daily' ? 7 : clamp(ch?.target || 1, 1, 7); }
+function challengePoints(ch, n) {
+  if (!ch || !n) return 0;
+  if (ch.kind === 'daily') return Math.min(n, CONFIG.challengePts);
+  const t = chTarget(ch); return Math.min(n, t) * Math.round(CONFIG.challengePts / t);
+}
+const chLabel = ch => ch.kind === 'daily' ? 'täglich' : chTarget(ch) + '× diese Woche';
+function weekLosers(C, w) { // Letzte(r) einer abgeschlossenen Woche, nur wenn nicht alle gleich
+  const r = rankWeek(C, w); if (r.length < 2) return [];
+  const min = Math.min(...r.map(x => x.total)), max = Math.max(...r.map(x => x.total));
+  return min === max ? [] : r.filter(x => x.total === min).map(x => x.uid);
+}
+function fees(p, e) { // e = Etappe oder null für gesamt
+  const inE = w => e === null || etappeOf(w) === e;
+  const einsatz = p.active && (e === null || etappeOf(p.js + 1) === e) ? CONFIG.einsatz : 0;
+  const missed = p.missedSlots.filter(inE).length, losers = p.loserWeeks.filter(inE).length;
+  return { einsatz, missed, losers, strafen: missed * CONFIG.strafe + losers * CONFIG.loserFee, total: einsatz + missed * CONFIG.strafe + losers * CONFIG.loserFee };
+}
+const fmtDT = d => fmtD(d) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.chooseHours * 3600e3);
 function tsNum(t) { if (!t) return 0; if (typeof t === 'number') return t; if (t.toMillis) return t.toMillis(); if (t.seconds) return t.seconds * 1000; return 0; }
 function sortRank(arr) { return arr.sort((a, b) => b.total - a.total || b.latest - a.latest || a.name.localeCompare(b.name)); }
 function rankWeek(C, w) {
@@ -236,7 +265,7 @@ function rankRange(C, wFrom, wTo, etappen) {
 }
 const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
 const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
-function pot(C) { let a = 0, m = 0; for (const p of Object.values(C)) if (p.active) { a++; m += p.missed; } return { total: a * CONFIG.einsatz + m * CONFIG.strafe, players: a, missed: m }; }
+function pot(C) { const r = { total: 0, players: 0, missed: 0, losers: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.missed += f.missed; r.losers += f.losers; } return r; }
 function weeklySetters(C, w) { // null = jeder, [] = noch offen
   if (w <= 1) return null;
   if (lastClosedSlot() < w - 1) return [];
@@ -247,11 +276,10 @@ function canSetWeekly(S, C, w) {
   if (S.weekly[w] || w < 1 || w > CONFIG.weeks) return false;
   const cw = curWeek();
   if (w === 1) return cw <= 1;
-  if (cw !== w) return false;
-  if (dayIdx() >= 7 * (w - 1) + 1) return true; // ab Dienstag darf jeder
+  if (cw !== w || now() < slotDeadline(w - 1)) return false; // erst nach dem Wiegen
+  if (now() >= exclusiveUntil(w)) return true;                // danach: jeder, wer zuerst kommt
   const s = weeklySetters(C, w); return s === null || s.includes(S.me);
 }
-const weeklyEditable = w => { const cw = curWeek(); return cw === w || (cw === w + 1 && now() < slotDeadline(w)); };
 const habitsEditable = () => { const cw = curWeek(); return cw === 0 || (cw <= CONFIG.weeks && (cw - 1) % CONFIG.etappeWeeks === 0); };
 function taskEditable(e) { const cw = curWeek(); if (cw === 0) return e === 1; const end = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks); return (etappeOf(cw) === e && cw <= CONFIG.weeks) || (now() < slotDeadline(end)); }
 
@@ -272,7 +300,7 @@ function makeDemoDB(emit) {
     { uid: 'bot-siggi', name: 'Siggi', start: 104.6, trend: 0.75, disc: 0.75, habits: ['10.000 Schritte', 'Kein Fast Food', 'Kein Zucker nach 18 Uhr'], joined: 1 },
     { uid: 'bot-julian', name: 'Julian', start: 91.2, trend: 0.55, disc: 0.6, habits: ['Training (min. 45 Min)', 'Kein Alkohol', '2 L Wasser'], joined: 2 },
   ];
-  const WEEKLY_TXT = ['Jeden Tag Treppe statt Aufzug', '3× Training diese Woche', 'Kein Lieferdienst', 'Jeden Abend 20 Min spazieren', 'Gemüse zu jeder Mahlzeit'];
+  const WEEKLY_TXT = [{ text: 'Treppe statt Aufzug', kind: 'daily' }, { text: '2× Sport (min. 45 Min)', kind: 'count', target: 2 }, { text: 'Kein Lieferdienst', kind: 'daily' }, { text: '1× 5 km laufen', kind: 'count', target: 1 }, { text: '20 Min spazieren', kind: 'daily' }];
   function seed() {
     const S = { players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {} };
     const t = now(), today = dayIdx(t), lc = lastClosedSlot(), os = openSlot();
@@ -288,22 +316,22 @@ function makeDemoDB(emit) {
       }
       for (let d = 0; d < today && d < CONFIG.weeks * 7; d++) {
         const rr = rng(b.uid + d);
-        S.habitlogs[b.uid + '_' + d] = { uid: b.uid, day: d, done: [rr() < b.disc, rr() < b.disc - .1, rr() < b.disc + .1] };
+        S.habitlogs[b.uid + '_' + d] = { uid: b.uid, day: d, done: [rr() < b.disc, rr() < b.disc - .1, rr() < b.disc + .1, rr() < b.disc - .2] };
       }
     }
     for (let w = 1; w <= Math.min(curWeek(), CONFIG.weeks); w++) {
       if (mine.weekly[w]) continue;
       if (w === curWeek() && w > 1 && dayIdx() === 7 * (w - 1)) continue; // Montag: der Wochenletzte ist dran
-      S.weekly[w] = { text: WEEKLY_TXT[(w - 1) % WEEKLY_TXT.length], setBy: w % 2 ? 'bot-julian' : 'bot-siggi', setByName: w % 2 ? 'Julian' : 'Siggi' };
-      for (const b of BOTS) if ((w < curWeek() || b.uid === 'bot-siggi') && rng(b.uid + 'w' + w)() < 0.7) S.weeklyDone[b.uid + '_' + w] = { uid: b.uid, week: w };
+      S.weekly[w] = { ...WEEKLY_TXT[(w - 1) % WEEKLY_TXT.length], setBy: w % 2 ? 'bot-julian' : 'bot-siggi', setByName: w % 2 ? 'Julian' : 'Siggi' };
     }
     const ce = curWeek() >= 1 ? etappeOf(Math.min(curWeek(), CONFIG.weeks)) : 0;
     for (let e = 1; e <= ce; e++) {
-      S.tasks['bt' + e + 'a'] = { etappe: e, text: '2× 5 km laufen', createdBy: 'bot-siggi', createdByName: 'Siggi', ts: 1 };
-      S.taskDone['bt' + e + 'a_bot-siggi'] = { uid: 'bot-siggi', taskId: 'bt' + e + 'a', confirmedBy: 'bot-julian', confirmedByName: 'Julian' };
+      const ta = 'e' + e + '_bot-siggi', tb = 'e' + e + '_bot-julian';
+      S.tasks[ta] = { etappe: e, text: '2× 5 km laufen', createdBy: 'bot-siggi', createdByName: 'Siggi', ts: 1 };
+      S.taskDone[ta + '_bot-siggi'] = { uid: 'bot-siggi', taskId: ta, confirmedBy: 'bot-julian', confirmedByName: 'Julian' };
       if (e < ce || dayIdx() % 28 > 10) {
-        S.tasks['bt' + e + 'b'] = { etappe: e, text: '1 Stunde schwimmen', createdBy: 'bot-julian', createdByName: 'Julian', ts: 2 };
-        S.taskDone['bt' + e + 'b_bot-julian'] = { uid: 'bot-julian', taskId: 'bt' + e + 'b', confirmedBy: null };
+        S.tasks[tb] = { etappe: e, text: '1 Stunde schwimmen', createdBy: 'bot-julian', createdByName: 'Julian', ts: 2 };
+        S.taskDone[tb + '_bot-julian'] = { uid: 'bot-julian', taskId: tb, confirmedBy: null };
       }
     }
     return S;
@@ -327,9 +355,8 @@ function makeDemoDB(emit) {
     async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
     async saveWeigh(slot, kg, lossPct) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct }; mine.myWeights[slot] = kg; commit(); },
     async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done }; commit(); },
-    async setWeekly(w, text) { mine.weekly[w] = { text, setBy: ME, setByName: mine.player.name }; commit(); },
-    async setWeeklyDone(w, on) { if (on) mine.weeklyDone[ME + '_' + w] = { uid: ME, week: w }; else delete mine.weeklyDone[ME + '_' + w]; commit(); },
-    async addTask(e, text) { const id = 'm' + Date.now(); mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: Date.now() }; commit(); },
+    async setWeekly(w, text, kind, target) { mine.weekly[w] = { text, kind, target, setBy: ME, setByName: mine.player.name }; commit(); },
+    async addTask(e, text) { const id = 'e' + e + '_' + ME; mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: Date.now() }; commit(); },
     async deleteTask(id) { delete mine.tasks[id]; for (const k of Object.keys(mine.taskDone)) if (k.startsWith(id + '_')) delete mine.taskDone[k]; commit(); },
     async markTask(id, on) {
       const k = id + '_' + ME;
@@ -360,10 +387,10 @@ async function makeFirebaseDB(cfg, emit) {
   function subscribeAll() {
     if (allSubbed) return; allSubbed = true;
     // erst rendern/automatisch handeln, wenn ALLE Daten einmal geladen sind
-    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'private']);
+    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone', 'private']);
     const got = n => { if (need.delete(n) && need.size === 0) S.synced = true; };
     const col = (name) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data()); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; got(name); fire(); }, fail));
-    ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone'].forEach(col);
+    ['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone'].forEach(col);
     unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => { S.myWeights = s.exists() ? (s.data().slots || {}) : {}; got('private'); fire(); }, fail));
   }
   Au.onAuthStateChanged(auth, user => {
@@ -392,9 +419,8 @@ async function makeFirebaseDB(cfg, emit) {
       return wrap(b.commit());
     },
     setHabit: (day, done) => wrap(F.setDoc(F.doc(db, 'habitlogs', me() + '_' + day), { uid: me(), day, done })),
-    setWeekly: (w, text) => wrap(F.setDoc(F.doc(db, 'weekly', String(w)), { text, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
-    setWeeklyDone: (w, on) => wrap(on ? F.setDoc(F.doc(db, 'weeklyDone', me() + '_' + w), { uid: me(), week: w }) : F.deleteDoc(F.doc(db, 'weeklyDone', me() + '_' + w))),
-    addTask: (e, text) => wrap(F.addDoc(F.collection(db, 'tasks'), { etappe: e, text, createdBy: me(), createdByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
+    setWeekly: (w, text, kind, target) => F.setDoc(F.doc(db, 'weekly', String(w)), { text, kind, target, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).catch(e => { toast(e.code === 'permission-denied' ? 'Zu spät, jemand anderes war schneller.' : 'Fehler: ' + e.message); throw e; }),
+    addTask: (e, text) => wrap(F.setDoc(F.doc(db, 'tasks', 'e' + e + '_' + me()), { etappe: e, text, createdBy: me(), createdByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
     deleteTask: id => wrap(F.deleteDoc(F.doc(db, 'tasks', id))),
     markTask: (id, on) => wrap(on ? F.setDoc(F.doc(db, 'taskDone', id + '_' + me()), { uid: me(), taskId: id, confirmedBy: null, confirmedByName: null }) : F.deleteDoc(F.doc(db, 'taskDone', id + '_' + me()))),
     confirmTask: tdId => wrap(F.updateDoc(F.doc(db, 'taskDone', tdId), { confirmedBy: me(), confirmedByName: S.players[me()]?.name || '' })),
@@ -405,7 +431,7 @@ async function makeFirebaseDB(cfg, emit) {
    UI
    ===================================================================== */
 let S = emptyState(), C = {}, DB = null;
-const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, chartTable: false, modal: null };
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, modal: null };
 let pendingRender = false, bumping = false;
 
 function onState(ns) {
@@ -420,7 +446,7 @@ function onState(ns) {
 }
 function render() {
   const a = document.activeElement;
-  if (a && a.matches && a.matches('#app input') && a.value) { pendingRender = true; return; }
+  if (a && a.matches && a.matches('#app input, #app select') && a.value) { pendingRender = true; return; }
   pendingRender = false;
   const app = document.getElementById('app');
   app.innerHTML = header() + banner() + body();
@@ -530,80 +556,114 @@ function habitsCard(me, p) {
   const today = dayIdx(); const cw = curWeek();
   const habits = p.habits || [];
   if (cw === 0) return `<div class="card"><h2>✅ Deine Gewohnheiten</h2>${habits.map(x => `<div class="pill" style="margin:4px 4px 0 0">${esc(x)}</div>`).join('')}<p class="muted small">Abhaken geht ab ${fmtD(START)}. Ändern kannst du sie über dein Profil (oben rechts).</p></div>`;
-  const w = Math.min(cw, CONFIG.weeks); const d0 = 7 * (w - 1);
+  const cur = Math.min(cw, CONFIG.weeks);
+  const minW = Math.min(cur, Math.max(1, (p.joinedSlot || 0) + 1));
+  const w = clamp(UI.habitWeek ?? cur, minW, cur);
+  const d0 = 7 * (w - 1);
   const minDay = 7 * (p.joinedSlot || 0);
   const wk = me.weeks[w];
+  const ch = S.weekly[w];
+  const canEdit = d => d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
+  const prevEditable = w === cur && w > minW && [1, 2, 3].some(i => canEdit(d0 - i));
+  const rows = habits.map((hn, hi) => [hn, hi, false]);
+  if (ch) rows.push(['🎯 ' + ch.text, 3, true]);
   let g = `<div class="hgrid"><div></div>${[0, 1, 2, 3, 4, 5, 6].map(i => `<div class="dh ${d0 + i === today ? 'today' : ''}">${WD[(i + 1) % 7]}<br>${dayDate(d0 + i).getDate()}.</div>`).join('')}`;
-  habits.forEach((hn, hi) => {
-    g += `<div class="hname" title="${esc(hn)}">${esc(hn)}</div>`;
+  for (const [hn, hi, isCh] of rows) {
+    g += `<div class="hname ${isCh ? 'ch' : ''}" title="${esc(hn)}">${esc(hn)}</div>`;
     for (let i = 0; i < 7; i++) {
       const d = d0 + i; const on = !!me.hl[d]?.[hi];
-      const edit = d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
+      const edit = canEdit(d);
       const cls = d > today || d < minDay ? 'off' : edit ? 'edit' : 'lock';
-      g += `<button class="hc ${on ? 'on' : ''} ${cls}" ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-label="${esc(hn)} ${fmtD(dayDate(d))}">${on ? '✓' : ''}</button>`;
+      g += `<button class="hc ${on ? 'on' : ''} ${isCh ? 'chc' : ''} ${cls}" ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-label="${esc(hn)} ${fmtD(dayDate(d))}">${on ? '✓' : ''}</button>`;
     }
-  });
+  }
   g += '</div>';
-  return `<div class="card"><div class="row"><h2 class="grow">✅ Gewohnheiten</h2><span class="pill acc">${wk ? wk.habits : 0}/21 diese Woche</span></div>
-    <p class="muted small" style="margin:2px 0 12px">Antippen zum Abhaken, bis zu ${CONFIG.backfillDays} Tage nachtragen.</p>${g}</div>`;
+  const nav = `<div class="nav" style="margin:10px 0 10px"><button class="btn ghost sm" data-act="hw" data-d="-1" ${w <= minW ? 'disabled' : ''}>‹</button><b class="small">${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${fmtD(dayDate(d0))}–${fmtD(dayDate(d0 + 6))}</b><button class="btn ghost sm" data-act="hw" data-d="1" ${w >= cur ? 'disabled' : ''}>›</button></div>`;
+  return `<div class="card"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 class="grow">✅ Gewohnheiten</h2><span class="pill acc">${wk ? wk.habits : 0}/21</span>${ch ? `<span class="pill warn">🎯 ${wk ? wk.weekly : 0}/${CONFIG.challengePts}</span>` : ''}</div>
+    ${nav}
+    ${prevEditable ? `<button class="btn ghost sm" data-act="hw" data-d="-1" style="width:100%;margin-bottom:10px">‹ Vorwoche kannst du noch nachtragen</button>` : ''}
+    ${g}<p class="muted small" style="margin:10px 0 0">Antippen zum Abhaken, bis zu ${CONFIG.backfillDays} Tage nachtragen.${ch ? ' Die 🎯-Zeile ist die Wochen-Challenge.' : ''}</p></div>`;
 }
 function weeklyCard(me) {
   const cw = curWeek(); const w = cw === 0 ? 1 : Math.min(cw, CONFIG.weeks);
   const ch = S.weekly[w];
   let inner;
   if (ch) {
-    const done = !!S.weeklyDone[S.me + '_' + w]; const ed = weeklyEditable(w) && me.js < w;
-    const doneBy = Object.values(C).filter(p => S.weeklyDone[p.uid + '_' + w]).map(p => p.name);
-    inner = `<p style="font-size:18px;font-weight:800;margin:6px 0">${esc(ch.text)}</p><p class="muted small" style="margin:0 0 10px">festgelegt von ${esc(ch.setByName)} · +${CONFIG.weeklyPts} Punkte</p>
-      ${ed ? `<button class="btn ${done ? 'ghost' : ''}" data-act="weeklyDone" data-w="${w}" data-on="${done ? 0 : 1}">${done ? '✓ Geschafft (rückgängig)' : 'Geschafft!'}</button>` : cw === 0 ? '<p class="muted small">Startet am Montag.</p>' : ''}
-      ${doneBy.length ? `<p class="small t2" style="margin:10px 0 0">Geschafft: ${doneBy.map(esc).join(', ')}</p>` : ''}`;
+    const per = ch.kind === 'daily' ? '1 Punkt pro Tag' : `${Math.round(CONFIG.challengePts / chTarget(ch))} Punkte pro Mal`;
+    const stand = Object.values(C).filter(p => p.active && p.js < w).map(p => `${esc(p.name)} ${p.weeks[w]?.weekly || 0}/${CONFIG.challengePts}`);
+    inner = `<p style="font-size:18px;font-weight:800;margin:6px 0">${esc(ch.text)}</p>
+      <p class="small" style="margin:0 0 8px"><span class="pill warn">${chLabel(ch)}</span> <span class="muted">${per}, max. ${CONFIG.challengePts} · von ${esc(ch.setByName)}</span></p>
+      <p class="t2 small" style="margin:0">${cw === 0 ? 'Startet am Montag.' : 'Abhaken in der 🎯-Zeile bei den Gewohnheiten.'}</p>
+      ${stand.length && cw > 0 ? `<p class="small t2" style="margin:8px 0 0">Stand: ${stand.join(' · ')}</p>` : ''}`;
   } else if (canSetWeekly(S, C, w)) {
-    const setters = weeklySetters(C, w);
-    const why = w === 1 ? 'Die erste Challenge darf jeder festlegen.' : setters && setters.includes(S.me) && dayIdx() === 7 * (w - 1) ? 'Du warst letzte Woche Letzter. Du bestimmst die Challenge.' : 'Der Letzte hat nichts festgelegt, also darf jetzt jeder.';
-    inner = `<p class="t2 small">${why}</p><div class="row"><input class="inp grow" id="wText" maxlength="80" placeholder="z. B. Jeden Tag Treppe statt Aufzug"><button class="btn" data-act="setWeekly" data-w="${w}">Festlegen</button></div>`;
+    const excl = w > 1 ? exclusiveUntil(w) : null;
+    const why = w === 1 ? 'Die erste Challenge darf jeder festlegen. Wer zuerst kommt, entscheidet.'
+      : now() < excl ? `Du warst letzte Woche Letzter und darfst bis <b>${fmtDT(excl)}</b> (noch ${countdown(excl)}) die Challenge bestimmen. Danach darf jeder.`
+      : 'Der Letzte hat nichts festgelegt. Jetzt darf jeder, wer zuerst kommt, entscheidet.';
+    inner = `<p class="t2 small">${why}</p>
+      <input class="inp" id="wText" maxlength="60" placeholder="z. B. Treppe statt Aufzug">
+      <div class="row" style="margin-top:8px"><select class="inp grow" id="wKind">
+        <option value="daily">Täglich (1 P./Tag, max. ${CONFIG.challengePts})</option>
+        <option value="1">1× diese Woche (${CONFIG.challengePts} P.)</option>
+        <option value="2">2× diese Woche (je ${Math.round(CONFIG.challengePts / 2)} P.)</option>
+      </select><button class="btn" data-act="setWeekly" data-w="${w}">Festlegen</button></div>`;
+  } else if (w > 1 && now() < slotDeadline(w - 1)) {
+    inner = `<p class="t2 small">Nach dem Wiegen (${CONFIG.deadlineHour} Uhr) hat der Wochenletzte ${CONFIG.chooseHours} Std. Zeit, die Challenge zu wählen. Danach darf jeder.</p>`;
   } else {
-    const s = weeklySetters(C, w);
-    const names = s && s.length ? s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') : null;
-    inner = `<p class="t2 small">${names ? `<b>${names}</b> war letzte Woche Letzter und legt die Challenge fest.` : `Nach dem Wiegen (${CONFIG.deadlineHour} Uhr) legt der Wochenletzte die Challenge fest.`} Ab Dienstag darf jeder.</p>`;
+    const s = weeklySetters(C, w) || [];
+    const names = s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') || 'Der Wochenletzte';
+    inner = `<p class="t2 small"><b>${names}</b> war letzte Woche Letzter und darf bis ${fmtDT(exclusiveUntil(w))} die Challenge wählen. Danach darf jeder, wer zuerst kommt.</p>`;
   }
   return `<div class="card"><h2>🎯 Wochen-Challenge</h2>${inner}</div>`;
 }
-
 /* ---------- RANKING ---------- */
 function viewRanking() {
   const cw = curWeek(); const cwc = clamp(cw, 1, CONFIG.weeks);
   if (UI.rankWeek === null) UI.rankWeek = cwc;
   if (UI.rankEtappe === null) UI.rankEtappe = etappeOf(cwc);
-  let list, title, note = '';
+  const seg = `<div class="seg">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt'], ['kasse', '💸 Kasse']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}">${l}</button>`).join('')}</div>`;
+  const etNav = e => `<div class="nav"><button class="btn ghost sm" data-act="re" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}</b><button class="btn ghost sm" data-act="re" data-d="1" ${e >= etappeOf(cwc) ? 'disabled' : ''}>›</button></div>`;
+  if (UI.rankMode === 'kasse') return seg + viewKasse(etNav);
+  let list, title, note = '', losers = [];
   if (UI.rankMode === 'woche') {
     const w = UI.rankWeek; list = rankWeek(C, w);
     title = `<div class="nav"><button class="btn ghost sm" data-act="rw" data-d="-1" ${w <= 1 ? 'disabled' : ''}>‹</button><b>Woche ${w} · ${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}</b><button class="btn ghost sm" data-act="rw" data-d="1" ${w >= cwc ? 'disabled' : ''}>›</button></div>`;
-    if (lastClosedSlot() < w) note = `<p class="muted small">Läuft noch. Die Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu.</p>`;
+    if (lastClosedSlot() < w) note = `<p class="muted small">Läuft noch. Die Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu, dann steht auch der Letzte fest (${eur(CONFIG.loserFee)} in den Topf).</p>`;
+    else losers = weekLosers(C, w);
   } else if (UI.rankMode === 'etappe') {
-    const e = UI.rankEtappe; list = rankEtappe(C, e);
-    const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
-    title = `<div class="nav"><button class="btn ghost sm" data-act="re" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · Woche ${ws}–${we}</b><button class="btn ghost sm" data-act="re" data-d="1" ${e >= etappeOf(cwc) ? 'disabled' : ''}>›</button></div>`;
+    list = rankEtappe(C, UI.rankEtappe); title = etNav(UI.rankEtappe);
   } else {
     list = rankTotal(C);
     const po = pot(C);
-    title = `<div class="nav"><b>Gesamtwertung</b><span class="pill acc">Topf ${eur(po.total)}</span></div><p class="muted small" style="margin:0">${po.players} × ${eur(CONFIG.einsatz)} Einsatz + ${po.missed} × ${eur(CONFIG.strafe)} Strafen. Der Gesamtsieger nach Woche ${CONFIG.weeks} kassiert.</p>`;
+    title = `<div class="nav"><b>Gesamtwertung</b><span class="pill acc">Topf ${eur(po.total)}</span></div><p class="muted small" style="margin:0">Der Gesamtsieger nach Woche ${CONFIG.weeks} kassiert den Topf. Wer was zahlt, steht unter 💸 Kasse.</p>`;
   }
-  const lastW = UI.rankMode === 'woche' && lastClosedSlot() >= UI.rankWeek && list.length > 1 ? Math.min(...list.map(x => x.total)) : null;
   const rows = list.length ? list.map((r, i) => {
     const pos = i > 0 && list[i - 1].total === r.total ? '' : i + 1;
     const chips = [`⚖️ ${r.weigh}`, `✅ ${r.habits}`, `🎯 ${r.weekly}`];
     if (UI.rankMode !== 'woche') chips.push(`⚡ ${r.tasks}`);
-    if (UI.rankMode === 'gesamt' && r.missed) chips.push(`💸 ${r.missed}×`);
+    if (UI.rankMode === 'gesamt') { const f = fees(C[r.uid], null).strafen; if (f) chips.push(`💸 ${eur(f)}`); }
     return `<div class="rk ${i === 0 ? 'first' : ''}"><div class="pos">${i === 0 ? '👑' : pos}</div>
-      <div><div class="nm"><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${lastW !== null && r.total === lastW ? ' <span class="pill warn">🎯 bestimmt Challenge</span>' : ''}</div>
+      <div><div class="nm"><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="pill warn">👎 Letzter · ${eur(CONFIG.loserFee)} · wählt Challenge</span>` : ''}</div>
       <div class="br">${chips.map(c => `<span class="pill">${c}</span>`).join('')}</div></div>
       <div class="pts">${r.total}<small>${lossStr(r.latest)}</small></div></div>`;
   }).join('') : `<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>`;
-  return `<div class="seg">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}">${l}</button>`).join('')}</div>
-    <div class="card">${title}${note}<div style="margin-top:6px">${rows}</div></div>
-    <p class="muted small center">⚖️ Waage · ✅ Gewohnheiten · 🎯 Wochen-Challenge · ⚡ Extra-Aufgaben · 💸 verpasstes Wiegen<br>Die Zahl unter den Punkten ist die Abnahme seit Start.</p>`;
+  return `${seg}<div class="card">${title}${note}<div style="margin-top:6px">${rows}</div></div>
+    <p class="muted small center">⚖️ Waage · ✅ Gewohnheiten · 🎯 Wochen-Challenge · ⚡ Extra-Aufgaben · 💸 Strafen<br>Die Zahl unter den Punkten ist die Abnahme seit Start.</p>`;
 }
-
+function viewKasse(etNav) {
+  const e = UI.rankEtappe;
+  const ps = Object.values(C).filter(p => p.active).map(p => ({ p, f: fees(p, e), g: fees(p, null) })).sort((a, b) => b.f.total - a.f.total || a.p.name.localeCompare(b.p.name));
+  const po = pot(C);
+  const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
+  let sumE = 0, sumG = 0;
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row" style="gap:6px"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  return `<div class="card">${etNav(e)}
+    ${ps.length ? `<div style="overflow-x:auto"><table class="t k"><tr><th>Name</th><th>Einsatz</th><th>⚖️ verpasst</th><th>👎 Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
+    <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
+    <p class="muted small" style="margin:10px 0 0">Einsatz ${eur(CONFIG.einsatz)} (einmalig, in der Etappe deines Einstiegs) · verpasstes Wiegen ${eur(CONFIG.strafe)} · Wochenletzter ${eur(CONFIG.loserFee)}. Am besten am Ende jeder Etappe einsammeln.</p></div>
+    <div class="card center"><div class="muted small">Topf gesamt</div><div class="big" style="margin-top:6px">${eur(po.total)}</div>
+    <p class="muted small" style="margin:8px 0 0">${po.players} × ${eur(CONFIG.einsatz)} Einsatz · ${po.missed}× verpasst · ${po.losers}× Letzter</p></div>`;
+}
 /* ---------- CHALLENGES ---------- */
 function viewChallenges() {
   const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
@@ -613,7 +673,7 @@ function viewChallenges() {
   const ed = taskEditable(e) && S.member;
   const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
   let h = `<div class="nav"><button class="btn ghost sm" data-act="ev" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}</b><button class="btn ghost sm" data-act="ev" data-d="1" ${e >= ce ? 'disabled' : ''}>›</button></div>`;
-  h += `<div class="card"><h2>⚡ Extra-Aufgaben</h2><p class="muted small" style="margin:0 0 6px">Raus aus der Komfortzone: je +${CONFIG.taskPts} Punkte. Zählt erst, wenn jemand anderes bestätigt (Beweis in die Gruppe).</p>`;
+  h += `<div class="card"><h2>⚡ Extra-Aufgaben</h2><p class="muted small" style="margin:0 0 6px">Raus aus der Komfortzone: Jeder stellt <b>1 Aufgabe pro Etappe</b>, alle dürfen jede machen. Je +${CONFIG.taskPts} Punkte, zählt erst, wenn jemand anderes bestätigt (Beweis in die Gruppe).</p>`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
   for (const [id, t] of tasks) {
     const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
@@ -630,14 +690,16 @@ function viewChallenges() {
     h += `<div class="task"><div class="row"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="muted small">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="btn ghost sm" data-act="delTask" data-id="${id}">✕</button>` : ''}</div>
       <div class="who">${my} ${others}</div></div>`;
   }
-  if (ed && tasks.length < CONFIG.tasksPerEtappe) h += `<h3>Neue Aufgabe (${tasks.length}/${CONFIG.tasksPerEtappe})</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen"><button class="btn" data-act="addTask" data-e="${e}">+</button></div>`;
+  const nAct = Object.values(C).filter(p => p.active || p.uid === S.me).length;
+  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e} (${tasks.length}/${nAct} gestellt)</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen"><button class="btn" data-act="addTask" data-e="${e}">+</button></div>`;
+  else if (tasks.length) h += `<p class="muted small" style="margin:10px 0 0">${tasks.length}/${nAct} Aufgaben gestellt.</p>`;
   h += `</div>`;
   // Wochen-Challenges der Etappe
   let wl = '';
   for (let w = ws; w <= we; w++) {
     const ch = S.weekly[w]; if (!ch) continue;
-    const who = Object.values(C).filter(p => S.weeklyDone[p.uid + '_' + w]).map(p => esc(p.name)).join(', ');
-    wl += `<div class="task"><div class="row"><span class="pill">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="muted small">von ${esc(ch.setByName)}${who ? ' · geschafft: ' + who : ''}</div></div></div></div>`;
+    const who = Object.values(C).filter(p => p.weeks[w]?.weekly).map(p => `${esc(p.name)} ${p.weeks[w].weekly}/${CONFIG.challengePts}`).join(' · ');
+    wl += `<div class="task"><div class="row"><span class="pill">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)} <span class="pill warn">${chLabel(ch)}</span></div><div class="muted small">von ${esc(ch.setByName)}${who ? ' · ' + who : ''}</div></div></div></div>`;
   }
   h += `<div class="card"><h2>🎯 Wochen-Challenges</h2>${wl || '<p class="t2">Noch keine.</p>'}</div>`;
   return h;
@@ -717,27 +779,29 @@ function wireChart() {
 /* ---------- REGELN ---------- */
 function viewRegeln(compact) {
   const end = dayDate(CONFIG.weeks * 7 - 1);
+  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
   return `<div class="card rules"><h2>📜 Regeln</h2>
   <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
-  <h3>⚖️ Wiegen (max. ${CONFIG.weighCap} P./Woche)</h3><ul>
+  <h3>⚖️ Wiegen (max. ${wMax} P./Woche)</h3><ul>
    <li>Jeden <b>Montag 0–${CONFIG.deadlineHour} Uhr</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe.</li>
-   <li><b>1 Punkt pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${CONFIG.weighCap} Punkte (= 1 %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
+   <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
    <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
    <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
   <h3>✅ Gewohnheiten (max. 21 P./Woche)</h3><ul>
-   <li>Jeder wählt <b>3 eigene</b>. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen.</li>
+   <li>Jeder wählt <b>3 eigene</b>. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
    <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
-  <h3>🎯 Wochen-Challenge (+${CONFIG.weeklyPts} P.)</h3><ul>
-   <li>Der <b>Letzte der Vorwoche</b> legt sie Montag nach dem Wiegen fest. Ab Dienstag darf jeder.</li></ul>
+  <h3>🎯 Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
+   <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
+   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, ein Tag Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken wie eine Gewohnheit.</li></ul>
   <h3>⚡ Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
-   <li>Bis zu ${CONFIG.tasksPerEtappe} Komfortzonen-Aufgaben pro Etappe (z. B. 2× 5 km laufen, 1 h schwimmen). Jeder darf welche vorschlagen.</li>
+   <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
    <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
   <h3>💸 Topf</h3><ul>
-   <li>${eur(CONFIG.einsatz)} Einsatz pro Person + Strafen. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
-   <li>Etappensieger: Ruhm und Ehre. Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
+   <li>${eur(CONFIG.einsatz)} Einsatz (einmalig) + ${eur(CONFIG.strafe)} pro verpasstem Wiegen + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
+   <li>Wer was zahlt, steht unter Ranking → 💸 Kasse, aufgeteilt nach Etappe. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
+   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
   ${compact ? '' : `<p class="muted small">Wer eine Woche nichts meldet, zahlt trotzdem. Kein „hab's vergessen“.</p>`}</div>`;
 }
-
 /* ---------- PROFIL-MODAL ---------- */
 function renderModal() {
   const m = document.getElementById('modal');
@@ -784,11 +848,19 @@ document.addEventListener('click', async ev => {
         toast(slot === js ? 'Startgewicht gespeichert. Los geht\'s!' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
       case 'habit': {
-        const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || [false, false, false]).slice(0, 3);
-        while (cur.length < 3) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur); break;
+        const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
+        while (cur.length < 4) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur); break;
       }
-      case 'setWeekly': { const t = val('wText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.setWeekly(+el.dataset.w, t); break; }
-      case 'weeklyDone': await DB.setWeeklyDone(+el.dataset.w, el.dataset.on === '1'); break;
+      case 'hw': {
+        const cur = Math.min(curWeek(), CONFIG.weeks); const minW = Math.min(cur, Math.max(1, (S.players[S.me]?.joinedSlot || 0) + 1));
+        UI.habitWeek = clamp((UI.habitWeek ?? cur) + +el.dataset.d, minW, cur); if (UI.habitWeek === cur) UI.habitWeek = null; render(); break;
+      }
+      case 'setWeekly': {
+        const t = val('wText'); if (!t) return toast('Text fehlt.');
+        const k = document.getElementById('wKind')?.value || 'daily';
+        document.activeElement?.blur();
+        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge steht 🎯'); break;
+      }
       case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
@@ -805,13 +877,13 @@ document.addEventListener('click', async ev => {
         const d = { name }; if (habitsEditable()) { const hs = [val('pH0'), val('pH1'), val('pH2')]; if (hs.some(h => !h)) return toast('3 Gewohnheiten nötig.'); d.habits = hs; }
         document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; renderModal(); toast('Gespeichert'); break;
       }
-      case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = null; break;
+      case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; break;
       case 'demoMon': { const d = dayIdx(); const k = Math.max(0, Math.floor(d / 7) + 1); const t = slotStart(Math.min(k, CONFIG.weeks)); t.setHours(9); setNow(t); break; }
     }
   } catch (e) { /* Fehler wurde schon angezeigt */ }
 });
 document.addEventListener('change', ev => { if (ev.target.id === 'demoTime' && ev.target.value) setNow(new Date(ev.target.value)); });
-function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = null; DB.refresh(); }
+function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh(); }
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.matches('#app input') && ev.target.parentElement.classList.contains('row')) { const b = ev.target.parentElement.querySelector('.btn') || null; if (b) b.click(); } });
 
 /* ---------- START ---------- */
