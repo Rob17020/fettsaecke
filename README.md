@@ -1,6 +1,6 @@
 # Club der Fettsäcke
 
-Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), täglich 3 Gewohnheiten abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, Kasse.
+Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), 3 Gewohnheiten mit eigenem Wochenziel abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit/Urlaub, Kasse.
 
 - App: `index.html` + `style.css` + `app.js` (kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
 - Daten: Firebase (Spark-Plan, kostenlos): Google-Login + Firestore
@@ -30,7 +30,7 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
    Den öffentlichen Schlüssel in `app.js` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
 
 2. **Regeln veröffentlichen**
-   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen (neu: Team-Monat mit `teamideas`/`teamlogs`, Wiegefenster Mo 3–14 Uhr).
+   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen. Neu in dieser Version: Gewohnheiten mit Wochenziel (`habits: [{name, target}]`, `habitSets`), festes Ziel `maxLossPct`, Pause (`pausedWeeks`), Ausstieg (`status`, `finishedWeek`, `finishedAt`), Einführung (`onboardingDone`). Ohne die neuen Regeln schlagen Beitreten, Pause und Ausstieg fehl.
 
 3. **Service-Account als GitHub-Secret**
    Firebase-Konsole → Projekteinstellungen → Dienstkonten → *Neuen privaten Schlüssel generieren* (lädt eine JSON-Datei herunter).
@@ -51,7 +51,9 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 | Wann (Berlin) | Nachricht | An wen |
 |---|---|---|
 | Montag 8:00 | „Wiegen bis 14 Uhr“ (bzw. „Startgewicht bis 14 Uhr“) | nur wer für diese Woche noch nicht gewogen hat |
-| täglich 21:00 | „Gewohnheiten noch offen“ mit den fehlenden Gewohnheiten | nur wer heute noch nicht alle 3 abgehakt hat |
+| täglich 21:00 | „Gewohnheiten noch offen“ mit Stand der Woche, z. B. „Kochen 2/4“ | nur wer ein Wochenziel noch nicht erreicht und diese Gewohnheit heute noch nicht abgehakt hat |
+
+Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg; in der Haltephase nur noch das Wiegen.
 
 GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- und Winterzeit). Das Skript prüft die Uhrzeit in Berlin und merkt sich in `reminderRuns/{art}_{datum}`, dass schon verschickt wurde. Geräte, die sich abgemeldet haben, werden automatisch aus `players/{uid}/private/tokens` entfernt.
 
@@ -107,9 +109,12 @@ Dann `http://localhost:8000/index.html?demo` öffnen. Nützliche Zusätze:
 - `&now=2027-01-18T09:00`: Zeit setzen (z. B. Montag im Wiegefenster), `&now=2027-05-10T14:00` zeigt den Saisonrückblick
 - `#ich`, `#ranking`, `#verlauf`: direkt einen Tab öffnen
 
+Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1–4 Spalten je nach Fensterbreite, auf dem Desktop scrollt jede Spalte für sich. Zum Prüfen das Fenster von schmal (320 px) bis sehr breit ziehen, auch mit wenig Höhe.
+
 ## Vor dem Saisonstart
 
 - `CONFIG.testMode` in `app.js` auf `false`
 - `TESTMODE()` in `firestore.rules` auf `false`, Regeln veröffentlichen
-- Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`)
-- `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen
+- Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`). Wer schon als Tester angemeldet war, meldet sich danach neu an (dann mit Ziel in % und Wochenzielen).
+- `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen, ebenso die festen Zahlen in den Regeln (24 Wochen, 4 Wochen pro Etappe, 2 Pausenwochen, Ziel-Band 1 Prozentpunkt) und `SEASON` im Erinnerungs-Skript (Strafen, `holdBand`)
+- GitHub-Secret `BACKUP_PASSPHRASE` anlegen und das Backup einmal per Hand starten (siehe oben)

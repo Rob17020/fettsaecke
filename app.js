@@ -1630,40 +1630,50 @@ function runCountUps(root) {
 /* ---------- REGELN ---------- */
 function viewRegeln() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
-  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
+  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, hb = CONFIG.holdBand;
+  const sec = (h, items) => `<div class="rs"><h3>${h}</h3><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
   return `<section class="card rules"><div class="hd"><h2>Regeln</h2>${S.member ? '<button class="link" data-act="obOpen">Einführung nochmal ansehen</button>' : ''}</div><div class="rcols">
-  <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p></div>
-  <div class="rs"><h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
-   <li>Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
-   <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
-   <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
-   <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul></div>
-  <div class="rs"><h3>Gewohnheiten (max. ${habitMax()} P./Woche)</h3><ul>
-   <li>Jeder wählt <b>3 eigene</b>, die Überwindung kosten. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
-   <li>Jeder Tag ohne alle 3 kostet <b>${eur(CONFIG.habitFee)}</b>, sobald er nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.</li>
-   <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul></div>
-  <div class="rs"><h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
-   <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
-   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, also ${7 - CONFIG.challengePts} Tage Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul></div>
-  <div class="rs"><h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
-   <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
-   <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul></div>
-  <div class="rs"><h3>Team-Monat (+${CONFIG.teamPts} P. pro Etappe)</h3><ul>
-   <li>Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.</li>
-   <li>Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (wer später einsteigt, zählt nur ab seinem Start).</li>
-   <li>Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b></li></ul></div>
-  <div class="rs"><h3>Streak und Joker (keine Punkte)</h3><ul>
-   <li>Streak = Tage am Stück mit allen 3 Gewohnheiten. Die Challenge zählt nicht mit.</li>
-   <li>Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch den ersten verpassten Tag, an dem gerade eine Streak läuft.</li></ul></div>
-  <div class="rs"><h3>Meilensteine und eigenes Ziel</h3><ul>
-   <li>−2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 7 und 30 Tage.</li>
-   <li>Dein <b>Zielgewicht</b> gibst du beim Beitreten an, ändern im Tab <b>Ich</b>. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul></div>
-  <div class="rs"><h3>Topf</h3><ul>
-   <li><b>${eur(CONFIG.einsatz)} Einsatz</b> (einmalig) + <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen + <b>${eur(CONFIG.habitFee)}</b> pro Tag ohne alle 3 Gewohnheiten + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
-   <li>Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
-   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul></div>
-  <div class="rs"><h3>Erinnerungen</h3><ul>
-   <li>Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn noch Gewohnheiten offen sind. Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).</li></ul></div></div></section>`;
+  <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist. In einer normalen Woche kommt gut die Hälfte der Punkte von der Waage.</p></div>
+  ${sec(`Wiegen (max. ${wMax} P./Woche)`, [
+    `Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.`,
+    `<b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.`,
+    `Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.`,
+    `Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.`])}
+  ${sec(`Gewohnheiten (max. ${habitMax()} P./Woche)`, [
+    `Jeder wählt <b>3 eigene</b>, jede mit einem <b>Wochenziel von 1× bis 7×</b>. Muss nicht Sport sein: „Kochen statt Lieferdienst“, „Keine Softdrinks“, „Vor 0 Uhr ins Bett“ oder „1× 10 km laufen“.`,
+    `Jede Gewohnheit bringt bis zu <b>${CONFIG.habitMaxPts} Punkte</b> pro Woche, egal wie hoch das Ziel ist: Punkte = ${CONFIG.habitMaxPts} × geschafft ÷ Ziel (gerundet, mehr als das Ziel zählt nicht). Abgehakt wird pro Tag, bis zu ${CONFIG.backfillDays} Tage rückwirkend (auch in die Vorwoche).`,
+    `Eine Woche, in der nicht alle 3 Wochenziele geschafft sind, kostet <b>${eur(CONFIG.habitFee)}</b>, sobald sie nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.`,
+    `Namen und Ziele ändern nur vor dem Start und in der 1. Woche jeder Etappe, die Änderung gilt ab dieser Etappe. <b>Zu leichte Gewohnheiten darf die Gruppe per Veto ablehnen</b>, dann muss eine härtere her.`])}
+  ${sec(`Wochen-Challenge (max. ${CONFIG.challengePts} P.)`, [
+    `Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.`,
+    `Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.`])}
+  ${sec(`Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)`, [
+    `<b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.`,
+    `Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.`])}
+  ${sec(`Team-Monat (+${CONFIG.teamPts} P. pro Etappe)`, [
+    `Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.`,
+    `Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (Spätstarter und Pausen zählen nur ihre Wochen).`,
+    `Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b>`])}
+  ${sec('Dein Ziel, Haltephase und Ausstieg', [
+    `Beim Beitreten legst du fest, <b>wie viel Prozent</b> vom Startgewicht du abnehmen willst (${GOAL_MIN}–${GOAL_MAX} %). Bis zum Startgewicht kannst du es ändern, <b>danach ist es fest</b>. Alle sehen den Prozentwert, die kg-Umrechnung nur du. Bis zum Ziel zählt alles wie oben.`,
+    `<b>Haltephase</b> (Ziel erreicht, du bleibst): ab der Woche danach ist nur noch das Montags-Wiegen Pflicht, Gewohnheiten sind freiwillig. Liegst du höchstens ${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'} neben dem Ziel, gibt es die vollen ${wMax} Waage-Punkte plus ${habitMax()} Bonus, dazu Gewohnheiten und Challenge, zusammen höchstens ${wMax + habitMax() + CONFIG.challengePts} pro Woche. Daneben: 0 Waage-Punkte, kein Bonus.`,
+    `<b>Aussteigen</b> (Ziel erreicht, du gehst): Knopf „Ziel erreicht – aussteigen“. Dein Ergebnis wird eingefroren (z. B. „−15,2 % · Ziel nach 18 Wochen“) und steht in der Gesamtwertung unter „Ziel erreicht“. Du bekommst deinen <b>Einsatz zurück</b>, frühere Strafen bleiben im Topf. Danach keine Punkte, Strafen oder Erinnerungen mehr, nicht mehr im Wochen- und Etappenranking. Geht nicht rückgängig.`])}
+  ${sec(`Pause (bis zu ${CONFIG.pauseWeeks} Wochen pro Saison)`, [
+    `Krank oder im Urlaub? Im Profil eine ganze Woche (Mo–So) pausieren: die laufende bis <b>Mittwoch 23:59</b>, spätere jederzeit. Das Wiegen am Montag danach fällt mit weg.`,
+    `In der Pausenwoche: keine Punkte, kein verpasstes Wiegen, keine Gewohnheiten-Strafe, nicht im Wochenranking und nicht Wochenletzter, keine Erinnerungen. Die Streak bleibt stehen. Das nächste Wiegen vergleicht wie immer mit deinem Tiefstwert.`])}
+  ${sec('Streak und Joker (keine Punkte)', [
+    `Streak = <b>Wochen am Stück mit allen 3 Wochenzielen</b>. Die Challenge zählt nicht mit, Pause und Haltephase unterbrechen nicht.`,
+    `Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch die erste verpasste Woche, in der gerade eine Streak läuft.`])}
+  ${sec('Meilensteine', [
+    `Ziel erreicht · −2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 4 und 12 Wochen.`])}
+  ${sec('Topf', [
+    `<b>${eur(CONFIG.einsatz)} Einsatz</b> (einmalig) + <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen + <b>${eur(CONFIG.habitFee)}</b> pro Woche ohne alle 3 Wochenziele + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).`,
+    `Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.`,
+    `Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.`])}
+  ${sec('Erinnerungen', [
+    `Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn ein Wochenziel noch offen ist und du die Gewohnheit heute noch nicht abgehakt hast. Nicht in Pausenwochen, in der Haltephase (Gewohnheiten) und nach dem Ausstieg.`,
+    `Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).`])}
+  </div></section>`;
 }
 
 /* ---------- PROFIL / OVERLAYS ---------- */

@@ -2,6 +2,8 @@ rules_version = '2';
 // Club der Fettsäcke – Firestore-Sicherheitsregeln
 // 1) EINLADUNGSCODE unten ändern (Zeile mit 'FETTSACK2026')
 // 2) START_MS muss zum Start in app.js (CONFIG.start) passen (Mo 23.11.2026 00:00 Uhr deutscher Zeit)
+// 3) Feste Zahlen hier müssen zu CONFIG in app.js passen: 24 Wochen, 4 Wochen/Etappe (28 Tage), pauseWeeks 2, holdBand 1,
+//    Ziel 1–40 %, Wochenziel 1–7×, Wiegefenster 3–14 Uhr (2–15 Std. nach Mitternacht MEZ wegen Sommerzeit).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -20,6 +22,51 @@ service cloud.firestore {
     function ownNew()   { return request.resource.data.uid == me(); }
     function ownOld()   { return resource.data.uid == me(); }
     function at(ms)     { return timestamp.value(ms); }
+    function notFinished() { return !('status' in player()); }   // mit erreichtem Ziel ausgestiegen = nur noch lesen
+    function changed(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
+
+    // Gewohnheiten: 3 Stück, je { name, target 1–7× pro Woche }
+    function habitOk(h)   { return h is map && h.name is string && h.name.size() >= 1 && h.name.size() <= 40 && h.target is int && h.target >= 1 && h.target <= 7; }
+    function habitsOk(hs) { return hs is list && hs.size() == 3 && habitOk(hs[0]) && habitOk(hs[1]) && habitOk(hs[2]); }
+    // Gewohnheiten ändern: vor dem Start, in der 1. Woche jeder Etappe (Sommerzeit: 1 Std. Toleranz) oder vor dem eigenen Start
+    function weekIdx(ms)  { return math.floor((ms - START_MS()) / WEEK()); }
+    function habitWindow() {
+      return TESTMODE() || request.time < at(START_MS() + HOUR())
+        || weekIdx(request.time.toMillis()) % 4 == 0 || weekIdx(request.time.toMillis() + HOUR()) % 4 == 0
+        || request.time < at(START_MS() + resource.data.joinedSlot * WEEK() + 15 * HOUR());
+    }
+    // Ziel (maxLossPct, % vom Startgewicht): bis zum Startgewicht änderbar, danach fest.
+    // Wer noch keins hat (Testzeit), darf es im Testmodus einmal nachtragen.
+    function goalOk() { return request.resource.data.maxLossPct is number && request.resource.data.maxLossPct >= 1 && request.resource.data.maxLossPct <= 40; }
+    function goalChangeOk(uid) {
+      return goalOk() && (!exists(/databases/$(database)/documents/weighins/$(uid + '_' + string(resource.data.joinedSlot)))
+        || (TESTMODE() && !('maxLossPct' in resource.data)));
+    }
+    // Ausstieg (Ziel erreicht): einmalig status 'finished' + finishedWeek + finishedAt (Serverzeit), nicht rückgängig.
+    // Das Wiegen in finishedWeek muss im Ziel-Band liegen (Ziel − 1 Prozentpunkt).
+    function finishOk(uid) {
+      return !('status' in resource.data) && request.resource.data.status == 'finished'
+        && request.resource.data.finishedWeek is int && request.resource.data.finishedAt == request.time
+        && 'maxLossPct' in resource.data
+        && get(/databases/$(database)/documents/weighins/$(uid + '_' + string(request.resource.data.finishedWeek))).data.lossPct >= resource.data.maxLossPct - 1;
+    }
+    function finishKept() {
+      return request.resource.data.status == resource.data.status && request.resource.data.finishedWeek == resource.data.finishedWeek
+        && request.resource.data.finishedAt == resource.data.finishedAt;
+    }
+    // Pause: höchstens 2 Wochen, pro Schreibvorgang eine dazu oder weg. Dazu: laufende Woche bis Mittwoch 23:59 (Do 0 Uhr,
+    // Sommerzeit-Toleranz 1 Std.) oder später. Weg: nur bevor die Woche beginnt.
+    function pauseOk() {
+      let nw = request.resource.data.pausedWeeks;
+      let ow = resource.data.get('pausedWeeks', []);
+      let add = nw.removeAll(ow);
+      let rem = ow.removeAll(nw);
+      return !('status' in resource.data) && nw is list && nw.size() <= 2 && nw.toSet().size() == nw.size()
+        && add.size() <= 1 && rem.size() <= 1
+        && (add.size() == 0 || (add[0] is int && add[0] > resource.data.joinedSlot && add[0] >= 1 && add[0] <= 24
+          && (TESTMODE() || request.time < at(START_MS() + (add[0] - 1) * WEEK() + 3 * DAY() + HOUR()))))
+        && (rem.size() == 0 || TESTMODE() || request.time < at(START_MS() + (rem[0] - 1) * WEEK()));
+    }
 
     // ---------- Spieler ----------
     match /players/{uid} {
@@ -27,14 +74,24 @@ service cloud.firestore {
       allow create: if signedIn() && uid == me()
         && request.resource.data.invite == INVITE()
         && request.resource.data.name is string && request.resource.data.name.size() <= 20
-        && request.resource.data.habits is list && request.resource.data.habits.size() == 3
-        && request.resource.data.joinedSlot is int;
+        && habitsOk(request.resource.data.habits)
+        && request.resource.data.get('habitSets', {}) is map && request.resource.data.get('habitSets', {}).size() <= 7
+        && goalOk()
+        && request.resource.data.joinedSlot is int
+        && !('status' in request.resource.data) && request.resource.data.get('pausedWeeks', []).size() == 0;
       allow update: if signedIn() && uid == me()
         && request.resource.data.invite == resource.data.invite
         && request.resource.data.joinedAt == resource.data.joinedAt
         && request.resource.data.joinedSlot >= resource.data.joinedSlot
         && request.resource.data.name.size() <= 20
-        && request.resource.data.habits.size() == 3;
+        && request.resource.data.habits.size() == 3
+        && (!changed(['habits', 'habitSets']) || (habitsOk(request.resource.data.habits) && request.resource.data.habitSets is map
+          && request.resource.data.habitSets.size() <= 7 && habitWindow()))
+        && (!changed(['maxLossPct']) || goalChangeOk(uid))
+        && (!changed(['status', 'finishedWeek', 'finishedAt']) || finishOk(uid))
+        && (!('status' in resource.data) || finishKept())
+        && (!changed(['pausedWeeks']) || pauseOk())
+        && (!changed(['onboardingDone']) || request.resource.data.onboardingDone is bool);
 
       // private Gewichte (kg) – nur für den Besitzer
       match /private/{doc} {
@@ -45,10 +102,12 @@ service cloud.firestore {
     // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 3–14 Uhr) ----------
     match /weighins/{id} {
       allow read: if member();
-      allow create, update: if member() && ownNew()
+      allow create, update: if member() && ownNew() && notFinished()
         && request.resource.data.slot is int
         && id == me() + '_' + string(request.resource.data.slot)
         && request.resource.data.slot >= player().joinedSlot
+        // Startgewicht nur mit Ziel (darf im selben Schreibvorgang mitkommen)
+        && (request.resource.data.slot != player().joinedSlot || 'maxLossPct' in getAfter(/databases/$(database)/documents/players/$(me())).data)
         && request.resource.data.slot <= 24
         && request.resource.data.lossPct is number
         // 3–14 Uhr deutscher Zeit; START_MS ist MEZ, deshalb 1 Std. Toleranz wegen Sommerzeit (2–15 Std. nach Mitternacht MEZ)
@@ -59,7 +118,7 @@ service cloud.firestore {
     // ---------- Gewohnheiten (max. 2 Tage nachtragen) ----------
     match /habitlogs/{id} {
       allow read: if member();
-      allow create, update: if member() && ownNew()
+      allow create, update: if member() && ownNew() && notFinished()
         && request.resource.data.day is int
         && id == me() + '_' + string(request.resource.data.day)
         && request.resource.data.done is list && request.resource.data.done.size() >= 3 && request.resource.data.done.size() <= 4
@@ -70,7 +129,7 @@ service cloud.firestore {
     // ---------- Wochen-Challenge (einmal festlegen, wer zuerst kommt – nicht überschreibbar) ----------
     match /weekly/{w} {
       allow read: if member();
-      allow create: if member() && request.resource.data.setBy == me()
+      allow create: if member() && notFinished() && request.resource.data.setBy == me()
         && request.resource.data.text is string && request.resource.data.text.size() <= 80
         && request.resource.data.kind in ['daily', 'count']
         && request.resource.data.target is int && request.resource.data.target >= 1 && request.resource.data.target <= 7;
@@ -85,7 +144,7 @@ service cloud.firestore {
     match /tasks/{id} {
       allow read: if member();
       // genau 1 Aufgabe pro Spieler und Etappe: ID = e<Etappe>_<uid>
-      allow create: if member() && request.resource.data.createdBy == me()
+      allow create: if member() && notFinished() && request.resource.data.createdBy == me()
         && request.resource.data.text is string && request.resource.data.text.size() <= 80
         && request.resource.data.etappe is int
         && id == 'e' + string(request.resource.data.etappe) + '_' + me();
@@ -94,7 +153,7 @@ service cloud.firestore {
     match /taskDone/{id} {
       allow read: if member();
       // eigene Erledigung melden (unbestätigt)
-      allow create: if member() && ownNew() && request.resource.data.confirmedBy == null
+      allow create: if member() && notFinished() && ownNew() && request.resource.data.confirmedBy == null
         && id == request.resource.data.taskId + '_' + me();
       // nur JEMAND ANDERES darf bestätigen; confirmedAt (für den Liveticker) nur als Serverzeit
       allow update: if member() && resource.data.uid != me()
@@ -110,7 +169,7 @@ service cloud.firestore {
     // (erster Montag der Etappe, 14 Uhr; 1 Std. Toleranz wegen Sommerzeit). Zurückziehen nur bis dahin.
     match /teamideas/{id} {
       allow read: if member();
-      allow create: if member() && request.resource.data.setBy == me()
+      allow create: if member() && notFinished() && request.resource.data.setBy == me()
         && request.resource.data.etappe is int && request.resource.data.etappe >= 1 && request.resource.data.etappe <= 6
         && id == 'e' + string(request.resource.data.etappe) + '_' + me()
         && request.resource.data.text is string && request.resource.data.text.size() <= 80
@@ -126,7 +185,7 @@ service cloud.firestore {
     // eigene Tageswerte (vals = { <Vorschlag-ID>: Zahl }): 2 Tage nachtragen, spätestens Montag 14 Uhr nach der Etappe
     match /teamlogs/{id} {
       allow read: if member();
-      allow create, update: if member() && ownNew()
+      allow create, update: if member() && ownNew() && notFinished()
         && request.resource.data.day is int && request.resource.data.etappe is int
         && id == me() + '_' + string(request.resource.data.day)
         && request.resource.data.day >= (request.resource.data.etappe - 1) * 28
@@ -138,7 +197,9 @@ service cloud.firestore {
     }
 
     // Hinweise:
-    // - players/{uid}.lastActive schreibt die App selbst (Update-Regel oben erlaubt das Feld).
+    // - players/{uid}: lastActive, onboardingDone, Ziel (maxLossPct), Pause (pausedWeeks), Ausstieg (status, finishedWeek,
+    //   finishedAt) und Gewohnheiten (habits, habitSets pro Etappe) prüft die Update-Regel oben.
+    // - Dass das Ziel bei einem früheren Wiegen wirklich erreicht war, prüfen die Regeln beim Ausstieg nicht (nur das Band).
     // - habitlogs.ts und taskDone.ts (Zeitpunkt für den Liveticker) sind zusätzliche Felder, die Regeln oben lassen sie zu.
     // - Das private Ziel (goal, in %) liegt im Dokument players/{uid}/private/weights (Regel "private").
     // - Push-Tokens liegen in players/{uid}/private/tokens (nur Besitzer, Regel "private" oben).
