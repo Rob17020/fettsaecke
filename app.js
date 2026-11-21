@@ -1749,7 +1749,9 @@ document.addEventListener('click', async ev => {
         tapStart(el, `h${el.dataset.day}_${el.dataset.h}`);
         el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); // sofortiges Feedback
         const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
-        while (cur.length < 4) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur); break;
+        while (cur.length < 4) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur);
+        const hr = now().getHours(); if (cur[i] && hr >= 1 && hr < 5) toast('Geh schlafen. Schlaf ist auch eine Gewohnheit.'); // nachts abgehakt
+        break;
       }
       case 'hw': {
         const cur = Math.min(curWeek(), CONFIG.weeks); const minW = Math.min(cur, Math.max(1, (S.players[S.me]?.joinedSlot || 0) + 1));
