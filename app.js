@@ -21,16 +21,16 @@ const CONFIG = {
   strafe: 5,          // € pro verpasstem Wiegen
   habitFee: 1,        // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
   loserFee: 1,        // € für den Letzten im Wochenranking
-  habitMaxPts: 7,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
+  habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
   weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
   deadlineHour: 14,   // … bis 14:00 Uhr
   chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
   backfillDays: 2,    // Gewohnheiten bis zu 2 Tage nachtragen
   weighPerTenth: 3,   // Waage-Punkte pro 0,1 % unter dem bisherigen Tiefstwert
-  weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte)
-  challengePts: 6,    // max. Punkte Wochen-Challenge
-  taskPts: 15,        // Punkte pro Extra-Aufgabe (jeder stellt 1 Aufgabe pro Etappe)
-  teamPts: 40,        // Team-Monat: Punkte für jeden, der etwas eingetragen hat, wenn ALLE gezogenen Ziele erreicht sind
+  weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte, ca. 60 % einer realistischen Woche)
+  challengePts: 4,    // max. Punkte Wochen-Challenge (täglich: 1 pro Tag bis 4; 1×: 4; 2×: je 2)
+  taskPts: 10,        // Punkte pro Extra-Aufgabe (jeder stellt 1 Aufgabe pro Etappe)
+  teamPts: 5,         // Team-Monat: Punkte für jeden, der etwas eingetragen hat, wenn ALLE gezogenen Ziele erreicht sind
   teamDraw: 3,        // so viele Vorschläge werden pro Etappe für den Team-Monat gezogen
   activeEveryMin: 10, // "zuletzt aktiv" höchstens alle 10 Min. speichern
   vapidKey: '',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
@@ -1530,13 +1530,13 @@ function viewRegeln() {
    <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
    <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
    <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
-  <h3>Gewohnheiten (max. 21 P./Woche)</h3><ul>
+  <h3>Gewohnheiten (max. ${habitMax()} P./Woche)</h3><ul>
    <li>Jeder wählt <b>3 eigene</b>, die Überwindung kosten. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
    <li>Jeder Tag ohne alle 3 kostet <b>${eur(CONFIG.habitFee)}</b>, sobald er nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.</li>
    <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
   <h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
    <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
-   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, ein Tag Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul>
+   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, also ${7 - CONFIG.challengePts} Tage Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul>
   <h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
    <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
    <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
