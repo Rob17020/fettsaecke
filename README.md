@@ -1,6 +1,6 @@
 # Club der Fettsäcke
 
-Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), täglich 3 Gewohnheiten abhaken, Wochen-Challenge, Extra-Aufgaben, Teamwoche, Kasse.
+Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), täglich 3 Gewohnheiten abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, Kasse.
 
 - App: `index.html` + `style.css` + `app.js` (kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
 - Daten: Firebase (Spark-Plan, kostenlos): Google-Login + Firestore
@@ -29,7 +29,7 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
    Den öffentlichen Schlüssel in `app.js` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
 
 2. **Regeln veröffentlichen**
-   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen (neu: `confirmedAt` beim Bestätigen von Aufgaben, für den Liveticker).
+   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen (neu: Team-Monat mit `teamideas`/`teamlogs`, Wiegefenster Mo 3–14 Uhr).
 
 3. **Service-Account als GitHub-Secret**
    Firebase-Konsole → Projekteinstellungen → Dienstkonten → *Neuen privaten Schlüssel generieren* (lädt eine JSON-Datei herunter).
@@ -49,14 +49,14 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 
 | Wann (Berlin) | Nachricht | An wen |
 |---|---|---|
-| Montag 8:00 | „Wiegen bis 12 Uhr“ (bzw. „Startgewicht bis 12 Uhr“) | nur wer für diese Woche noch nicht gewogen hat |
+| Montag 8:00 | „Wiegen bis 14 Uhr“ (bzw. „Startgewicht bis 14 Uhr“) | nur wer für diese Woche noch nicht gewogen hat |
 | täglich 21:00 | „Gewohnheiten noch offen“ mit den fehlenden Gewohnheiten | nur wer heute noch nicht alle 3 abgehakt hat |
 
 GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- und Winterzeit). Das Skript prüft die Uhrzeit in Berlin und merkt sich in `reminderRuns/{art}_{datum}`, dass schon verschickt wurde. Geräte, die sich abgemeldet haben, werden automatisch aus `players/{uid}/private/tokens` entfernt.
 
 ### Bekannte Grenzen
 
-- **GitHub-Cron kann sich verspäten**, meist um Minuten, bei hoher Last auch mal länger. Das Skript akzeptiert deshalb Montag 8–12 Uhr bzw. 21–23 Uhr.
+- **GitHub-Cron kann sich verspäten**, meist um Minuten, bei hoher Last auch mal länger. Das Skript akzeptiert deshalb Montag 8–14 Uhr bzw. 21–23 Uhr.
 - **Öffentliche Repos:** GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im Repo passiert. Dann unter Actions → *Erinnerungen* → *Enable workflow* wieder einschalten (oder zwischendurch etwas committen).
 - Die Logs der Actions sind bei öffentlichen Repos öffentlich. Das Skript loggt deshalb nur Zahlen, keine Namen oder Tokens.
 
@@ -78,5 +78,5 @@ Dann `http://localhost:8000/index.html?demo` öffnen. Nützliche Zusätze:
 
 - `CONFIG.testMode` in `app.js` auf `false`
 - `TESTMODE()` in `firestore.rules` auf `false`, Regeln veröffentlichen
-- Test-Sammlungen in Firestore löschen (inkl. `teamgoals`, `teamlogs`, `reminderRuns`)
+- Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`)
 - `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen

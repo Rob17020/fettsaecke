@@ -4,7 +4,7 @@ name: Erinnerungen
 # das Skript prüft selbst die Uhrzeit in Berlin und verschickt pro Tag nur einmal.
 on:
   schedule:
-    - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 12 Uhr
+    - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 14 Uhr
     - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Gewohnheiten noch offen
   workflow_dispatch:
     inputs:

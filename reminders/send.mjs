@@ -1,6 +1,6 @@
 // Push-Erinnerungen für den Club der Fettsäcke (läuft per GitHub Actions, siehe .github/workflows/reminders.yml)
 //   node send.mjs                 -> "auto": entscheidet anhand der Uhrzeit in Berlin
-//   node send.mjs --kind=weigh    -> Montag: "Wiegen bis 12 Uhr" an alle, die noch nicht gewogen haben
+//   node send.mjs --kind=weigh    -> Montag: "Wiegen bis 14 Uhr" an alle, die noch nicht gewogen haben
 //   node send.mjs --kind=habits   -> täglich: "Gewohnheiten noch offen" an alle mit offenen Haken
 //   node send.mjs --kind=test     -> Testnachricht an alle registrierten Geräte
 //   --dry-run   nur zählen, nichts senden      --force   Zeitfenster und Doppel-Schutz ignorieren
@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
 // Muss zu CONFIG in app.js passen.
-const SEASON = { start: [2026, 11, 23], weeks: 24, deadlineHour: 12, backfillDays: 2, strafe: 2 };
+const SEASON = { start: [2026, 11, 23], weeks: 24, deadlineHour: 14, backfillDays: 2, strafe: 5, habitFee: 1 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';
 
@@ -57,8 +57,9 @@ async function main() {
       if (k < js) continue;
       if (k > js && !(await exists(`weighins/${p.uid}_${js}`))) continue; // nie gestartet
       if (await exists(`weighins/${p.uid}_${k}`)) continue;               // schon gewogen
-      out.push({ p, title: k === js ? 'Startgewicht bis 12 Uhr' : 'Wiegen bis 12 Uhr',
-        body: k === js ? 'Trag heute bis 12:00 Uhr dein Startgewicht ein.' : `Woche ${k} ist noch nicht eingetragen. Bis 12:00 Uhr, sonst ${SEASON.strafe} € in den Topf.` });
+      const dl = `${SEASON.deadlineHour}:00 Uhr`;
+      out.push({ p, title: k === js ? `Startgewicht bis ${dl}` : `Wiegen bis ${dl}`,
+        body: k === js ? `Trag heute bis ${dl} dein Startgewicht ein.` : `Woche ${k} ist noch nicht eingetragen. Bis ${dl}, sonst ${SEASON.strafe} € in den Topf.` });
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
@@ -66,7 +67,7 @@ async function main() {
       const done = log.exists ? (log.data().done || []) : [];
       const open = (p.habits || []).filter((_, i) => !done[i]);
       if (!open.length) continue;
-      out.push({ p, title: 'Gewohnheiten noch offen', body: `Heute fehlt noch: ${open.join(', ')}. Nachtragen geht bis zu ${SEASON.backfillDays} Tage.` });
+      out.push({ p, title: 'Gewohnheiten noch offen', body: `Heute fehlt noch: ${open.join(', ')}. Nachtragen geht bis zu ${SEASON.backfillDays} Tage, danach kostet der Tag ${SEASON.habitFee} €.` });
     }
   }
 

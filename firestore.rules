@@ -42,7 +42,7 @@ service cloud.firestore {
       }
     }
 
-    // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 0–12 Uhr) ----------
+    // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 3–14 Uhr) ----------
     match /weighins/{id} {
       allow read: if member();
       allow create, update: if member() && ownNew()
@@ -51,9 +51,9 @@ service cloud.firestore {
         && request.resource.data.slot >= player().joinedSlot
         && request.resource.data.slot <= 24
         && request.resource.data.lossPct is number
-        // Toleranz von 1 Std. wegen Sommerzeit
-        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.slot * WEEK() - HOUR())
-        && request.time <= at(START_MS() + request.resource.data.slot * WEEK() + 13 * HOUR())));
+        // 3–14 Uhr deutscher Zeit; START_MS ist MEZ, deshalb 1 Std. Toleranz wegen Sommerzeit (2–15 Std. nach Mitternacht MEZ)
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.slot * WEEK() + 2 * HOUR())
+        && request.time <= at(START_MS() + request.resource.data.slot * WEEK() + 15 * HOUR())));
     }
 
     // ---------- Gewohnheiten (max. 2 Tage nachtragen) ----------
@@ -105,34 +105,36 @@ service cloud.firestore {
       allow delete: if member() && ownOld() && resource.data.confirmedBy == null;
     }
 
-    // ---------- Teamwoche ----------
-    // Ziel nur für die NÄCHSTE Woche, eins pro Woche (ID = Wochennummer), nicht überschreibbar
-    match /teamgoals/{w} {
+    // ---------- Team-Monat ----------
+    // Vorschlag: einer pro Spieler und Etappe (ID = e<Etappe>_<uid>), ab Beginn der Vor-Etappe bis zur Ziehung
+    // (erster Montag der Etappe, 14 Uhr; 1 Std. Toleranz wegen Sommerzeit). Zurückziehen nur bis dahin.
+    match /teamideas/{id} {
       allow read: if member();
       allow create: if member() && request.resource.data.setBy == me()
-        && request.resource.data.week is int && w == string(request.resource.data.week)
-        && request.resource.data.week >= 1 && request.resource.data.week <= 24
+        && request.resource.data.etappe is int && request.resource.data.etappe >= 1 && request.resource.data.etappe <= 6
+        && id == 'e' + string(request.resource.data.etappe) + '_' + me()
         && request.resource.data.text is string && request.resource.data.text.size() <= 80
         && request.resource.data.kind in ['sum', 'count']
-        && request.resource.data.target is int && request.resource.data.target >= 1 && request.resource.data.target <= 10000000
+        && request.resource.data.period in ['day', 'week', 'month']
+        && request.resource.data.per is number && request.resource.data.per > 0 && request.resource.data.per <= 1000000
         && request.resource.data.unit is string && request.resource.data.unit.size() <= 20
-        // vor Beginn der Woche, frühestens in der Vorwoche (+1 Std. Toleranz wegen Sommerzeit)
-        && (TESTMODE() || (request.time < at(START_MS() + (request.resource.data.week - 1) * WEEK() + HOUR())
-        && (request.resource.data.week == 1 || request.time >= at(START_MS() + (request.resource.data.week - 2) * WEEK() - HOUR()))));
+        && (TESTMODE() || (request.time <= at(START_MS() + (request.resource.data.etappe - 1) * 4 * WEEK() + 15 * HOUR())
+        && (request.resource.data.etappe == 1 || request.time >= at(START_MS() + (request.resource.data.etappe - 2) * 4 * WEEK() - HOUR()))));
+      allow delete: if member() && resource.data.setBy == me()
+        && (TESTMODE() || request.time <= at(START_MS() + (resource.data.etappe - 1) * 4 * WEEK() + 15 * HOUR()));
     }
-    // eigener Tageswert: nur eigene Einträge, 2 Tage nachtragen, spätestens Montag 12 Uhr nach der Woche
+    // eigene Tageswerte (vals = { <Vorschlag-ID>: Zahl }): 2 Tage nachtragen, spätestens Montag 14 Uhr nach der Etappe
     match /teamlogs/{id} {
       allow read: if member();
       allow create, update: if member() && ownNew()
-        && request.resource.data.day is int && request.resource.data.week is int
+        && request.resource.data.day is int && request.resource.data.etappe is int
         && id == me() + '_' + string(request.resource.data.day)
-        && request.resource.data.day >= (request.resource.data.week - 1) * 7
-        && request.resource.data.day < request.resource.data.week * 7
-        && exists(/databases/$(database)/documents/teamgoals/$(string(request.resource.data.week)))
-        && request.resource.data.value is number && request.resource.data.value >= 0 && request.resource.data.value <= 1000000
+        && request.resource.data.day >= (request.resource.data.etappe - 1) * 28
+        && request.resource.data.day < request.resource.data.etappe * 28
+        && request.resource.data.vals is map && request.resource.data.vals.size() <= 3
         && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
         && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())
-        && request.time <= at(START_MS() + request.resource.data.week * WEEK() + 13 * HOUR())));
+        && request.time <= at(START_MS() + request.resource.data.etappe * 4 * WEEK() + 15 * HOUR())));
     }
 
     // Hinweise:

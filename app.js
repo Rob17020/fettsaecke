@@ -1214,7 +1214,7 @@ function ideasBlock(e) {
     : '<p class="small muted">Noch keine Vorschläge.</p>';
   if (canSuggest(e)) h += `<div class="stack idea"><input class="inp" id="iText" maxlength="60" placeholder="Was? z. B. Schritte sammeln" aria-label="Was soll das Team schaffen?">
     <select class="inp" id="iKind" aria-label="Art"><option value="sum">Menge: jeder trägt täglich eine Zahl ein</option><option value="count">Anzahl: jeder hakt ab (max. 1× pro Tag)</option></select>
-    <div class="row wrapr"><input class="inp grow" id="iPer" inputmode="decimal" placeholder="Pro Person, z. B. 8000" aria-label="Wie viel pro Person"><input class="inp grow" id="iUnit" maxlength="20" placeholder="Einheit, z. B. Schritte" aria-label="Einheit"><select class="inp auto" id="iPeriod" aria-label="Zeitraum"><option value="day">pro Tag</option><option value="week">pro Woche</option><option value="month">pro Monat</option></select></div>
+    <div class="row wrapr"><input class="inp grow" id="iPer" inputmode="decimal" placeholder="z. B. 8000" aria-label="Wie viel pro Person"><input class="inp grow" id="iUnit" maxlength="20" placeholder="z. B. Schritte" aria-label="Einheit"><select class="inp auto" id="iPeriod" aria-label="Zeitraum"><option value="day">pro Tag</option><option value="week">pro Woche</option><option value="month">pro Monat</option></select></div>
     <button class="btn ghost" data-act="addIdea" data-e="${e}">Vorschlagen</button></div>`;
   return h;
 }
@@ -1342,7 +1342,7 @@ function goalCard(me, compact) { // compact = auf Heute (Desktop): nur Ring und 
   else if (!goalKg) txt = 'Setz dir ein Zielgewicht. Sieht nur du, bringt keine Punkte.';
   else if (!g) txt = 'Dein Zielgewicht liegt nicht unter deinem Startgewicht. Setz ein neues.';
   else if (done) txt = `<b class="ok">Ziel geschafft.</b> ${cur >= g - 1e-9 ? '' : `Bester Wert: ${tn(lossStr(me.bestLoss))}. `}Zeit für ein neues Ziel.`;
-  else txt = `Noch <b>${kg.last !== undefined ? tn(fmt1(Math.max(0, kg.last - goalKg))) + ' kg' : tn(pct(g - Math.max(0, cur))) + ' %'}</b> bis ${tn(fmt1(goalKg))} kg, ${Math.round(prog * 100)} % geschafft.`;
+  else txt = `Noch <b>${kg.last !== undefined ? tn(fmt1(Math.max(0, kg.last - goalKg))) + ' kg' : tn(pct(g - Math.max(0, cur))) + ' %'}</b> bis ${tn(fmt1(goalKg))} kg (−${tn(pct(g))} %), ${Math.round(prog * 100)} % geschafft.`;
   const lost = kg.start !== undefined && kg.last !== undefined ? kg.start - kg.last : null;
   const tiles = act && !compact ? `<div class="tiles">
     <div class="tile"><b class="num">${lost === null ? '–' : tn((lost >= 0 ? '−' : '+') + fmt1(Math.abs(lost)))}</b><span>kg seit Start</span></div>
@@ -1352,7 +1352,7 @@ function goalCard(me, compact) { // compact = auf Heute (Desktop): nur Ring und 
     : `<div class="row"><label class="pctin"><input id="goal" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="85" aria-label="Zielgewicht in kg" value="${goalKg ? Math.round(goalKg * 10) / 10 : ''}"><span aria-hidden="true">kg</span></label><button class="btn${goalKg ? ' ghost' : ''}" data-act="setGoal">${goalKg ? 'Ändern' : 'Ziel setzen'}</button></div>
     ${tiles}${goalKg ? '<button class="link" data-act="clearGoal">Ziel entfernen</button>' : ''}`;
   return `<section class="card goal${done ? ' done' : ''}${compact ? ' compact' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}nur für dich</span></div>
-    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${goalKg ? `Ziel ${tn(fmt1(goalKg))} kg${g ? ` · −${tn(pct(g))} %` : ''}` : 'noch kein Ziel'}</small></div></div>
+    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${goalKg ? `Ziel ${tn(fmt1(goalKg))} kg` : 'noch kein Ziel'}</small></div></div>
     <p class="small t2">${txt}</p>
     ${form}
     ${seasonOver() && act && !compact ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
