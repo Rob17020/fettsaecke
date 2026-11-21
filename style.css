@@ -122,6 +122,11 @@ label.f{display:block;font-size:13px;font-weight:700;color:var(--text-2)}
 .btn.ghost:hover:not(:disabled){background:var(--card-3);box-shadow:none}
 .btn.sm{min-height:32px;padding:0 10px;font-size:13px}
 .btn.full{display:flex;width:100%}
+/* Aussteigen: Blutorange (endgültig, Geld) */
+.btn.danger{background:var(--blood);border-color:var(--blood);color:var(--blood-ink)}
+.btn.danger:hover:not(:disabled){box-shadow:0 0 22px -6px var(--blood-glow)}
+.btn.ghost.danger{background:transparent;border-color:rgba(255,74,28,.55);color:var(--text)}
+.btn.ghost.danger:hover:not(:disabled){background:var(--blood-tint);box-shadow:none}
 .link{display:inline-flex;align-items:center;min-height:32px;padding:0;border:0;background:none;color:var(--text-2);font-size:13px;font-weight:600;text-decoration:underline;text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
 .link:hover{color:var(--text);text-decoration-color:currentColor}
 .iconbtn{display:inline-grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border:0;border-radius:var(--r-sm);background:transparent;color:var(--text-2);cursor:pointer;transition:transform .35s var(--spring),background-color .12s}
@@ -218,6 +223,10 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .card.loser::after{content:"";position:absolute;inset:-1px;border-radius:inherit;box-shadow:0 0 0 1px var(--blood),0 0 38px -4px var(--blood-glow);opacity:.15;pointer-events:none;animation:pulse 2.8s ease-in-out infinite}
 .card.loser.me::after{animation-duration:1.8s}
 @keyframes pulse{50%{opacity:1}}
+.finbig{font-size:clamp(48px,13vw,72px);font-weight:900;letter-spacing:-.06em;line-height:.9;color:var(--lime);text-shadow:0 0 28px var(--lime-glow)}
+.rlist.fin .pos .ico{width:20px;height:20px;color:var(--lime)}
+.xlist{display:grid;gap:6px;padding-left:20px}
+.xlist b{color:var(--text)}
 .lname{font-size:clamp(40px,11vw,56px);font-weight:900;letter-spacing:-.05em;line-height:.9;color:var(--blood);text-shadow:0 0 28px rgba(255,74,28,.35);overflow-wrap:anywhere}
 
 /* Gewohnheiten-Raster: auf schmalen Karten Name über der Zeile, ab 460px daneben */
@@ -552,3 +561,5 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 @keyframes sheetUp{from{transform:translateY(40px);opacity:0}}
 @keyframes sheetIn{from{transform:translateX(40px);opacity:0}}
 @media (min-width:1025px){.modal{align-items:stretch;justify-content:flex-end}.sheet{max-width:440px;max-height:none;height:100%;padding:32px 24px;border-width:0 0 0 1px;border-radius:0}.modal.fresh .sheet{animation-name:sheetIn}}
+/* Bestätigung (Aussteigen): auf dem Desktop mittig statt Seitenpanel */
+@media (min-width:1025px){.modal.mid{align-items:center;justify-content:center}.modal.mid .sheet{height:auto;max-width:520px;border-width:1px;border-radius:var(--r)}.modal.mid.fresh .sheet{animation-name:sheetUp}}

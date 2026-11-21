@@ -76,7 +76,7 @@ const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
 const fmtLong = d => `${WDL[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
 const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
 // 5 € / 0,50 € / 2,50 €: Cent nur, wenn es welche gibt
-const eur = x => { const c = Math.round(x * 100); return (c / 100).toLocaleString('de-DE', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; };
+const eur = x => { const c = Math.round(x * 100); return (c / 100).toLocaleString('de-DE', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace('-', '−') + ' €'; };
 const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
 const tn = s => String(s).replace(/[,.]/g, m => `<span class="pp">${m}</span>`);
 const andJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
@@ -155,7 +155,9 @@ function compute(S) {
        neben dem Ziel: volle Waage-Punkte + Bonus (3 × habitMaxPts), dazu Gewohnheiten/Challenge, alles zusammen höchstens das normale
        Wochenmaximum. Daneben: 0 Waage-Punkte, kein Bonus. */
     const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, cap = wMax + habitMax() + CONFIG.challengePts;
-    for (let w = js + 1; w <= CONFIG.weeks; w++) {
+    // Ausgestiegen (Ziel erreicht): nur Wochen bis finishedWeek zählen, danach keine Punkte und keine Strafen
+    const finished = p.status === 'finished' && Number.isInteger(p.finishedWeek), lastW = finished ? Math.min(p.finishedWeek, CONFIG.weeks) : CONFIG.weeks;
+    for (let w = js + 1; w <= lastW; w++) {
       const has = wb[w] !== undefined, hold = goalWeek !== null && w > goalWeek;
       const inBand = hold && has && Math.abs(wb[w] - goal) <= CONFIG.holdBand + 1e-9;
       const weigh = hold ? (inBand ? wMax : 0) : has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
@@ -169,21 +171,21 @@ function compute(S) {
     }
     // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee; in der Haltephase freiwillig)
     const missedHabitWeeks = [];
-    if (active) for (let w = js + 1; w <= CONFIG.weeks && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold) missedHabitWeeks.push(w);
+    if (active) for (let w = js + 1; w <= lastW && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold) missedHabitWeeks.push(w);
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
-      if (td.uid === uid && td.confirmedBy && t) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
+      if (td.uid === uid && td.confirmedBy && t && t.etappe <= etappeOf(lastW)) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
     }
     const missedSlots = [];
-    if (active) for (let k = js + 1; k <= Math.min(lc, CONFIG.weeks); k++) if (wb[k] === undefined) missedSlots.push(k);
+    if (active) for (let k = js + 1; k <= Math.min(lc, lastW); k++) if (wb[k] === undefined) missedSlots.push(k);
     const missed = missedSlots.length;
     const slots = Object.keys(wb).map(Number).sort((a, b) => a - b);
     const latest = slots.length ? wb[slots[slots.length - 1]] : 0;
     // längste Serie Wiegen ohne Verpassen (für Meilensteine)
     let run = 0, weighRun = 0;
-    if (active) for (let k = js + 1; k <= CONFIG.weeks; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
-    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, hold: active && goalWeek !== null, weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
+    if (active) for (let k = js + 1; k <= lastW; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
+    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, hold: active && goalWeek !== null && !finished, finished, fw: lastW, finishedAt: tsNum(p.finishedAt), weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
       weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
     x.streak = active ? streakOf(x) : { cur: 0, best: 0, joker: true, jokerWeek: null };
     x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
@@ -195,7 +197,7 @@ function compute(S) {
   for (let e = 1; e <= NUM_ETAPPEN; e++) {
     const t = teamMonth(S, C, e); if (!t) continue;
     TEAM[e] = t;
-    if (t.closed && t.reached) for (const u of Object.keys(t.by)) if (C[u]) C[u].teamPts[e] = CONFIG.teamPts;
+    if (t.closed && t.reached) for (const u of Object.keys(t.by)) if (C[u] && !(C[u].finished && C[u].fw < etEndWeek(e))) C[u].teamPts[e] = CONFIG.teamPts;
   }
   return C;
 }
@@ -214,9 +216,11 @@ function weekLosers(C, w) { // Letzte(r) einer abgeschlossenen Woche, nur wenn n
 function fees(p, e) { // e = Etappe oder null für gesamt
   const inE = w => e === null || etappeOf(w) === e;
   const einsatz = p.active && (e === null || etappeOf(p.js + 1) === e) ? CONFIG.einsatz : 0;
+  // Ausstieg mit erreichtem Ziel: Einsatz zurück (in der Etappe des Ausstiegs), Strafen bis dahin bleiben im Topf
+  const refund = p.active && p.finished && (e === null || etappeOf(Math.min(p.fw + 1, CONFIG.weeks)) === e) ? CONFIG.einsatz : 0;
   const missed = p.missedSlots.filter(inE).length, losers = p.loserWeeks.filter(inE).length, habitWeeks = p.missedHabitWeeks.filter(inE).length;
   const strafen = missed * CONFIG.strafe + losers * CONFIG.loserFee + habitWeeks * CONFIG.habitFee;
-  return { einsatz, missed, losers, habitWeeks, strafen, total: einsatz + strafen };
+  return { einsatz, refund, missed, losers, habitWeeks, strafen, total: einsatz - refund + strafen };
 }
 const fmtDT = d => fmtD(d) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.chooseHours * 3600e3);
@@ -226,7 +230,8 @@ function rankWeek(C, w) {
   return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], habits: p.weeks[w].habits + p.weeks[w].bonus, uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
 }
 function rankRange(C, wFrom, wTo, etappen) {
-  return sortRank(Object.values(C).filter(p => p.active && p.js < wTo).map(p => {
+  // Ausgestiegene nur in Etappen, die vor ihrem Ausstieg schon fertig waren (Gesamt: eigener Abschnitt "Ziel erreicht")
+  return sortRank(Object.values(C).filter(p => p.active && p.js < wTo && !(p.finished && p.fw < wTo)).map(p => {
     const r = { uid: p.uid, name: p.name, color: p.color, latest: p.latest, weigh: 0, habits: 0, weekly: 0, team: 0, tasks: 0, missed: p.missed };
     for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits + p.weeks[w].bonus; r.weekly += p.weeks[w].weekly; }
     for (const e of etappen) { r.tasks += p.taskPts[e] || 0; r.team += p.teamPts[e] || 0; }
@@ -236,7 +241,12 @@ function rankRange(C, wFrom, wTo, etappen) {
 }
 const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
 const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
-function pot(C) { const r = { total: 0, players: 0, missed: 0, losers: 0, habitWeeks: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.missed += f.missed; r.losers += f.losers; r.habitWeeks += f.habitWeeks; } return r; }
+function pot(C) { const r = { total: 0, players: 0, refunds: 0, missed: 0, losers: 0, habitWeeks: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.refunds += f.refund ? 1 : 0; r.missed += f.missed; r.losers += f.losers; r.habitWeeks += f.habitWeeks; } return r; }
+// eingefrorenes Ergebnis nach dem Ausstieg: "−15,2 % · Ziel nach 18 Wochen"
+const frozenLine = p => `${tn(lossStr(p.wb[p.fw] ?? p.latest))} · Ziel nach ${wochen(p.goalWeek - p.js)}`;
+const frozenPts = p => Object.values(p.weeks).reduce((s, w) => s + w.total, 0) + Object.values(p.taskPts).reduce((a, b) => a + b, 0) + Object.values(p.teamPts).reduce((a, b) => a + b, 0);
+// Aussteigen geht, sobald das Ziel bei einem Wiegen erreicht war und das letzte Wiegen im Ziel-Band liegt
+const canExit = me => !!me?.active && me.goalWeek !== null && !me.finished && !seasonOver() && me.latest >= me.goal - CONFIG.holdBand - 1e-9;
 function weeklySetters(C, w) { // null = jeder, [] = noch offen
   if (w <= 1) return null;
   if (lastClosedSlot() < w - 1) return [];
@@ -244,7 +254,7 @@ function weeklySetters(C, w) { // null = jeder, [] = noch offen
   const min = Math.min(...r.map(x => x.total)); return r.filter(x => x.total === min).map(x => x.uid);
 }
 function canSetWeekly(S, C, w) {
-  if (S.weekly[w] || w < 1 || w > CONFIG.weeks) return false;
+  if (S.weekly[w] || w < 1 || w > CONFIG.weeks || C[S.me]?.finished) return false;
   const cw = curWeek();
   if (w === 1) return cw <= 1;
   if (cw !== w || now() < slotDeadline(w - 1)) return false; // erst nach dem Wiegen
@@ -282,10 +292,10 @@ function teamMonth(S, C, e) {
   const tasks = drawIdeas(ideasFor(S, e), e); if (!tasks.length) return null;
   const w0 = etFirstWeek(e), w1 = etEndWeek(e), d0 = 7 * (w0 - 1), d1 = 7 * w1;
   let pw = 0; // Spielerwochen
-  for (const p of Object.values(C)) if (p.active) for (let w = w0; w <= w1; w++) if (w > p.js) pw++;
+  for (const p of Object.values(C)) if (p.active) for (let w = w0; w <= w1; w++) if (w > p.js && (!p.finished || w <= p.fw)) pw++;
   const by = {}, sums = {};
   for (const l of Object.values(S.teamlogs || {})) {
-    if (!l.vals || l.day < d0 || l.day >= d1 || !C[l.uid]?.active) continue;
+    if (!l.vals || l.day < d0 || l.day >= d1 || !C[l.uid]?.active || (C[l.uid].finished && l.day >= 7 * C[l.uid].fw)) continue;
     for (const t of tasks) {
       const raw = +l.vals[t.id] || 0, v = t.kind === 'count' ? (raw > 0 ? 1 : 0) : clamp(raw, 0, 1e6);
       if (!v) continue;
@@ -299,7 +309,7 @@ const teamFmt = (g, v) => g.kind === 'count' ? `${nf(v)}×` : `${nf(v)}${g.unit 
 const ideaRate = x => `${teamFmt(x, x.per)} pro Person und ${PERIOD[x.period] || 'Woche'}`;
 const nextDrawE = () => { for (let e = 1; e <= NUM_ETAPPEN; e++) if (now() < drawTime(e)) return e; return null; }; // nächste Ziehung
 function canSuggest(e) { // Vorschlag für Etappe e: ab Beginn der Vor-Etappe bis zur Ziehung
-  return S.member && e >= 1 && e <= NUM_ETAPPEN && now() < drawTime(e) && (e === 1 || now() >= slotStart(etFirstWeek(e - 1) - 1)) && !S.teamideas['e' + e + '_' + S.me];
+  return S.member && !C[S.me]?.finished && e >= 1 && e <= NUM_ETAPPEN && now() < drawTime(e) && (e === 1 || now() >= slotStart(etFirstWeek(e - 1) - 1)) && !S.teamideas['e' + e + '_' + S.me];
 }
 function teamEditable(d, js) { // eigener Wert für Tag d: Nachtragefenster wie Gewohnheiten, bis zum Wiegeschluss nach der Etappe
   const today = dayIdx(), e = etappeOf(weekOfDay(d));
@@ -466,6 +476,7 @@ function makeDemoDB(emit) {
     reset() { LS.removeItem(KEY); for (const k of ['cdf-ms-', 'cdf-cel-', 'cdf-wrapped-']) LS.removeItem(k + ME); mine = blank(); commit(); },
     async register(d) { mine.player = { name: d.name, habits: d.habits, habitSets: d.habitSets, maxLossPct: d.maxLossPct, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; commit(); },
     async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
+    async finish(fw) { Object.assign(mine.player, { status: 'finished', finishedWeek: fw, finishedAt: ts() }); commit(); },
     async saveWeigh(slot, kg, lossPct, player) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; if (player) Object.assign(mine.player, player); commit(); },
     async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ts: ts() }; commit(); },
     async setWeekly(w, text, kind, target) { mine.weekly[w] = { text, kind, target, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
@@ -581,6 +592,8 @@ async function makeFirebaseDB(cfg, emit) {
       await F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, habitSets: d.habitSets, maxLossPct: d.maxLossPct, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; });
     },
     updatePlayer: d => wrap(F.updateDoc(F.doc(db, 'players', me()), d)),
+    // Ausstieg mit erreichtem Ziel (einmalig, die Regeln lassen es nicht rückgängig machen)
+    finish: fw => wrap(F.updateDoc(F.doc(db, 'players', me()), { status: 'finished', finishedWeek: fw, finishedAt: F.serverTimestamp() })),
     saveWeigh(slot, kg, lossPct, player) { // player: z. B. { maxLossPct } beim Startgewicht, im selben Schreibvorgang
       const b = F.writeBatch(db);
       if (player) b.update(F.doc(db, 'players', me()), player);
@@ -698,7 +711,7 @@ function celebrate() {
 }
 function checkWrapped() { // Saisonrückblick einmal automatisch öffnen, danach per Knopf
   const me = C[S.me];
-  if (!S.member || !S.synced || !me?.active || !seasonOver() || UI.modal) return;
+  if (!S.member || !S.synced || !me?.active || me.finished || !seasonOver() || UI.modal) return;
   const k = 'cdf-wrapped-' + S.me; if (LS.getItem(k)) return;
   LS.setItem(k, '1'); UI.modal = 'wrapped';
 }
@@ -812,7 +825,7 @@ const readGoal = id => { const g = Math.round(parseFloat(val(id).replace(',', '.
 // Ändern geht bis zum Startgewicht. Wer (aus Testzeiten) noch kein Ziel hat, darf es im Demo-/Testmodus auch danach einmal setzen.
 const goalEditable = (me, p) => !me?.active || (typeof p?.maxLossPct !== 'number' && (DEMO || CONFIG.testMode));
 const HOLD_LBL = 'Haltephase – nur Montag wiegen';
-const exitBtn = () => '';
+const exitBtn = me => canExit(me) ? `<button class="btn ghost danger" data-act="exitAsk">Ziel erreicht – aussteigen</button>` : '';
 function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
   if (me.hold) {
@@ -821,7 +834,7 @@ function goalBar(me) {
       <p class="small t2">Halten zwischen ${tn(pct(g - CONFIG.holdBand))} und ${tn(pct(g + CONFIG.holdBand))} % (Ziel ${tn(pct(g))} % ± ${tn(pct(CONFIG.holdBand))}): volle ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte + ${habitMax()} Bonus. Daneben 0. Gewohnheiten sind freiwillig.</p>${exitBtn(me)}</div>`;
   }
   return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
-    <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div></div>`;
+    <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div>${exitBtn(me)}</div>`;
 }
 
 // Gewohnheit + Wochenziel (Anmeldung und Profil)
@@ -855,6 +868,8 @@ function ensureDefs() {
 function viewHeute() {
   const me = C[S.me]; const p = S.players[S.me];
   if (seasonOver()) return seasonEnd(me);
+  if (me.finished) return `<div class="dash"><div class="col f">${feedCard(true)}</div><div class="col a">${finishedCard(me)}</div>
+    <div class="col b">${me.active ? heatCard(me, p) : ''}</div><div class="col c">${weeklyCard(me)}${teamCard(me)}</div></div>`;
   // Fokus (Grün): montags das Wiegen, sonst die heutige Spalte im Gewohnheiten-Raster
   const wc = weighCard(me, p), desk = isDesk();
   // Liveticker ganz oben. Desktop zusätzlich Ziel-Ring und Heatmap aus "Ich", damit die Startseite nicht leer wirkt.
@@ -863,12 +878,19 @@ function viewHeute() {
     <div class="col b">${habitsCard(me, p, !wc.due)}${desk && me.active ? heatCard(me, p) : ''}</div>
     <div class="col c">${weeklyCard(me)}${teamCard(me)}${desk && me.active ? msCard(me) : ''}</div></div>`;
 }
+function finishedCard(me) {
+  const f = fees(me, null);
+  return `<section class="card fin" data-k="me"><div class="hd"><h2>Ziel erreicht · ausgestiegen</h2></div>
+    <p class="finbig num">${tn(lossStr(me.wb[me.fw] ?? me.latest))}</p>
+    <p class="t2">Ziel −${tn(pct(me.goal))} % nach ${wochen(me.goalWeek - me.js)}, ausgestiegen nach Woche ${me.fw}. Du bekommst deinen Einsatz zurück (${eur(f.refund)})${f.strafen ? `, deine Strafen (${eur(f.strafen)}) bleiben im Topf` : ''}.</p>
+    <p class="small muted">Keine Punkte, Strafen oder Erinnerungen mehr. Dein Ergebnis steht eingefroren unter Ranking → Gesamt → Ziel erreicht.</p></section>`;
+}
 function seasonEnd(me) {
   const w = rankTotal(C)[0];
   return `<div class="view"><section class="card" data-k="rank"><div class="hd"><h2>Saison beendet</h2></div>
     ${w ? `<p class="lname" style="color:var(--lime);text-shadow:0 0 28px var(--lime-glow)">${esc(w.name)}</p>
     <p class="t2">gewinnt mit <b>${nf(w.total)} Punkten</b> und ${tn(lossStr(w.latest))} seit Start und kassiert den Topf: <b>${eur(pot(C).total)}</b>.</p>` : ''}
-    ${me?.active ? `<button class="btn" data-act="wrapped">${svg('spark')}Dein Saisonrückblick</button>` : ''}</section>${viewRanking()}${feedCard()}</div>`;
+    ${me?.active && !me.finished ? `<button class="btn" data-act="wrapped">${svg('spark')}Dein Saisonrückblick</button>` : ''}</section>${viewRanking()}${feedCard()}</div>`;
 }
 function weighInput(slot, label, val, primary) {
   return `<div class="row weighrow"><label class="kgin"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="0,0" aria-label="Gewicht in kg" value="${val ?? ''}"><span aria-hidden="true">kg</span></label><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
@@ -885,7 +907,7 @@ function weighCard(me, p) {
     return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
       <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
-  if (os === null || os < js) return { due: false, html: '' };
+  if (os === null || os < js || me.finished) return { due: false, html: '' };
   if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
     <p class="when">Noch ${cdHtml(slotDeadline(os))} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>${weighInput(os, 'Eintragen', '', true)}</section>` };
   const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
@@ -1028,8 +1050,8 @@ function weeklyCard(me) {
   if (ch) {
     const per = ch.kind === 'daily' ? '1 Punkt pro Tag' : `${Math.round(CONFIG.challengePts / chTarget(ch))} Punkte pro Mal`;
     const lbl = chLabel(ch);
-    const stand = Object.values(C).filter(p => p.active && p.js < w).map(p => ({ p, v: p.weeks[w]?.weekly || 0 })).sort((a, b) => b.v - a.v || a.p.name.localeCompare(b.p.name));
-    if (cw > 0 && me.active) aside = `<span class="aside"><b>${me.weeks[w]?.weekly || 0}</b>/${CONFIG.challengePts} P.</span>`;
+    const stand = Object.values(C).filter(p => p.active && p.js < w && (cw === 0 || p.weeks[w])).map(p => ({ p, v: p.weeks[w]?.weekly || 0 })).sort((a, b) => b.v - a.v || a.p.name.localeCompare(b.p.name));
+    if (cw > 0 && me.active && !me.finished) aside = `<span class="aside"><b>${me.weeks[w]?.weekly || 0}</b>/${CONFIG.challengePts} P.</span>`;
     inner = `<p class="chtext">${esc(ch.text)}</p>
       <p class="small t2">${cap(lbl)} · ${per} · von ${esc(ch.setByName)}</p>
       ${cw > 0 && stand.length ? chips(stand) : cw === 0 ? '<p class="small muted">Startet am Montag.</p>' : ''}`;
@@ -1076,7 +1098,7 @@ function teamHead(t, hd) {
     <p class="small t2">${state}</p>${who.length ? `<p class="small muted">Dabei: ${andJoin(who)}</p>` : ''}`;
 }
 function teamEntry(t, me) {
-  if (!me?.active || t.closed) return '';
+  if (!me?.active || me.finished || t.closed) return '';
   const today = dayIdx();
   const days = Array.from({ length: CONFIG.backfillDays + 1 }, (_, i) => today - i).filter(d => etappeOf(weekOfDay(d)) === t.e && teamEditable(d, me.js));
   if (!days.length) return '';
@@ -1104,8 +1126,9 @@ function feedEvents() {
   for (const [id, w] of Object.entries(S.weighins)) {
     const p = C[w.uid]; if (!p || typeof w.lossPct !== 'number') continue;
     const start = w.slot === p.js;
+    const reached = w.slot === p.goalWeek;
     ev.push({ id: 'w' + id, k: 'weigh', t: tsNum(w.ts) || slotStart(w.slot).getTime() + 9 * 36e5, approx: !tsNum(w.ts),
-      html: start ? `${nm(w.uid)} hat das Startgewicht eingetragen` : `${nm(w.uid)} hat gewogen`,
+      html: start ? `${nm(w.uid)} hat das Startgewicht eingetragen` : reached ? `${nm(w.uid)} hat gewogen und das Ziel −${tn(pct(p.goal))} % erreicht` : `${nm(w.uid)} hat gewogen`,
       sub: start ? `startet in Woche ${w.slot + 1}` : `Woche ${w.slot} · ${tn(lossStr(w.lossPct))}${p.weeks[w.slot]?.hold ? (p.weeks[w.slot].inBand ? ' · Haltephase, im Ziel' : ' · Haltephase, daneben') : ''} · +${(p.weeks[w.slot]?.weigh ?? 0) + (p.weeks[w.slot]?.bonus ?? 0)} P.` });
   }
   // Wochenziel geschafft: an dem Tag, dessen Haken das Ziel erreicht hat (Zeit = letzte Änderung dieses Tages)
@@ -1130,6 +1153,7 @@ function feedEvents() {
     if (td.confirmedBy && (ct || rt)) ev.push({ id: 'c' + id, k: 'confirm', t: ct || rt, html: `${nm(td.confirmedBy)} hat die Aufgabe von ${nm(td.uid)} bestätigt`, sub: `${tx} · +${CONFIG.taskPts} P.` });
     else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} geschafft`, sub: 'wartet auf Bestätigung' });
   }
+  for (const p of Object.values(C)) if (p.finished && p.finishedAt) ev.push({ id: 'x' + p.uid, k: 'weigh', t: p.finishedAt, html: `${nm(p.uid)} ist mit erreichtem Ziel ausgestiegen`, sub: frozenLine(p) });
   for (const [w, ch] of Object.entries(S.weekly)) if (tsNum(ch.ts)) ev.push({ id: 'ch' + w, k: 'challenge', t: tsNum(ch.ts), html: `${nm(ch.setBy)} hat die Challenge für Woche ${w} gewählt`, sub: esc(ch.text) });
   for (const [id, x] of Object.entries(S.teamideas)) if (tsNum(x.ts) && x.setBy) ev.push({ id: 'ti' + id, k: 'team', t: tsNum(x.ts), html: `${nm(x.setBy)} hat ein Ziel für den Team-Monat vorgeschlagen`, sub: `Etappe ${x.etappe} · ${esc(x.text)}, ${ideaRate(x)}` });
   for (const t of Object.values(TEAM)) {
@@ -1203,7 +1227,12 @@ function viewRanking() {
       <span class="br">${cols.map(([l, k]) => `<span data-l="${l.replace(/&shy;/g, '')}">${k === 'fee' ? (fee ? eur(fee) : '–') : r[k]}</span>`).join('')}</span>
       <span class="pts"><b>${nf(r.total)}</b><small>${tn(lossStr(r.latest))}</small></span></div>`;
   }).join('');
-  const listCard = `<section class="card" style="--n:${cols.length}">${title}${note}${list.length ? `<div class="rlist">${head}${rows}</div>` : '<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>'}</section>`;
+  // Gesamt: Ausgestiegene mit eingefrorenem Ergebnis in einem eigenen Abschnitt
+  const fin = UI.rankMode === 'gesamt' ? Object.values(C).filter(p => p.active && p.finished).sort((a, b) => (a.goalWeek - a.js) - (b.goalWeek - b.js) || a.name.localeCompare(b.name)) : [];
+  const finHtml = fin.length ? `<h3>Ziel erreicht</h3><div class="rlist fin">${fin.map(p => `<div class="rk${p.uid === S.me ? ' me' : ''}"><span class="pos">${svg('check')}</span>
+      <span class="who"><span class="nm"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)}</span>${p.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}</span><span class="meta"><span>${frozenLine(p)}</span><span>ausgestiegen nach Woche ${p.fw}</span></span></span>
+      <span class="br"></span><span class="pts"><b>${nf(frozenPts(p))}</b><small>eingefroren</small></span></div>`).join('')}</div>` : '';
+  const listCard = `<section class="card" style="--n:${cols.length}">${title}${note}${list.length ? `<div class="rlist">${head}${rows}</div>` : '<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>'}${finHtml}</section>`;
   const ps = Object.values(C).filter(p => p.active);
   CHARTS.points = { series: pointsSeries(), yFmt: v => nf(v), xFmt: k => k === 0 ? 'Start' : 'W' + k, tip: v => nf(v) + ' P.', tipHead: k => k === 0 ? 'Start' : `Woche ${k} · bis ${fmtD(dayDate(7 * k - 1))}`, xMin: 4, hi: 10, hl: S.me, aria: 'Punkte aufsummiert pro Woche' };
   const chartCard = ps.length ? `<section class="card only-wide"><div class="hd"><h2>Punkte, aufsummiert</h2><span class="aside">pro Woche</span></div><div class="chart" data-chart="points"></div>${legend(ps)}</section>` : '';
@@ -1213,7 +1242,7 @@ function pointsSeries() {
   const last = clamp(curWeek(), 1, CONFIG.weeks);
   return Object.values(C).filter(p => p.active && p.js < last).map(p => {
     const pts = [[p.js, 0]]; let cum = 0;
-    for (let w = p.js + 1; w <= last; w++) {
+    for (let w = p.js + 1; w <= (p.finished ? Math.min(last, p.fw) : last); w++) {
       cum += p.weeks[w]?.total || 0;
       for (let e = 1; e <= NUM_ETAPPEN; e++) if (Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks, last) === w) cum += (p.taskPts[e] || 0) + (p.teamPts[e] || 0);
       pts.push([w, cum]);
@@ -1228,11 +1257,12 @@ function viewKasse(etNav) {
   const po = pot(C);
   const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
   let sumE = 0, sumG = 0;
-  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.habitWeeks, CONFIG.habitFee)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  const ref = po.refunds > 0; // Spalte "Einsatz zurück" nur, wenn jemand ausgestiegen ist
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td>${ref ? `<td>${f.refund ? `<span class="ok">−${eur(f.refund)}</span>` : '–'}</td>` : ''}<td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.habitWeeks, CONFIG.habitFee)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
   return `<section class="card">${etNav(e)}
-    ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th><th>Wiegen verpasst</th><th>Wochenziele verfehlt</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
-    <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
-    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz, ${po.missed}× Wiegen verpasst, ${po.habitWeeks}× Wochenziele verfehlt, ${po.losers}× Letzter).</p></section>`;
+    ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th>${ref ? '<th>Einsatz zurück</th>' : ''}<th>Wiegen verpasst</th><th>Wochenziele verfehlt</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
+    <tr class="sum"><td>Summe</td><td></td>${ref ? '<td></td>' : ''}<td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
+    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz${ref ? `, ${po.refunds}× Einsatz zurück (Ziel erreicht, ausgestiegen)` : ''}, ${po.missed}× Wiegen verpasst, ${po.habitWeeks}× Wochenziele verfehlt, ${po.losers}× Letzter).</p></section>`;
 }
 
 /* ---------- CHALLENGES ---------- */
@@ -1241,11 +1271,12 @@ function viewChallenges() {
   if (UI.etView === null) UI.etView = ce;
   const e = UI.etView;
   const tasks = Object.entries(S.tasks).filter(([, t]) => t.etappe === e).sort((a, b) => tsNum(a[1].ts) - tsNum(b[1].ts));
-  const ed = taskEditable(e) && S.member;
+  const ed = taskEditable(e) && S.member && !C[S.me]?.finished;
   const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
   const nav = navBar('ev', e, 1, ce, `Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}`);
-  const nAct = Object.values(C).filter(p => p.active || p.uid === S.me).length;
-  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${tasks.length}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>`;
+  // Ausgestiegene zählen nicht mehr mit (weder bei den Spielern noch bei den gestellten Aufgaben)
+  const nAct = Object.values(C).filter(p => (p.active || p.uid === S.me) && !p.finished).length, nSet = tasks.filter(([, t]) => !C[t.createdBy]?.finished).length;
+  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
   for (const [id, t] of tasks) {
     const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
@@ -1428,7 +1459,7 @@ function goalCard(me) {
   return `<section class="card goal${done ? ' done' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
     <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %${goalKg ? ` · ${tn(fmt1(goalKg))} kg` : ''}` : 'noch kein Ziel'}</small></div></div>
     <p class="small t2">${txt}</p>
-    ${form}${tiles}
+    ${form}${exitBtn(me)}${tiles}
     ${seasonOver() && act ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
 }
 function kgCard(me) {
@@ -1619,6 +1650,19 @@ function profileHtml(fresh) {
     ${code}
     ${DEMO ? '' : `<h3>Konto</h3><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
 }
+function exitHtml(fresh) {
+  const me = C[S.me]; if (!canExit(me)) return '';
+  const f = fees(me, null), fw = Math.max(...Object.keys(me.wb).map(Number));
+  return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet confirm" data-stop role="alertdialog" aria-modal="true" aria-labelledby="xTitle" tabindex="-1">
+    <div class="hd"><h2 id="xTitle">Wirklich aussteigen?</h2><button class="iconbtn" data-act="closeModal" aria-label="Abbrechen">${svg('close')}</button></div>
+    <p class="t2">Ziel −${tn(pct(me.goal))} % erreicht nach ${wochen(me.goalWeek - me.js)}, aktuell <b>${tn(lossStr(me.latest))}</b>.</p>
+    <ul class="small t2 xlist">
+      <li>Dein Ergebnis wird nach Woche ${fw} eingefroren und steht in der Gesamtwertung unter „Ziel erreicht“.</li>
+      <li>Du bekommst deinen Einsatz zurück (${eur(CONFIG.einsatz)}).${f.strafen ? ` Deine Strafen bis jetzt (${eur(f.strafen)}) bleiben im Topf.` : ''}</li>
+      <li>Ab dann keine Punkte, keine Strafen, keine Erinnerungen und kein Wochen- oder Etappenranking mehr. Den Topf kannst du nicht mehr gewinnen.</li>
+      <li><b>Das lässt sich nicht rückgängig machen.</b> Wer bleibt, ist in der Haltephase und muss nur montags wiegen.</li></ul>
+    <div class="row wrapr"><button class="btn danger" data-act="exitDo" data-w="${fw}">Aussteigen</button><button class="btn ghost" data-act="closeModal">Doch bleiben</button></div></div></div>`;
+}
 function renderModal() {
   const m = document.getElementById('modal');
   const k = S.member && S.synced ? UI.modal : null;
@@ -1626,7 +1670,7 @@ function renderModal() {
   const fresh = m.dataset.k !== k;
   if (k === 'wrapped' && !fresh) return; // nicht neu zeichnen, sonst laufen Animationen und Zähler erneut
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
-  const html = k === 'wrapped' ? wrappedHtml(fresh) : profileHtml(fresh);
+  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : profileHtml(fresh);
   if (!html) { UI.modal = null; renderModal(); return; }
   m.innerHTML = html; m.dataset.k = k; document.body.classList.add('locked');
   if (!fresh) { const sh = m.querySelector('.sheet'); if (sh) sh.scrollTop = sc; return; }
@@ -1750,6 +1794,12 @@ document.addEventListener('click', async ev => {
       }
       case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
       case 'profile': UI.modal = 'profile'; renderModal(); break;
+      case 'exitAsk': UI.modal = 'exit'; renderModal(); break;
+      case 'exitDo': {
+        if (!canExit(C[S.me])) { UI.modal = null; renderModal(); return toast('Aussteigen geht gerade nicht.'); }
+        UI.modal = null; renderModal(); await DB.finish(+el.dataset.w);
+        toast('Ausgestiegen. Ziel erreicht, Einsatz kommt zurück. Glückwunsch!'); celebrate(); break;
+      }
       case 'closeModal': UI.modal = null; renderModal(); break;
       case 'push': await DB.enablePush(); renderModal(); break;
       case 'pushOff': await DB.disablePush(); renderModal(); break;

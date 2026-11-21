@@ -61,6 +61,7 @@ async function main() {
   const exists = async path => (await db.doc(path).get()).exists;
   for (const p of players) {
     const js = p.joinedSlot || 0;
+    if (p.status === 'finished') continue; // mit erreichtem Ziel ausgestiegen: keine Erinnerungen mehr
     if (KIND === 'test') { out.push({ p, title: 'Test', body: 'Erinnerungen kommen auf diesem Gerät an.' }); continue; }
     if (KIND === 'weigh') {
       const k = FORCE && !Number.isInteger(slot) ? Math.ceil(slot) : slot;
