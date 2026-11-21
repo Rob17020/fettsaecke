@@ -642,7 +642,7 @@ async function makeFirebaseDB(cfg, emit) {
    UI
    ===================================================================== */
 let S = emptyState(), C = {}, DB = null, CHARTS = {};
-const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: null, tmDay: null };
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: null, tmDay: null, obStep: 0, obDone: false };
 // Desktop: Seitenleiste, "Ich" und "Verlauf" sind ein Tab
 const DESK = matchMedia('(min-width:1025px)');
 const isDesk = () => DESK.matches;
@@ -668,6 +668,7 @@ function onState(ns) {
   }
   checkMilestones();
   checkWrapped();
+  checkOnboarding();
   render();
 }
 
@@ -708,6 +709,15 @@ function celebrate() {
   const r = Math.random;
   fx.innerHTML = Array.from({ length: 90 }, (_, i) => `<i style="--x:${(r() * 100).toFixed(1)}vw;--dx:${((r() - .5) * 40).toFixed(1)}vw;--r:${Math.round(r() * 1080 - 540)}deg;--d:${(1.8 + r() * 1.6).toFixed(2)}s;--delay:${(r() * .4).toFixed(2)}s;--w:${4 + Math.round(r() * 6)}px;background:${cols[i % cols.length]}"></i>`).join('');
   clearTimeout(celebrate._t); celebrate._t = setTimeout(() => { fx.innerHTML = ''; }, 4200);
+}
+function checkOnboarding() { // Einführung einmal nach dem Beitreten (bzw. für alle, die sie noch nicht gesehen haben)
+  const p = S.players[S.me];
+  if (!S.member || !S.synced || !p || p.onboardingDone || UI.obDone || UI.modal) return;
+  UI.modal = 'onboarding'; UI.obStep = 0;
+}
+function closeModal() {
+  if (UI.modal === 'onboarding') { UI.obDone = true; if (!S.players[S.me]?.onboardingDone) DB.updatePlayer({ onboardingDone: true }).catch(() => { }); }
+  UI.modal = null; renderModal();
 }
 function checkWrapped() { // Saisonrückblick einmal automatisch öffnen, danach per Knopf
   const me = C[S.me];
@@ -1599,7 +1609,7 @@ function runCountUps(root) {
 function viewRegeln() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
   const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
-  return `<section class="card rules"><div class="hd"><h2>Regeln</h2></div><div class="rcols">
+  return `<section class="card rules"><div class="hd"><h2>Regeln</h2>${S.member ? '<button class="link" data-act="obOpen">Einführung nochmal ansehen</button>' : ''}</div><div class="rcols">
   <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p></div>
   <div class="rs"><h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
    <li>Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
@@ -1668,6 +1678,41 @@ function profileHtml(fresh) {
     ${code}
     ${DEMO ? '' : `<h3>Konto</h3><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
 }
+/* Einführung: 3 Screens, alle Zahlen aus CONFIG */
+function exampleWeek() { // eine realistische Woche: 0,6 % runter, Gewohnheiten fast geschafft, Challenge 3×
+  const tenths = Math.min(6, CONFIG.weighMaxTenths), weigh = tenths * CONFIG.weighPerTenth;
+  const hs = [['Kochen statt Lieferdienst', 3, 4], ['Keine Softdrinks', 6, 7], ['1× 10 km laufen', 1, 1]];
+  const habits = hs.reduce((a, [, d, t]) => a + habitPts(d, t), 0), ch = challengePoints({ kind: 'daily' }, 3), total = weigh + habits + ch;
+  const seg = (v, c, l) => `<i style="flex:${v};background:${c}" title="${l} ${v}"></i>`;
+  return `<div class="obex"><div class="obbar">${seg(weigh, 'var(--pink)', 'Waage')}${seg(habits, 'var(--lime)', 'Gewohnheiten')}${seg(ch, 'var(--cyan)', 'Challenge')}</div>
+    <ul class="rlegend obleg"><li style="--c:var(--pink)"><b>${weigh}</b>Waage: −${fmt1(tenths / 10)} % unter dem Tiefstwert</li>
+    <li style="--c:var(--lime)"><b>${habits}</b>Gewohnheiten: ${hs.map(([n, d, t]) => `${d}/${t}`).join(', ')}</li>
+    <li style="--c:var(--cyan)"><b>${ch}</b>Challenge: 3 Tage</li>
+    <li class="obsum"><b>${total}</b>Punkte, davon ${Math.round(weigh / total * 100)} % von der Waage</li></ul></div>`;
+}
+function onboardingHtml(fresh) {
+  const n = 3, st = clamp(UI.obStep, 0, n - 1), wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, me = C[S.me];
+  const screens = [
+    ['Punkte', `<p class="t2">Jede Woche zählt neu. So kommen die Punkte zusammen:</p>
+      <ul class="small t2 xlist"><li><b>Waage:</b> ${CONFIG.weighPerTenth} Punkte pro 0,1 % unter deinem bisherigen Tiefstwert, max. ${wMax} pro Woche.</li>
+      <li><b>Gewohnheiten:</b> 3 eigene mit eigenem Wochenziel (1–7×), je bis zu ${CONFIG.habitMaxPts} Punkte, anteilig.</li>
+      <li><b>Wochen-Challenge:</b> bis zu ${CONFIG.challengePts} Punkte, der Wochenletzte sucht sie aus.</li>
+      <li><b>Extra-Aufgaben:</b> +${CONFIG.taskPts} pro geschaffter Aufgabe, ein anderer bestätigt. Team-Monat: +${CONFIG.teamPts}, wenn alle Ziele klappen.</li></ul>
+      <h3>Eine realistische Woche</h3>${exampleWeek()}`],
+    ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<p class="t2">Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, gleiche Waage, Foto in die Gruppe. Die anderen sehen nur Prozente, nie deine kg.</p>
+      <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf.</p>
+      <p class="t2">Dein Ziel${me?.goal ? ` (−${tn(pct(me.goal))} %)` : ''} ist ab dem Startgewicht fest: Erreichst du es, hältst du es in der Haltephase (nur noch montags wiegen) oder steigst aus und bekommst deinen Einsatz zurück.</p>`],
+    ['Kasse', `<p class="t2"><b>${eur(CONFIG.einsatz)} Einsatz</b> zahlt jeder einmal. Dazu kommen:</p>
+      <ul class="small t2 xlist"><li><b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen</li><li><b>${eur(CONFIG.habitFee)}</b> pro Woche, in der nicht alle 3 Wochenziele geschafft sind</li><li><b>${eur(CONFIG.loserFee)}</b> für den Wochenletzten</li></ul>
+      <p class="t2">Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} bekommt den ganzen Topf. Wer was zahlt, steht unter <b>Ranking → Kasse</b>.</p>`],
+  ];
+  const [title, body] = screens[st];
+  return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet ob" data-stop role="dialog" aria-modal="true" aria-labelledby="obTitle" tabindex="-1">
+    <div class="hd"><span class="obdots" aria-label="Schritt ${st + 1} von ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i === st ? 'on' : ''}"></i>`).join('')}</span><button class="link" data-act="closeModal">Überspringen</button></div>
+    <h2 id="obTitle" class="obt">${title}</h2>${body}
+    <div class="row obnav">${st > 0 ? `<button class="btn ghost" data-act="obNav" data-d="-1">Zurück</button>` : ''}<span class="grow"></span>
+    ${st < n - 1 ? `<button class="btn" data-act="obNav" data-d="1">Weiter</button>` : `<button class="btn" data-act="closeModal">Los geht's</button>`}</div></div></div>`;
+}
 function exitHtml(fresh) {
   const me = C[S.me]; if (!canExit(me)) return '';
   const f = fees(me, null), fw = Math.max(...Object.keys(me.wb).map(Number));
@@ -1688,7 +1733,7 @@ function renderModal() {
   const fresh = m.dataset.k !== k;
   if (k === 'wrapped' && !fresh) return; // nicht neu zeichnen, sonst laufen Animationen und Zähler erneut
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
-  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : profileHtml(fresh);
+  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : profileHtml(fresh);
   if (!html) { UI.modal = null; renderModal(); return; }
   m.innerHTML = html; m.dataset.k = k; document.body.classList.add('locked');
   if (!fresh) { const sh = m.querySelector('.sheet'); if (sh) sh.scrollTop = sc; return; }
@@ -1729,7 +1774,7 @@ document.addEventListener('click', async ev => {
         const k = nextJoinSlot(); if (k === null) return;
         document.activeElement?.blur();
         await DB.register({ name, habits, habitSets: { [etappeOf(k + 1)]: habits }, maxLossPct, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
-        toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} zwischen ${weighHours} eintragen.`); break;
+        break; // danach öffnet sich die Einführung (nennt auch den Starttermin)
       }
       case 'weigh': {
         const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
@@ -1820,7 +1865,9 @@ document.addEventListener('click', async ev => {
         UI.modal = null; renderModal(); await DB.finish(+el.dataset.w);
         toast('Ausgestiegen. Ziel erreicht, Einsatz kommt zurück. Glückwunsch!'); celebrate(); break;
       }
-      case 'closeModal': UI.modal = null; renderModal(); break;
+      case 'closeModal': closeModal(); break;
+      case 'obNav': UI.obStep = clamp(UI.obStep + +el.dataset.d, 0, 2); renderModal(); document.querySelector('#modal .sheet')?.scrollTo(0, 0); break;
+      case 'obOpen': UI.modal = 'onboarding'; UI.obStep = 0; renderModal(); break;
       case 'push': await DB.enablePush(); renderModal(); break;
       case 'pushOff': await DB.disablePush(); renderModal(); break;
       case 'saveProfile': {
@@ -1846,7 +1893,7 @@ document.addEventListener('change', ev => {
 });
 function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh(); }
 document.addEventListener('keydown', ev => {
-  if (ev.key === 'Escape' && UI.modal) { UI.modal = null; renderModal(); return; }
+  if (ev.key === 'Escape' && UI.modal) { closeModal(); return; }
   if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row, .tmentry, .idea')?.querySelector('.btn'); if (b) b.click(); }
 });
 

@@ -645,3 +645,14 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 @media (min-width:1025px){.modal{align-items:stretch;justify-content:flex-end}.sheet{max-width:440px;max-height:none;height:100%;padding:32px 24px;border-width:0 0 0 1px;border-radius:0}.modal.fresh .sheet{animation-name:sheetIn}}
 /* Bestätigung (Aussteigen): auf dem Desktop mittig statt Seitenpanel */
 @media (min-width:1025px){.modal.mid{align-items:center;justify-content:center}.modal.mid .sheet{height:auto;max-width:520px;border-width:1px;border-radius:var(--r)}.modal.mid.fresh .sheet{animation-name:sheetUp}}
+/* Einführung */
+.sheet.ob .obt{font-size:clamp(28px,7vw,40px);font-weight:900;letter-spacing:-.045em;line-height:1}
+.obdots{display:flex;gap:6px}
+.obdots i{width:22px;height:4px;border-radius:2px;background:var(--card-3)}
+.obdots i.on{background:var(--lime);box-shadow:0 0 10px var(--lime-glow)}
+.obnav{padding-top:8px}
+.obex{display:grid;gap:10px;padding:12px;background:var(--card-2);border-radius:var(--r-sm)}
+.obbar{display:flex;gap:3px;height:14px}
+.obbar i{min-width:4px;border-radius:2px}
+.obleg li.obsum{padding-top:6px;border-top:1px solid var(--line-2);color:var(--text)}
+.obleg li.obsum::before{background:transparent}
