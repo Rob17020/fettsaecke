@@ -225,7 +225,15 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .hrow{display:grid;gap:6px}
 .hrow+.hrow{margin-top:10px}
 .hhead .hname{display:none}
-.hname{overflow:hidden;font-size:14px;font-weight:600;line-height:1.3;color:var(--text);text-overflow:ellipsis;white-space:nowrap}
+.hname{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:14px;font-weight:600;line-height:1.3;color:var(--text)}
+.hname .hn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Wochenfortschritt pro Gewohnheit: 2/4 */
+.hp{flex:none;margin-left:auto;font-size:12px;font-weight:800;color:var(--text-2);font-variant-numeric:tabular-nums}
+.hp.ok{color:var(--lime)}.hp.bad{color:var(--blood)}
+.hlist{display:grid;gap:6px;padding:0;list-style:none}
+.hlist li{display:flex;justify-content:space-between;gap:12px;font-weight:600}
+.hlist b{font-size:13px;color:var(--text-2);white-space:nowrap}
+.hin .inp.auto{flex:none;max-width:46%}
 .hcells{display:grid;grid-template-columns:repeat(7,minmax(36px,1fr));gap:6px}
 .dh{display:flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.25;color:var(--muted)}
 .dh b{font-size:13px;font-weight:700;color:var(--text-2)}

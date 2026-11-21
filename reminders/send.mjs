@@ -1,7 +1,7 @@
 // Push-Erinnerungen für den Club der Fettsäcke (läuft per GitHub Actions, siehe .github/workflows/reminders.yml)
 //   node send.mjs                 -> "auto": entscheidet anhand der Uhrzeit in Berlin
 //   node send.mjs --kind=weigh    -> Montag: "Wiegen bis 14 Uhr" an alle, die noch nicht gewogen haben
-//   node send.mjs --kind=habits   -> täglich: "Gewohnheiten noch offen" an alle mit offenen Haken
+//   node send.mjs --kind=habits   -> täglich: "Gewohnheiten noch offen" an alle, deren Wochenziele noch offen sind
 //   node send.mjs --kind=test     -> Testnachricht an alle registrierten Geräte
 //   --dry-run   nur zählen, nichts senden      --force   Zeitfenster und Doppel-Schutz ignorieren
 // Zugang: Umgebungsvariable FIREBASE_SERVICE_ACCOUNT = komplettes Service-Account-JSON (GitHub-Secret, nie committen).
@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
 // Muss zu CONFIG in app.js passen.
-const SEASON = { start: [2026, 11, 23], weeks: 24, deadlineHour: 14, backfillDays: 2, strafe: 5, habitFee: 1 };
+const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, deadlineHour: 14, backfillDays: 2, strafe: 5, habitFee: 1 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';
 
@@ -27,6 +27,16 @@ export function berlin(d = new Date()) {
   const [sy, sm, sd] = SEASON.start;
   return { y, m, d: dd, hour: +p.hour, minute: +p.minute, weekday: p.weekday, date: `${p.year}-${p.month}-${p.day}`, day: Math.round((Date.UTC(y, m - 1, dd) - Date.UTC(sy, sm - 1, sd)) / 864e5) };
 }
+
+// Gewohnheiten wie in app.js: 3 Stück mit Wochenziel (alte Einträge ohne Ziel = 7×), pro Etappe gespeichert
+const normHabits = hs => [0, 1, 2].map(i => { const h = hs?.[i]; return typeof h === 'string' ? { name: h, target: 7 } : { name: String(h?.name || ''), target: Math.min(7, Math.max(1, Math.round(+h?.target) || 7)) }; });
+export function habitsFor(p, w) {
+  const sets = p.habitSets || {}, ks = Object.keys(sets).map(Number).filter(k => k > 0).sort((a, b) => a - b);
+  if (!ks.length) return normHabits(p.habits);
+  const e = Math.max(1, Math.ceil(w / SEASON.etappeWeeks)), k = ks.filter(x => x <= e).pop() ?? ks[0];
+  return normHabits(sets[k]);
+}
+const eur = x => x.toLocaleString('de-DE', { minimumFractionDigits: Math.round(x * 100) % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
 
 async function main() {
   const t = berlin();
@@ -63,11 +73,14 @@ async function main() {
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
-      const log = await db.doc(`habitlogs/${p.uid}_${t.day}`).get();
-      const done = log.exists ? (log.data().done || []) : [];
-      const open = (p.habits || []).filter((_, i) => !done[i]);
+      // Haken dieser Woche zählen (Mo bis heute): offen = Wochenziel noch nicht erreicht und heute noch nicht abgehakt
+      const w = Math.floor(t.day / 7) + 1, d0 = 7 * (w - 1), H = habitsFor(p, w);
+      const logs = await db.getAll(...Array.from({ length: t.day - d0 + 1 }, (_, i) => db.doc(`habitlogs/${p.uid}_${d0 + i}`)));
+      const cnt = [0, 0, 0]; let today = [];
+      for (const s of logs) if (s.exists) { const x = s.data(); (x.done || []).slice(0, 3).forEach((v, i) => { if (v) cnt[i]++; }); if (x.day === t.day) today = x.done || []; }
+      const open = H.map((h, i) => ({ h, i })).filter(({ h, i }) => h.name && cnt[i] < h.target && !today[i]);
       if (!open.length) continue;
-      out.push({ p, title: 'Gewohnheiten noch offen', body: `Heute fehlt noch: ${open.join(', ')}. Nachtragen geht bis zu ${SEASON.backfillDays} Tage, danach kostet der Tag ${SEASON.habitFee} €.` });
+      out.push({ p, title: 'Gewohnheiten noch offen', body: `Diese Woche fehlt noch: ${open.map(({ h, i }) => `${h.name} ${cnt[i]}/${h.target}`).join(', ')}. Nachtragen geht bis zu ${SEASON.backfillDays} Tage, eine Woche ohne alle Ziele kostet ${eur(SEASON.habitFee)}.` });
     }
   }
 
