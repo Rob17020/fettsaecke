@@ -1,0 +1,1577 @@
+/* Club der Fettsäcke – App (ES-Modul, kein Build). Styles: style.css, Hülle: index.html.
+   Nach Änderungen an app.js/style.css in index.html die ?v=… Nummer hochzählen, sonst laden Browser bis zu 10 Min. die alte Datei. */
+
+/* =====================================================================
+   KONFIGURATION – hier anpassen
+   ===================================================================== */
+const CONFIG = {
+  firebase: {
+    apiKey: "AIzaSyBurXm-bT9lu_O_QddU_eUO2MwkjgmXUmo",
+    authDomain: "club-der-fettsaecke.firebaseapp.com",
+    projectId: "club-der-fettsaecke",
+    storageBucket: "club-der-fettsaecke.firebasestorage.app",
+    messagingSenderId: "121079785562",
+    appId: "1:121079785562:web:a808ec1074af013dd49063"
+  },
+  testMode: true,    // TEST: true = Zeit per URL ?now=2026-11-30T09:00 simulierbar. VOR DEM START WIEDER AUF false!
+  start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
+  weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
+  etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
+  einsatz: 10,        // € Einsatz pro Person (einmalig)
+  strafe: 2,          // € pro verpasstem Wiegen
+  loserFee: 1,        // € für den Letzten im Wochenranking
+  deadlineHour: 12,   // Wiegen montags bis 12:00 Uhr
+  chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
+  backfillDays: 2,    // Gewohnheiten bis zu 2 Tage nachtragen
+  weighPerTenth: 3,   // Waage-Punkte pro 0,1 % unter dem bisherigen Tiefstwert
+  weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte)
+  challengePts: 6,    // max. Punkte Wochen-Challenge
+  taskPts: 15,        // Punkte pro Extra-Aufgabe (jeder stellt 1 Aufgabe pro Etappe)
+  teamPts: 10,        // Teamwoche: Punkte für jeden, der etwas eingetragen hat, wenn das Ziel erreicht ist
+  activeEveryMin: 10, // "zuletzt aktiv" höchstens alle 10 Min. speichern
+  vapidKey: '',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
+};
+// Wenn du start/weeks änderst: auch START_MS in firestore.rules und SEASON in reminders/send.mjs anpassen.
+// Zum Ausprobieren ohne Firebase: ?demo an die URL hängen (lokale Daten), ?demo&bots=18 simuliert bis zu 20 Spieler.
+
+/* ===================================================================== */
+const DAY = 864e5;
+const START = new Date(CONFIG.start.y, CONFIG.start.m - 1, CONFIG.start.d);
+const QS = new URLSearchParams(location.search);
+const DEMO = !CONFIG.firebase || QS.has('demo');
+// Spielerfarben: 10 feste, danach im goldenen Winkel verteilt (beliebig viele Spieler)
+const colorOf = i => i < 10 ? `var(--p${i + 1})` : `hsl(${Math.round((i * 137.508) % 360)} 90% 68%)`;
+
+/* ---------- Zeit ---------- */
+let NOW_OVERRIDE = null;
+const now = () => NOW_OVERRIDE ? new Date(NOW_OVERRIDE) : new Date();
+const dayDate = d => new Date(START.getFullYear(), START.getMonth(), START.getDate() + d);
+const dayIdx = (t = now()) => Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - START) / DAY);
+const slotStart = k => dayDate(7 * k);
+const slotDeadline = k => { const x = dayDate(7 * k); x.setHours(CONFIG.deadlineHour); return x; };
+const weekOfDay = d => d < 0 ? 0 : Math.floor(d / 7) + 1;
+const curWeek = () => Math.min(weekOfDay(dayIdx()), CONFIG.weeks + 1); // 0 = vor Start, weeks+1 = vorbei
+const etappeOf = w => Math.max(1, Math.ceil(w / CONFIG.etappeWeeks));
+const NUM_ETAPPEN = Math.ceil(CONFIG.weeks / CONFIG.etappeWeeks);
+function lastClosedSlot() { const t = now(); let k = -1; for (let i = 0; i <= CONFIG.weeks; i++) { if (slotDeadline(i) <= t) k = i; else break; } return k; }
+function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotStart(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
+function nextJoinSlot() { const t = now(); for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
+const seasonOver = () => lastClosedSlot() >= CONFIG.weeks;
+
+/* ---------- Helfer ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const fmt1 = x => x.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf = x => Math.round(x).toLocaleString('de-DE');
+const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const WDL = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+const fmtLong = d => `${WDL[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
+const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
+const eur = x => x.toLocaleString('de-DE') + ' €';
+const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
+const tn = s => String(s).replace(/[,.]/g, m => `<span class="pp">${m}</span>`);
+const andJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
+function countdown(to) {
+  let s = Math.max(0, Math.floor((to - now()) / 1000));
+  const d = Math.floor(s / 86400); s -= d * 86400; const h = Math.floor(s / 3600); s -= h * 3600; const m = Math.floor(s / 60);
+  return d > 0 ? `${d} T ${h} Std` : h > 0 ? `${h} Std ${m} Min` : `${m} Min`;
+}
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3600); }
+function safeLS() { try { const k = '__t'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return localStorage; } catch { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => m[k] = String(v), removeItem: k => delete m[k] }; } }
+const LS = safeLS();
+// Strich-Icons (24er Raster, 1,5 px)
+const I = {
+  heute: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15.2l2 2 4-4"/>',
+  ranking: '<path d="M3 20.5h18M5 20.5v-6h4v6M10 20.5v-12h4v12M15 20.5v-4h4v4"/>',
+  challenges: '<path d="M5.5 21V4M5.5 4.5h12l-2.5 4 2.5 4h-12"/>',
+  verlauf: '<path d="M3.5 4v16.5H21"/><path d="M7 8.5l4 4 3-3 5 5.5"/>',
+  regeln: '<path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12.5h7M9 16.5h7"/>',
+  check: '<path d="M5.5 12.5l4 4 9-9.5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  prev: '<path d="M14.5 6l-6 6 6 6"/>',
+  next: '<path d="M9.5 6l6 6-6 6"/>',
+  flame: '<path d="M12 3c.7 3.3 5.5 5.2 5.5 10.3a5.5 5.5 0 0 1-11 0c0-2.5 1.2-4.1 2.5-5.3.2 1.8 1.1 3 2.2 3.4C10.9 8.7 11.1 5.6 12 3z"/>',
+};
+const svg = (k, c = 'ico') => `<svg class="${c}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${I[k]}</svg>`;
+Object.assign(I, {
+  ich: '<circle cx="12" cy="8" r="3.75"/><path d="M4.5 20.5c.9-4 3.8-6.25 7.5-6.25s6.6 2.25 7.5 6.25"/>',
+  scale: '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M7.5 10.5a5 5 0 0 1 9 0M12 10.5l1.75-2.5"/>',
+  double: '<path d="M2.5 12.5l4 4 8.5-9M11.5 16l.5.5 8.5-9"/>',
+  bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+  team: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19.5c.6-3.2 2.7-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="16.5" cy="9" r="2.5"/><path d="M15.7 14.6c2.5-.2 4.2 1.5 4.8 4.9"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>',
+  spark: '<path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.8 2.8M15.2 15.2L18 18M6 18l2.8-2.8M15.2 8.8L18 6"/>',
+});
+
+/* =====================================================================
+   PUNKTE-LOGIK
+   ===================================================================== */
+let TEAM = {}; // Woche -> Stand der Teamwoche (wird in compute() gesetzt)
+function compute(S) {
+  const C = {};
+  const lc = lastClosedSlot();
+  TEAM = {};
+  for (const w of Object.keys(S.teamgoals || {}).map(Number)) { const t = teamStatus(S, w); if (t) TEAM[w] = t; }
+  const ordered = Object.entries(S.players).sort((a, b) => (tsNum(a[1].joinedAt) - tsNum(b[1].joinedAt)) || a[0].localeCompare(b[0]));
+  const hlBy = {};
+  for (const h of Object.values(S.habitlogs)) (hlBy[h.uid] ||= {})[h.day] = h.done || [];
+  ordered.forEach(([uid, p], idx) => {
+    const js = p.joinedSlot || 0;
+    const wb = {};
+    for (const w of Object.values(S.weighins)) if (w.uid === uid && typeof w.lossPct === 'number') wb[w.slot] = w.lossPct;
+    const active = wb[js] !== undefined;
+    const hl = hlBy[uid] || {};
+    const weeks = {};
+    let best = 0;
+    for (let w = js + 1; w <= CONFIG.weeks; w++) {
+      const has = wb[w] !== undefined;
+      const weigh = has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
+      if (has) best = Math.max(best, wb[w]);
+      let habits = 0, chCnt = 0;
+      for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) { habits += hl[d].slice(0, 3).filter(Boolean).length; if (hl[d][3]) chCnt++; }
+      const weekly = challengePoints(S.weekly[w], chCnt);
+      const t = TEAM[w]; const team = t && t.closed && t.reached && t.by[uid] ? CONFIG.teamPts : 0;
+      weeks[w] = { weigh, habits, weekly, team, chCnt, total: weigh + habits + weekly + team, weighed: has };
+    }
+    const taskPts = {};
+    for (const td of Object.values(S.taskDone)) {
+      const t = S.tasks[td.taskId];
+      if (td.uid === uid && td.confirmedBy && t) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
+    }
+    const missedSlots = [];
+    if (active) for (let k = js + 1; k <= Math.min(lc, CONFIG.weeks); k++) if (wb[k] === undefined) missedSlots.push(k);
+    const missed = missedSlots.length;
+    const slots = Object.keys(wb).map(Number).sort((a, b) => a - b);
+    const latest = slots.length ? wb[slots[slots.length - 1]] : 0;
+    // längste Serie Wiegen ohne Verpassen (für Meilensteine)
+    let run = 0, weighRun = 0;
+    if (active) for (let k = js + 1; k <= CONFIG.weeks; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
+    const x = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, missed, missedSlots, loserWeeks: [], latest, color: colorOf(idx), idx,
+      streak: active ? streakOf(hl, js) : { cur: 0, best: 0, joker: true, jokerDay: null }, weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
+    x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
+    C[uid] = x;
+  });
+  for (let w = 1; w <= Math.min(lc, CONFIG.weeks); w++) for (const u of weekLosers(C, w)) C[u].loserWeeks.push(w);
+  return C;
+}
+function chTarget(ch) { return ch?.kind === 'daily' ? 7 : clamp(ch?.target || 1, 1, 7); }
+function challengePoints(ch, n) {
+  if (!ch || !n) return 0;
+  if (ch.kind === 'daily') return Math.min(n, CONFIG.challengePts);
+  const t = chTarget(ch); return Math.min(n, t) * Math.round(CONFIG.challengePts / t);
+}
+const chLabel = ch => ch.kind === 'daily' ? 'täglich' : chTarget(ch) + '× diese Woche';
+function weekLosers(C, w) { // Letzte(r) einer abgeschlossenen Woche, nur wenn nicht alle gleich
+  const r = rankWeek(C, w); if (r.length < 2) return [];
+  const min = Math.min(...r.map(x => x.total)), max = Math.max(...r.map(x => x.total));
+  return min === max ? [] : r.filter(x => x.total === min).map(x => x.uid);
+}
+function fees(p, e) { // e = Etappe oder null für gesamt
+  const inE = w => e === null || etappeOf(w) === e;
+  const einsatz = p.active && (e === null || etappeOf(p.js + 1) === e) ? CONFIG.einsatz : 0;
+  const missed = p.missedSlots.filter(inE).length, losers = p.loserWeeks.filter(inE).length;
+  return { einsatz, missed, losers, strafen: missed * CONFIG.strafe + losers * CONFIG.loserFee, total: einsatz + missed * CONFIG.strafe + losers * CONFIG.loserFee };
+}
+const fmtDT = d => fmtD(d) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.chooseHours * 3600e3);
+function tsNum(t) { if (!t) return 0; if (typeof t === 'number') return t; if (t.toMillis) return t.toMillis(); if (t.seconds) return t.seconds * 1000; return 0; }
+function sortRank(arr) { return arr.sort((a, b) => b.total - a.total || b.latest - a.latest || a.name.localeCompare(b.name)); }
+function rankWeek(C, w) {
+  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
+}
+function rankRange(C, wFrom, wTo, etappen) {
+  return sortRank(Object.values(C).filter(p => p.active && p.js < wTo).map(p => {
+    const r = { uid: p.uid, name: p.name, color: p.color, latest: p.latest, weigh: 0, habits: 0, weekly: 0, team: 0, tasks: 0, missed: p.missed };
+    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits; r.weekly += p.weeks[w].weekly; r.team += p.weeks[w].team; }
+    for (const e of etappen) r.tasks += p.taskPts[e] || 0;
+    r.total = r.weigh + r.habits + r.weekly + r.team + r.tasks;
+    return r;
+  }));
+}
+const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
+const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
+function pot(C) { const r = { total: 0, players: 0, missed: 0, losers: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.missed += f.missed; r.losers += f.losers; } return r; }
+function weeklySetters(C, w) { // null = jeder, [] = noch offen
+  if (w <= 1) return null;
+  if (lastClosedSlot() < w - 1) return [];
+  const r = rankWeek(C, w - 1); if (!r.length) return null;
+  const min = Math.min(...r.map(x => x.total)); return r.filter(x => x.total === min).map(x => x.uid);
+}
+function canSetWeekly(S, C, w) {
+  if (S.weekly[w] || w < 1 || w > CONFIG.weeks) return false;
+  const cw = curWeek();
+  if (w === 1) return cw <= 1;
+  if (cw !== w || now() < slotDeadline(w - 1)) return false; // erst nach dem Wiegen
+  if (now() >= exclusiveUntil(w)) return true;                // danach: jeder, wer zuerst kommt
+  const s = weeklySetters(C, w); return s === null || s.includes(S.me);
+}
+const habitsEditable = () => { const cw = curWeek(); return cw === 0 || (cw <= CONFIG.weeks && (cw - 1) % CONFIG.etappeWeeks === 0); };
+function taskEditable(e) { const cw = curWeek(); if (cw === 0) return e === 1; const end = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks); return (etappeOf(cw) === e && cw <= CONFIG.weeks) || (now() < slotDeadline(end)); }
+
+/* ---------- Teamwoche ---------- */
+function teamStatus(S, w) {
+  const g = S.teamgoals?.[w]; if (!g || !(w >= 1 && w <= CONFIG.weeks)) return null;
+  const by = {}; let sum = 0;
+  for (const l of Object.values(S.teamlogs || {})) {
+    if (l.day < 7 * (w - 1) || l.day >= 7 * w) continue;
+    const v = g.kind === 'count' ? (l.value > 0 ? 1 : 0) : Math.max(0, +l.value || 0);
+    if (!v) continue;
+    by[l.uid] = (by[l.uid] || 0) + v; sum += v;
+  }
+  return { goal: g, by, sum, reached: sum >= g.target, closed: lastClosedSlot() >= w };
+}
+const teamFmt = (g, v) => g.kind === 'count' ? `${nf(v)}×` : `${nf(v)}${g.unit ? ' ' + esc(g.unit) : ''}`;
+function canSetTeam(w) { const cw = curWeek(); return S.member && w >= 1 && w <= CONFIG.weeks && !S.teamgoals[w] && (cw === 0 ? w === 1 : w === cw + 1); }
+function teamEditable(d, js) { // eigener Wert für Tag d: Nachtragefenster wie Gewohnheiten, aber nur bis zum Wiegen am Montag
+  const today = dayIdx(), w = weekOfDay(d);
+  return d >= 0 && d <= today && d >= today - CONFIG.backfillDays && d >= 7 * js && w <= CONFIG.weeks && now() < slotDeadline(w);
+}
+
+/* ---------- Streak, Meilensteine, Aktivität ---------- */
+function streakOf(hl, js) { // Tage am Stück mit allen 3 Gewohnheiten; 1 Joker pro Etappe rettet den ersten verpassten Tag
+  const today = dayIdx(), end = Math.min(today, CONFIG.weeks * 7 - 1);
+  let cur = 0, best = 0; const used = {};
+  for (let d = 7 * js; d <= end; d++) {
+    if ((hl[d] || []).slice(0, 3).filter(Boolean).length === 3) { best = Math.max(best, ++cur); continue; }
+    if (d === today) continue; // heute läuft noch
+    const e = etappeOf(weekOfDay(d));
+    if (cur > 0 && used[e] === undefined) { used[e] = d; continue; }
+    cur = 0;
+  }
+  const ce = etappeOf(clamp(curWeek(), 1, CONFIG.weeks));
+  return { cur, best, joker: used[ce] === undefined, jokerDay: used[ce] ?? null };
+}
+const MILESTONES = [
+  { id: 'l2', cat: 'l', n: 2, label: '−2 %' }, { id: 'l5', cat: 'l', n: 5, label: '−5 %' }, { id: 'l7', cat: 'l', n: 7.5, label: '−7,5 %' }, { id: 'l10', cat: 'l', n: 10, label: '−10 %' },
+  { id: 'w4', cat: 'w', n: 4, label: '4 Wochen ohne verpasstes Wiegen', short: '4 Wochen' },
+  { id: 'w10', cat: 'w', n: 10, label: '10 Wochen ohne verpasstes Wiegen', short: '10 Wochen' },
+  { id: 'w20', cat: 'w', n: 20, label: '20 Wochen ohne verpasstes Wiegen', short: '20 Wochen' },
+  { id: 's7', cat: 's', n: 7, label: 'Streak 7 Tage', short: '7-Tage-Streak' },
+  { id: 's30', cat: 's', n: 30, label: 'Streak 30 Tage', short: '30-Tage-Streak' },
+].map(m => ({ ...m, test: x => (m.cat === 'l' ? x.bestLoss : m.cat === 'w' ? x.weighRun : x.streak.best) >= m.n - 1e-9 }));
+const MS_BY = Object.fromEntries(MILESTONES.map(m => [m.id, m]));
+const topMilestones = p => ['l', 'w', 's'].map(c => MILESTONES.filter(m => m.cat === c && p.ms.includes(m.id)).pop()).filter(Boolean);
+function activity(ts) {
+  if (!ts) return null;
+  const d = Math.max(0, dayIdx() - dayIdx(new Date(ts)));
+  return d === 0 ? { t: 'heute aktiv' } : d === 1 ? { t: 'gestern aktiv' } : { t: `seit ${d} Tagen still`, still: true };
+}
+
+/* =====================================================================
+   DATENSCHICHT: Demo (lokal) und Firebase
+   ===================================================================== */
+// myGoal: privates Ziel in % (Feld goal in players/{uid}/private/weights, nur für den Besitzer lesbar)
+const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {}, myWeights: {}, myGoal: null });
+
+function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
+
+function makeDemoDB(emit) {
+  const KEY = 'cdf-demo-v1';
+  const ME = 'demo-me';
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {}, myWeights: {}, goal: null, push: false });
+  let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
+  mine = { ...blank(), ...(mine || {}) };
+  const save = () => LS.setItem(KEY, JSON.stringify(mine));
+  const BASE = [
+    { uid: 'bot-siggi', name: 'Siggi', start: 104.6, trend: 0.75, disc: 0.75, habits: ['10.000 Schritte', 'Kein Fast Food', 'Kein Zucker nach 18 Uhr'], joined: 1, idle: 2 / 24 },
+    { uid: 'bot-julian', name: 'Julian', start: 91.2, trend: 0.55, disc: 0.6, habits: ['Training (min. 45 Min)', 'Kein Alkohol', '2 L Wasser'], joined: 2, idle: 3 },
+  ];
+  // ?bots=N: mehr simulierte Mitspieler (bis 20), um die Oberfläche mit vielen Leuten zu prüfen
+  const EXTRA = ['Mehmet', 'Lena', 'Tobi', 'Kathi', 'Jonas', 'Ali', 'Sarah', 'Paul', 'Nico', 'Jana', 'Ben', 'Marie', 'Felix', 'Anna', 'Lukas', 'Mia', 'Emre', 'Tim'];
+  const HAB = [['8.000 Schritte', 'Kein Zucker', 'Vor 23 Uhr schlafen'], ['Kein Bier unter der Woche', '30 Min Bewegung', 'Gemüse zu jeder Mahlzeit'], ['Treppe statt Aufzug', 'Kein Snack nach 20 Uhr', '3 L Wasser']];
+  const nBots = clamp(parseInt(QS.get('bots'), 10) || 2, 2, 2 + EXTRA.length);
+  const BOTS = [...BASE, ...EXTRA.map((name, i) => ({ uid: 'bot-' + name.toLowerCase(), name, start: 78 + (i * 7.3) % 42, trend: .25 + (i * .37) % .65, disc: .4 + (i * .13) % .5, habits: HAB[i % 3], joined: 3 + i, idle: (i % 6) * .8 }))].slice(0, nBots);
+  const WEEKLY_TXT = [{ text: 'Treppe statt Aufzug', kind: 'daily' }, { text: '2× Sport (min. 45 Min)', kind: 'count', target: 2 }, { text: 'Kein Lieferdienst', kind: 'daily' }, { text: '1× 5 km laufen', kind: 'count', target: 1 }, { text: '20 Min spazieren', kind: 'daily' }];
+  const TEAM_TXT = { 2: { text: '200.000 Schritte gemeinsam', kind: 'sum', target: 200000, unit: 'Schritte' }, 3: { text: '300.000 Schritte gemeinsam', kind: 'sum', target: 300000, unit: 'Schritte' }, 5: { text: '15× 30 Min Sport gemeinsam', kind: 'count', target: 15, unit: '' } };
+  function seed() {
+    const S = { players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {} };
+    const t = now(), tn = t.getTime() - 6e4, today = dayIdx(t), lc = lastClosedSlot(), os = openSlot();
+    const past = ms => Math.min(ms, tn); // simulierte Zeitstempel nie in der Zukunft
+    for (const b of BOTS) {
+      S.players[b.uid] = { name: b.name, habits: b.habits, joinedSlot: 0, joinedAt: b.joined, lastActive: t.getTime() - b.idle * DAY };
+      const r = rng(b.uid); let kg = b.start;
+      for (let k = 0; k <= CONFIG.weeks; k++) {
+        const due = k <= lc || (os === k && b.uid === 'bot-siggi');
+        if (!due) break;
+        if (k > 0) kg += -b.start * b.trend / 100 + (r() - 0.45) * 0.9;
+        if (k > 0 && r() < 0.07) continue; // verpasst
+        const ts = past(slotStart(k).getTime() + (6 + rng(b.uid + 'w' + k)() * 5) * 36e5);
+        S.weighins[b.uid + '_' + k] = { uid: b.uid, slot: k, lossPct: Math.round((b.start - kg) / b.start * 10000) / 100, ts };
+      }
+      for (let d = 0; d <= today && d < CONFIG.weeks * 7; d++) {
+        const rr = rng(b.uid + d), r2 = rng(b.uid + 'h' + d);
+        const done = [rr() < b.disc, rr() < b.disc - .1, rr() < b.disc + .1, rr() < b.disc - .2];
+        const late = d < today && r2() < .12; // manchmal am nächsten Morgen nachgetragen
+        const ts = late ? dayDate(d + 1).getTime() + (7 + r2() * 4) * 36e5 : dayDate(d).getTime() + (d === today ? 7 + r2() * 15 : 18 + r2() * 5) * 36e5;
+        if (ts > tn) continue; // heute erst, wenn es schon passiert ist
+        S.habitlogs[b.uid + '_' + d] = { uid: b.uid, day: d, done, ts };
+      }
+    }
+    for (let w = 1; w <= Math.min(curWeek(), CONFIG.weeks); w++) {
+      if (mine.weekly[w]) continue;
+      if (w === curWeek() && w > 1 && dayIdx() === 7 * (w - 1)) continue; // Montag: der Wochenletzte ist dran
+      const ts = past(w === 1 ? dayDate(-2).getTime() + 20 * 36e5 : slotDeadline(w - 1).getTime() + (1 + (w % 3)) * 36e5);
+      S.weekly[w] = { ...WEEKLY_TXT[(w - 1) % WEEKLY_TXT.length], setBy: w % 2 ? 'bot-julian' : 'bot-siggi', setByName: w % 2 ? 'Julian' : 'Siggi', ts };
+    }
+    for (const [w, g] of Object.entries(TEAM_TXT)) if (+w <= curWeek() && !mine.teamgoals[w]) S.teamgoals[w] = { ...g, week: +w, setBy: 'bot-julian', setByName: 'Julian', ts: past(dayDate(7 * (+w - 1) - 3).getTime() + 20 * 36e5) };
+    for (const b of BOTS) for (let d = 0; d < today && d < CONFIG.weeks * 7; d++) {
+      const w = weekOfDay(d), g = S.teamgoals[w] || mine.teamgoals[w]; if (!g) continue;
+      const rr = rng(b.uid + 't' + d); if (rr() < .15) continue;
+      S.teamlogs[b.uid + '_' + d] = { uid: b.uid, day: d, week: w, value: g.kind === 'count' ? 1 : Math.round((7000 + rr() * 7000) / 100) * 100 };
+    }
+    const ce = curWeek() >= 1 ? etappeOf(Math.min(curWeek(), CONFIG.weeks)) : 0;
+    for (let e = 1; e <= ce; e++) {
+      const e0 = 7 * CONFIG.etappeWeeks * (e - 1), into = today - e0, open = e === ce;
+      const at = (dd, h) => past(dayDate(e0 + dd).getTime() + h * 36e5);
+      const ta = 'e' + e + '_bot-siggi', tb = 'e' + e + '_bot-julian';
+      S.tasks[ta] = { etappe: e, text: '2× 5 km laufen', createdBy: 'bot-siggi', createdByName: 'Siggi', ts: at(0, 19) };
+      if (!open || into > 6) S.taskDone[ta + '_bot-siggi'] = { uid: 'bot-siggi', taskId: ta, confirmedBy: 'bot-julian', confirmedByName: 'Julian', ts: at(5, 20), confirmedAt: at(6, 8) };
+      if (!open || into > 10) {
+        S.tasks[tb] = { etappe: e, text: '1 Stunde schwimmen', createdBy: 'bot-julian', createdByName: 'Julian', ts: at(1, 12) };
+        S.taskDone[tb + '_bot-julian'] = { uid: 'bot-julian', taskId: tb, confirmedBy: null, ts: at(10, 18) };
+      }
+      // weitere Bots machen Siggis Aufgabe mit (nur bei ?bots=…)
+      BOTS.slice(2).forEach((b, i) => {
+        if (i % 3 || (open && into <= 8 + i)) return;
+        S.taskDone[ta + '_' + b.uid] = { uid: b.uid, taskId: ta, confirmedBy: i % 2 ? null : 'bot-siggi', confirmedByName: i % 2 ? null : 'Siggi', ts: at(8 + (i % 5), 17), confirmedAt: i % 2 ? null : at(9 + (i % 5), 9) };
+      });
+    }
+    return S;
+  }
+  function state() {
+    const s = seed();
+    const S = { ...emptyState(), ready: true, synced: true, authed: true, me: ME };
+    S.member = !!mine.player;
+    for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'teamgoals', 'teamlogs']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
+    if (mine.player) S.players[ME] = mine.player;
+    S.myWeights = { ...mine.myWeights };
+    S.myGoal = typeof mine.goal === 'number' ? mine.goal : null;
+    return S;
+  }
+  const ts = () => now().getTime();
+  const commit = () => { if (mine.player) mine.player.lastActive = ts(); save(); emit(state()); };
+  setTimeout(() => emit(state()));
+  return {
+    demo: true, refresh: () => emit(state()),
+    signIn() { }, signOut() { },
+    reset() { LS.removeItem(KEY); for (const k of ['cdf-ms-', 'cdf-cel-', 'cdf-wrapped-']) LS.removeItem(k + ME); mine = blank(); commit(); },
+    async register(d) { mine.player = { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; commit(); },
+    async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
+    async saveWeigh(slot, kg, lossPct) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; commit(); },
+    async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ts: ts() }; commit(); },
+    async setWeekly(w, text, kind, target) { mine.weekly[w] = { text, kind, target, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
+    async addTask(e, text) { const id = 'e' + e + '_' + ME; mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: ts() }; commit(); },
+    async deleteTask(id) { delete mine.tasks[id]; for (const k of Object.keys(mine.taskDone)) if (k.startsWith(id + '_')) delete mine.taskDone[k]; commit(); },
+    async markTask(id, on) {
+      const k = id + '_' + ME;
+      if (on) { mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null, ts: ts() }; setTimeout(() => { if (mine.taskDone[k]) { Object.assign(mine.taskDone[k], { confirmedBy: 'bot-julian', confirmedByName: 'Julian', confirmedAt: ts() }); commit(); toast('Julian hat deine Aufgabe bestätigt.'); } }, 2500); }
+      else delete mine.taskDone[k];
+      commit();
+    },
+    async confirmTask(tdId) {
+      const td = mine.taskDone[tdId] || null;
+      const c = { confirmedBy: ME, confirmedByName: mine.player.name, confirmedAt: ts() };
+      if (td) Object.assign(td, c);
+      else { // Bot-Eintrag: als eigene Kopie übernehmen
+        const s = seed().taskDone[tdId]; if (s) mine.taskDone[tdId] = { ...s, ...c };
+      }
+      commit();
+    },
+    async setTeamGoal(w, d) { mine.teamgoals[w] = { ...d, week: w, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
+    async setTeamLog(day, week, value) { mine.teamlogs[ME + '_' + day] = { uid: ME, day, week, value }; commit(); },
+    async setGoal(g) { mine.goal = g; commit(); },
+    pushState: () => mine.push ? 'on' : 'off',
+    async enablePush() { mine.push = true; commit(); toast('Demo: Erinnerungen sind nur simuliert, es kommt nichts an.'); },
+    async disablePush() { mine.push = false; commit(); toast('Erinnerungen aus.'); },
+  };
+}
+
+// Service Worker (Push + installierbare App). Pfad relativ, damit er unter /fettsaecke/ läuft.
+let SW = null;
+function swReady() {
+  if (!('serviceWorker' in navigator)) return Promise.resolve(undefined);
+  return SW ||= navigator.serviceWorker.register('firebase-messaging-sw.js').then(() => navigator.serviceWorker.ready);
+}
+
+async function makeFirebaseDB(cfg, emit) {
+  const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+  const [A, Au, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  const app = A.initializeApp(cfg);
+  const auth = Au.getAuth(app);
+  const db = F.getFirestore(app);
+  let S = emptyState(); let unsubs = []; let allSubbed = false;
+  const fire = () => emit({ ...S });
+  const fail = e => { console.error(e); toast(e.code === 'permission-denied' ? 'Keine Berechtigung (Regeln/Zeitfenster).' : 'Fehler: ' + (e.message || e)); };
+  function subscribeAll() {
+    if (allSubbed) return; allSubbed = true;
+    // erst rendern/automatisch handeln, wenn ALLE Daten einmal geladen sind
+    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone', 'teamgoals', 'teamlogs', 'private']);
+    const got = n => { if (need.delete(n) && need.size === 0) S.synced = true; };
+    // optional = neue Sammlungen: fehlen die Regeln noch, bleibt die App trotzdem benutzbar
+    // serverTimestamps 'estimate': eigene, noch nicht bestätigte Zeitstempel sind sofort da (Feed-Reihenfolge)
+    const col = (name, optional) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data({ serverTimestamps: 'estimate' })); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; got(name); fire(); },
+      e => { if (optional) { console.warn(name, e.code); S[name] = {}; got(name); fire(); } else fail(e); }));
+    ['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone'].forEach(n => col(n));
+    ['teamgoals', 'teamlogs'].forEach(n => col(n, true));
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => {
+      const d = s.exists() ? s.data() : {};
+      S.myWeights = d.slots || {}; S.myGoal = typeof d.goal === 'number' ? d.goal : null;
+      got('private'); fire();
+    }, fail));
+  }
+  Au.onAuthStateChanged(auth, user => {
+    unsubs.forEach(u => u()); unsubs = []; allSubbed = false; S = emptyState();
+    if (!user) { S.ready = true; fire(); return; }
+    S.authed = true; S.me = user.uid; S.displayName = user.displayName || '';
+    if (LS.getItem('cdf-push-' + user.uid)) messaging().catch(() => { });
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', user.uid), snap => {
+      if (snap.exists()) { S.players = { ...S.players, [user.uid]: snap.data({ serverTimestamps: 'estimate' }) }; S.member = true; subscribeAll(); }
+      else S.member = false;
+      S.ready = true; fire();
+    }, e => { S.ready = true; fail(e); fire(); }));
+  });
+  const me = () => S.me;
+  // "zuletzt aktiv": nach eigenen Schreibvorgängen, höchstens alle CONFIG.activeEveryMin Minuten
+  let lastTouch = 0;
+  const touch = () => {
+    if (!S.member) return;
+    const t = Date.now(), k = 'cdf-active-' + S.me;
+    if (t - Math.max(lastTouch, +LS.getItem(k) || 0, tsNum(S.players[S.me]?.lastActive)) < CONFIG.activeEveryMin * 60e3) return;
+    lastTouch = t; LS.setItem(k, String(t));
+    F.updateDoc(F.doc(db, 'players', S.me), { lastActive: F.serverTimestamp() }).catch(e => console.warn('lastActive', e.code));
+  };
+  const wrap = p => p.then(r => { touch(); return r; }, e => { fail(e); throw e; });
+  // Push (Firebase Cloud Messaging)
+  let msg = null;
+  async function messaging() {
+    if (msg) return msg;
+    const M = await import(base + 'firebase-messaging.js');
+    if (!(await M.isSupported())) return null;
+    msg = { M, m: M.getMessaging(app) };
+    M.onMessage(msg.m, p => toast([p.notification?.title, p.notification?.body].filter(Boolean).join(': ')));
+    return msg;
+  }
+  const pushKey = () => 'cdf-push-' + S.me;
+  return {
+    demo: false,
+    refresh: fire,
+    async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else fail(e); } },
+    signOut: () => Au.signOut(auth),
+    register: d => F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; }),
+    updatePlayer: d => wrap(F.updateDoc(F.doc(db, 'players', me()), d)),
+    saveWeigh(slot, kg, lossPct) {
+      const b = F.writeBatch(db);
+      b.set(F.doc(db, 'weighins', me() + '_' + slot), { uid: me(), slot, lossPct, ts: F.serverTimestamp() });
+      b.set(F.doc(db, 'players', me(), 'private', 'weights'), { slots: { [slot]: kg } }, { merge: true });
+      return wrap(b.commit());
+    },
+    // ts nur für die Reihenfolge im Liveticker (die Regeln prüfen nur uid/day/done)
+    setHabit: (day, done) => wrap(F.setDoc(F.doc(db, 'habitlogs', me() + '_' + day), { uid: me(), day, done, ts: F.serverTimestamp() })),
+    setWeekly: (w, text, kind, target) => F.setDoc(F.doc(db, 'weekly', String(w)), { text, kind, target, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, e => { toast(e.code === 'permission-denied' ? 'Zu spät, jemand anderes war schneller.' : 'Fehler: ' + e.message); throw e; }),
+    addTask: (e, text) => wrap(F.setDoc(F.doc(db, 'tasks', 'e' + e + '_' + me()), { etappe: e, text, createdBy: me(), createdByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
+    deleteTask: id => wrap(F.deleteDoc(F.doc(db, 'tasks', id))),
+    markTask: (id, on) => wrap(on ? F.setDoc(F.doc(db, 'taskDone', id + '_' + me()), { uid: me(), taskId: id, confirmedBy: null, confirmedByName: null, ts: F.serverTimestamp() }) : F.deleteDoc(F.doc(db, 'taskDone', id + '_' + me()))),
+    async confirmTask(tdId) {
+      const ref = F.doc(db, 'taskDone', tdId), d = { confirmedBy: me(), confirmedByName: S.players[me()]?.name || '' };
+      // confirmedAt (Zeitpunkt für den Liveticker) braucht die aktuellen Regeln.
+      // Sind die noch nicht veröffentlicht, lehnt Firestore ab -> ohne Zeitpunkt noch einmal.
+      try { await F.updateDoc(ref, { ...d, confirmedAt: F.serverTimestamp() }); touch(); }
+      catch (e) { if (e.code !== 'permission-denied') { fail(e); throw e; } await wrap(F.updateDoc(ref, d)); }
+    },
+    setGoal: g => wrap(F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goal: g === null ? F.deleteField() : g }, { merge: true })),
+    setTeamGoal: (w, d) => F.setDoc(F.doc(db, 'teamgoals', String(w)), { ...d, week: w, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, e => { toast(e.code === 'permission-denied' ? 'Geht nicht: Für diese Woche gibt es schon ein Teamziel oder das Zeitfenster ist zu.' : 'Fehler: ' + e.message); throw e; }),
+    setTeamLog: (day, week, value) => wrap(F.setDoc(F.doc(db, 'teamlogs', me() + '_' + day), { uid: me(), day, week, value })),
+    pushState: () => LS.getItem(pushKey()) ? 'on' : 'off',
+    async enablePush() {
+      if (!CONFIG.vapidKey) return toast('Erinnerungen sind noch nicht eingerichtet: vapidKey fehlt in CONFIG (siehe README).');
+      const x = await messaging().catch(() => null); if (!x) return toast('Dieser Browser kann keine Push-Nachrichten empfangen.');
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return toast('Benachrichtigungen sind blockiert. Erlaube sie in den Browser-Einstellungen.');
+      const token = await x.M.getToken(x.m, { vapidKey: CONFIG.vapidKey, serviceWorkerRegistration: await swReady() });
+      await F.setDoc(F.doc(db, 'players', me(), 'private', 'tokens'), { tokens: { [token]: { ts: F.serverTimestamp(), ua: navigator.userAgent.slice(0, 120) } } }, { merge: true });
+      LS.setItem(pushKey(), token); fire(); toast('Erinnerungen sind auf diesem Gerät aktiv.');
+    },
+    async disablePush() {
+      const token = LS.getItem(pushKey()); LS.removeItem(pushKey());
+      if (token) {
+        try { const x = await messaging(); if (x) await x.M.deleteToken(x.m); } catch { }
+        await F.updateDoc(F.doc(db, 'players', me(), 'private', 'tokens'), new F.FieldPath('tokens', token), F.deleteField()).catch(() => { });
+      }
+      fire(); toast('Erinnerungen aus.');
+    },
+  };
+}
+
+/* =====================================================================
+   UI
+   ===================================================================== */
+let S = emptyState(), C = {}, DB = null, CHARTS = {};
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: 8 };
+let pendingRender = false, bumping = false, lastTab = null, tabsKey = '';
+const TABS = [['heute', 'Heute'], ['ranking', 'Ranking'], ['challenges', 'Challenges'], ['verlauf', 'Verlauf'], ['ich', 'Ich'], ['regeln', 'Regeln']];
+const TAB_KEYS = TABS.map(t => t[0]);
+const initial = n => esc(String(n || '?').trim().slice(0, 1).toUpperCase() || '?');
+const pct = x => fmt1(x).replace(/,0$/, '');
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function onState(ns) {
+  S = ns; C = compute(S);
+  // Startgewicht verpasst? -> automatisch nächsten Montag starten
+  const p = S.players[S.me];
+  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
+    const k = nextJoinSlot();
+    if (k !== null && k > (p.joinedSlot || 0)) { bumping = true; DB.updatePlayer({ joinedSlot: k }).finally(() => bumping = false); }
+  }
+  checkMilestones();
+  checkWrapped();
+  render();
+}
+
+/* ---------- Meilensteine, Feiern, Saisonrückblick ---------- */
+function seenList(key, cur) { // neue Einträge seit dem letzten Mal; beim allerersten Mal still übernehmen
+  const raw = LS.getItem(key);
+  let seen; try { seen = raw === null ? null : JSON.parse(raw) || []; } catch { seen = []; }
+  if (seen === null) { LS.setItem(key, JSON.stringify(cur)); return []; }
+  const fresh = cur.filter(x => !seen.includes(x));
+  if (fresh.length) LS.setItem(key, JSON.stringify([...new Set([...seen, ...cur])]));
+  return fresh;
+}
+// Konfetti bei jeder 5 % vom Startgewicht (bester Wert) und beim eigenen Ziel
+function celebrationMarks(me) {
+  const out = [];
+  for (let n = 5; n <= me.bestLoss + 1e-9; n += 5) out.push('l' + n);
+  if (S.myGoal && me.active && me.bestLoss >= S.myGoal - 1e-9) out.push('goal' + S.myGoal);
+  return out;
+}
+function checkMilestones() { // einmaliger Toast (und Konfetti), wenn etwas Neues dazukommt
+  const me = C[S.me]; if (!S.member || !S.synced || !me) return;
+  const fresh = seenList('cdf-ms-' + S.me, me.ms);
+  const cel = seenList('cdf-cel-' + S.me, celebrationMarks(me));
+  if (!fresh.length && !cel.length) return;
+  const msgs = fresh.map(id => MS_BY[id].label);
+  for (const m of cel) {
+    if (m.startsWith('goal')) msgs.push(`Dein Ziel −${pct(S.myGoal)} % ist geschafft`);
+    else if (!fresh.includes(m)) msgs.push(`−${m.slice(1)} % vom Startgewicht`);
+  }
+  // kurz nach der Bestätigung des Speicherns zeigen, sonst überschreibt die sie
+  setTimeout(() => { toast((fresh.length ? 'Meilenstein erreicht: ' : '') + msgs.join(', ')); if (cel.length) celebrate(); }, 1600);
+}
+function celebrate() {
+  if (reducedMotion()) return;
+  let fx = document.getElementById('fx');
+  if (!fx) { fx = document.createElement('div'); fx.id = 'fx'; fx.className = 'fx'; fx.setAttribute('aria-hidden', 'true'); document.body.appendChild(fx); }
+  const cols = ['var(--lime)', 'var(--pink)', 'var(--cyan)', 'var(--blood)', '#fff'];
+  const r = Math.random;
+  fx.innerHTML = Array.from({ length: 90 }, (_, i) => `<i style="--x:${(r() * 100).toFixed(1)}vw;--dx:${((r() - .5) * 40).toFixed(1)}vw;--r:${Math.round(r() * 1080 - 540)}deg;--d:${(1.8 + r() * 1.6).toFixed(2)}s;--delay:${(r() * .4).toFixed(2)}s;--w:${4 + Math.round(r() * 6)}px;background:${cols[i % cols.length]}"></i>`).join('');
+  clearTimeout(celebrate._t); celebrate._t = setTimeout(() => { fx.innerHTML = ''; }, 4200);
+}
+function checkWrapped() { // Saisonrückblick einmal automatisch öffnen, danach per Knopf
+  const me = C[S.me];
+  if (!S.member || !S.synced || !me?.active || !seasonOver() || UI.modal) return;
+  const k = 'cdf-wrapped-' + S.me; if (LS.getItem(k)) return;
+  LS.setItem(k, '1'); UI.modal = 'wrapped';
+}
+
+/* ---------- Rendern ---------- */
+function render() {
+  const a = document.activeElement;
+  if (a && a.matches && a.matches('#app input, #app select') && a.value) { pendingRender = true; return; }
+  pendingRender = false;
+  CHARTS = {};
+  const page = S.ready && S.member && S.synced;
+  // Einblend-Animation nur beim Tab-Wechsel, nicht bei jedem Daten-Update
+  const enter = page && lastTab !== UI.tab;
+  const dir = enter && lastTab ? Math.sign(TAB_KEYS.indexOf(UI.tab) - TAB_KEYS.indexOf(lastTab)) : 0;
+  document.getElementById('app').innerHTML = header() + banner() + body(enter, dir);
+  if (page) lastTab = UI.tab;
+  renderTabs();
+  wireCharts();
+  markFeedSeen();
+  if (!document.activeElement?.closest?.('#modal')) renderModal();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) render(); }, 0));
+function renderTabs() {
+  const tabs = document.getElementById('tabs');
+  document.body.classList.toggle('has-nav', !!S.member);
+  if (!S.member) { tabs.hidden = true; tabsKey = ''; return; }
+  const me = S.players[S.me];
+  const html = `<div class="brand"><div class="logo">Club der<br>Fettsäcke</div><div class="sub">${subline().replace(' · Topf', '<br>Topf')}</div></div>
+    <div class="in">${TABS.map(([k, l]) => `<button data-tab="${k}">${svg(k)}<span>${l}</span></button>`).join('')}</div>
+    <button class="prof" data-act="profile"><span class="avatar" aria-hidden="true" style="--pc:${C[S.me]?.color || 'var(--lime)'}">${initial(me?.name)}</span><span><b>${esc(me?.name)}</b><small>Profil und Erinnerungen</small></span></button>`;
+  tabs.hidden = false;
+  // nur neu aufbauen, wenn sich etwas geändert hat, damit die Markierung animiert wandert
+  if (html !== tabsKey) { tabs.innerHTML = html; tabsKey = html; }
+  tabs.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === UI.tab; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+}
+
+function subline() {
+  const cw = curWeek(); const po = pot(C);
+  if (cw === 0) return `Start: ${fmtD(START)} · ${CONFIG.weeks} Wochen`;
+  if (seasonOver()) return `Saison beendet · Topf ${eur(po.total)}`;
+  return `Woche ${Math.min(cw, CONFIG.weeks)}/${CONFIG.weeks} · Etappe ${etappeOf(Math.min(cw, CONFIG.weeks))}/${NUM_ETAPPEN} · Topf ${eur(po.total)}`;
+}
+function header() {
+  const me = S.players[S.me];
+  const m = me && S.member;
+  return `<header class="apphead"><div class="grow"><div class="logo">Club der Fettsäcke</div><div class="sub">${subline()}</div></div>
+    ${m ? `<button class="iconbtn hbtn${UI.tab === 'regeln' ? ' on' : ''}" data-tab="regeln" aria-label="Regeln">${svg('regeln')}</button>
+    <button class="avatar" data-act="profile" aria-label="Profil und Erinnerungen" style="--pc:${C[S.me]?.color || 'var(--lime)'}">${initial(me.name)}</button>` : ''}</header>`;
+}
+function banner() {
+  if (!DEMO && CONFIG.testMode) return `<div class="banner"><b>Testmodus</b> Simulierte Zeit: ${NOW_OVERRIDE ? fmtDT(new Date(NOW_OVERRIDE)) : 'echt'}. Ändern per URL, z. B. ?now=2026-11-30T09:00</div>`;
+  if (!DEMO) return '';
+  const v = NOW_OVERRIDE ? toLocalInput(new Date(NOW_OVERRIDE)) : '';
+  return `<div class="banner"><b>Demo-Modus</b><span>Daten nur in diesem Browser, die anderen sind simuliert.</span>
+    <label class="row">Zeit <input type="datetime-local" id="demoTime" value="${v}"></label>
+    <button class="link" data-act="demoMon">Nächster Mo 9:00</button>
+    <button class="link" data-act="demoReset">Zurücksetzen</button></div>`;
+}
+const toLocalInput = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const navBar = (act, cur, min, max, label) => `<div class="wnav"><button class="iconbtn" data-act="${act}" data-d="-1" ${cur <= min ? 'disabled' : ''} aria-label="Zurück">${svg('prev')}</button><b>${label}</b><button class="iconbtn" data-act="${act}" data-d="1" ${cur >= max ? 'disabled' : ''} aria-label="Weiter">${svg('next')}</button></div>`;
+const weekRange = w => `${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}`;
+const shortRange = w => { const a = dayDate(7 * (w - 1)), b = dayDate(7 * w - 1); return `${a.getDate()}.${a.getMonth() + 1}.–${b.getDate()}.${b.getMonth() + 1}.`; };
+
+function body(enter, dir) {
+  if (!S.ready || (S.member && !S.synced)) return `<p class="loading"><span class="spin" aria-hidden="true"></span>Lade…</p>`;
+  if (!S.authed) return viewLogin();
+  if (!S.member) return viewRegister();
+  const title = { heute: fmtLong(now()), ranking: 'Ranking', challenges: 'Challenges', verlauf: 'Verlauf', ich: 'Mein Fortschritt', regeln: 'Regeln' }[UI.tab];
+  const v = ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, ich: viewIch, regeln: viewRegeln })[UI.tab]();
+  return `<div class="page${enter ? ' enter' : ''}" style="--dir:${dir}"><h1 class="ptitle">${title}</h1>${v}</div>`;
+}
+
+function viewLogin() {
+  const end = dayDate(CONFIG.weeks * 7 - 1);
+  return `<div class="view login"><section class="card hero">
+    <p class="kicker">${CONFIG.weeks} Wochen · ${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}</p>
+    <h1 class="herot">Wer nachlässt, <em>zahlt.</em></h1>
+    <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p>
+    <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div>`;
+}
+function viewRegister() {
+  const k = nextJoinSlot();
+  if (k === null) return `<section class="card narrow"><div class="hd"><h2>Saison vorbei</h2></div><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></section>`;
+  return `<section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
+    <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen 0 und ${CONFIG.deadlineHour} Uhr eintragen. Einsatz: ${eur(CONFIG.einsatz)}.</p>
+    <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
+    <label class="f">Deine 3 Gewohnheiten <span class="muted">(je 1 Punkt pro Tag)</span></label>
+    <div class="stack"><input class="inp" id="rH0" maxlength="40" placeholder="z. B. 8.000 Schritte" aria-label="Gewohnheit 1">
+    <input class="inp" id="rH1" maxlength="40" placeholder="z. B. Kein Fast Food" aria-label="Gewohnheit 2">
+    <input class="inp" id="rH2" maxlength="40" placeholder="z. B. Training oder 30 Min Bewegung" aria-label="Gewohnheit 3"></div>
+    ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
+    <button class="btn full" data-act="register">Beitreten</button>
+    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>`;
+}
+
+/* ---------- Ringe (Apple-Watch-Stil), auch für das Ziel im Tab Ich ---------- */
+function ringSvg(rings, size, sw, gap) {
+  const c = size / 2; let r = c - sw / 2, h = '';
+  for (const x of rings) {
+    const len = 2 * Math.PI * r, p = clamp(x.p || 0, 0, 1);
+    h += `<circle class="rt" cx="${c}" cy="${c}" r="${r.toFixed(2)}" stroke-width="${sw}" style="stroke:${x.c}"/>`;
+    if (p > 0.004) h += `<circle class="rf" cx="${c}" cy="${c}" r="${r.toFixed(2)}" stroke-width="${sw}" transform="rotate(-90 ${c} ${c})" filter="url(#fx-glow)" style="stroke:${x.c};--len:${len.toFixed(1)};stroke-dasharray:${len.toFixed(1)};stroke-dashoffset:${(len * (1 - p)).toFixed(1)}"/>`;
+    r -= sw + gap;
+  }
+  return `<svg class="rings" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">${h}</svg>`;
+}
+// gemeinsamer Glow-Filter für Ringe und Diagrammlinien (SVG-Filter, funktioniert auch in Safari)
+function ensureDefs() {
+  if (document.getElementById('fx-defs')) return;
+  document.body.insertAdjacentHTML('beforeend', `<svg id="fx-defs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <filter id="fx-glow" filterUnits="userSpaceOnUse" x="-200" y="-200" width="4000" height="2000"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs></svg>`);
+}
+
+/* ---------- HEUTE ---------- */
+function viewHeute() {
+  const me = C[S.me]; const p = S.players[S.me];
+  if (seasonOver()) return seasonEnd(me);
+  // Fokus (Grün): montags das Wiegen, sonst die heutige Spalte im Gewohnheiten-Raster
+  const wc = weighCard(me, p);
+  return `<div class="dash"><div class="col a">${wc.html}${statusCard(me)}${loserCard()}</div><div class="col b">${habitsCard(me, p, !wc.due)}</div>
+    <div class="col cf"><div class="col c">${weeklyCard(me)}${teamCard(me)}</div><div class="col f">${feedCard()}</div></div></div>`;
+}
+function seasonEnd(me) {
+  const w = rankTotal(C)[0];
+  return `<div class="view"><section class="card" data-k="rank"><div class="hd"><h2>Saison beendet</h2></div>
+    ${w ? `<p class="lname" style="color:var(--lime);text-shadow:0 0 28px var(--lime-glow)">${esc(w.name)}</p>
+    <p class="t2">gewinnt mit <b>${nf(w.total)} Punkten</b> und ${tn(lossStr(w.latest))} seit Start und kassiert den Topf: <b>${eur(pot(C).total)}</b>.</p>` : ''}
+    ${me?.active ? `<button class="btn" data-act="wrapped">${svg('spark')}Dein Saisonrückblick</button>` : ''}</section>${viewRanking()}${feedCard()}</div>`;
+}
+function weighInput(slot, label, val, primary) {
+  return `<div class="row weighrow"><label class="kgin"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="0,0" aria-label="Gewicht in kg" value="${val ?? ''}"><span aria-hidden="true">kg</span></label><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
+}
+const cdHtml = to => `<b class="cd${to - now() < 2 * 36e5 ? ' bad' : ''}">${countdown(to)}</b>`;
+function weighCard(me, p) {
+  const js = p.joinedSlot || 0; const os = openSlot(); const dl = `${CONFIG.deadlineHour}:00 Uhr`;
+  if (!me.active) {
+    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Startgewicht bis ${dl}</h2></div>
+      <p class="when">Noch ${cdHtml(slotDeadline(js))} · andere sehen nur Prozente</p>${weighInput(js, 'Speichern', '', true)}</section>` };
+    return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
+      <p class="when">0–${CONFIG.deadlineHour} Uhr · in <b class="cd">${countdown(slotStart(js))}</b></p></section>` };
+  }
+  if (os === null || os < js) return { due: false, html: '' };
+  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
+    <p class="when">Noch ${cdHtml(slotDeadline(os))} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>${weighInput(os, 'Eintragen', '', true)}</section>` };
+  const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
+  return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Waage</h2><span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
+    <p class="okline">${msg} <span class="muted">Korrigieren bis ${dl}.</span></p>${weighInput(os, 'Korrigieren', S.myWeights[os], false)}</section>` };
+}
+// Bei vielen Spielern: Top 3, du mit Nachbarn und der Letzte; dazwischen eine Lücke
+function windowed(list, uid, max = 7) {
+  if (list.length <= max) return list;
+  const mi = list.findIndex(x => x.uid === uid);
+  const keep = new Set([0, 1, 2, list.length - 1]);
+  if (mi >= 0) for (const i of [mi - 1, mi, mi + 1]) if (i >= 0 && i < list.length) keep.add(i);
+  const out = []; let prev = -1;
+  for (const i of [...keep].sort((a, b) => a - b)) { if (i - prev > 1) out.push(null); out.push(list[i]); prev = i; }
+  return out;
+}
+function statusCard(me) {
+  const cw = curWeek(); if (!me.active || cw < 1 || cw > CONFIG.weeks) return '';
+  let w = cw;
+  if (dayIdx() === 7 * (cw - 1) && cw - 1 > me.js) w = cw - 1; // Montag: Ergebnis der Vorwoche
+  const r = rankWeek(C, w); const mine = r.find(x => x.uid === S.me);
+  const names = xs => andJoin(xs.map(x => esc(x.name)));
+  const closed = lastClosedSlot() >= w;
+  let head, note = '';
+  if (w < cw) {
+    head = `Woche ${w} · ${closed ? 'Endstand' : `vorläufig bis ${CONFIG.deadlineHour}:00 Uhr`}`;
+    if (closed) { if (!weekLosers(C, w).length) note = 'Kein Wochenletzter, alle haben gleich viele Punkte.'; } // sonst eigene Karte darunter
+    else { const open = r.filter(x => !x.weighed); note = open.length ? `Noch nicht gewogen: ${names(open)}.` : 'Alle haben gewogen.'; }
+  } else { head = `Woche ${w} · bis ${fmtD(dayDate(7 * w - 1))}`; note = `Waage-Punkte kommen am ${fmtD(slotStart(w))} dazu.`; }
+  let rank = '';
+  if (mine) {
+    const wk = me.weeks[w] || {};
+    const defs = [
+      { c: 'var(--lime)', v: wk.habits || 0, max: 21, l: 'Gewohnheiten' },
+      { c: 'var(--cyan)', v: wk.weekly || 0, max: CONFIG.challengePts, l: 'Challenge', off: !S.weekly[w] && 'keine' },
+      { c: 'var(--pink)', v: wk.weigh || 0, max: CONFIG.weighMaxTenths * CONFIG.weighPerTenth, l: 'Waage', off: !wk.weighed && !closed && (w === cw ? 'ab ' + fmtD(slotStart(w)) : 'offen') },
+    ];
+    const legend = defs.map(x => `<li style="--c:${x.c}"><b>${x.off ? '–' : x.v}<small>/${x.max}</small></b>${x.l}${x.off ? `<span>${x.off}</span>` : ''}</li>`).join('')
+      + (TEAM[w] ? `<li style="--c:var(--cyan)"><b>${wk.team || 0}<small>/${CONFIG.teamPts}</small></b>Teamwoche</li>` : '');
+    const pos = 1 + r.filter(x => x.total > mine.total).length;
+    rank = `<div class="sthero"><div class="stleft"><div class="rankbig num"><small>#</small>${pos}</div><p class="small t2">von ${r.length} · <b>${ptsStr(mine.total)}</b></p></div>
+      ${ringSvg(defs.map(x => ({ p: x.off ? 0 : x.v / x.max, c: x.c })), 96, 11, 3)}</div><ul class="rlegend">${legend}</ul>`;
+    if (r.length >= 2) {
+      const others = r.filter(x => x.uid !== S.me);
+      const above = others.filter(x => x.total > mine.total), below = others.filter(x => x.total < mine.total), tied = others.filter(x => x.total === mine.total);
+      const parts = [];
+      if (tied.length) parts.push('gleichauf mit ' + names(tied));
+      if (above.length) { const t = Math.min(...above.map(x => x.total)); parts.push(`${t - mine.total} hinter ${names(above.filter(x => x.total === t))}`); }
+      else if (below.length) { const t = Math.max(...below.map(x => x.total)); parts.push(`${mine.total - t} vor ${names(below.filter(x => x.total === t))}`); }
+      const topT = Math.max(1, ...r.map(x => x.total)), lo = closed ? weekLosers(C, w) : [];
+      const lb = windowed(r, S.me).map(x => x ? `<div class="r${x.uid === S.me ? ' me' : ''}${lo.includes(x.uid) ? ' lo' : ''}"><span class="n">${1 + r.filter(y => y.total > x.total).length}</span><span class="nm">${esc(x.name)}</span><span class="v">${x.total}</span><span class="tr"><i style="width:${(x.total / topT * 100).toFixed(1)}%;background:${C[x.uid]?.color || 'var(--text-2)'}"></i></span></div>` : '<span class="skip" aria-hidden="true"></span>').join('');
+      rank += `<p class="gap">${cap(parts.join(', ')) || 'Alle gleichauf'}. <span class="muted">${note}</span></p><div class="lb">${lb}</div>
+        ${r.length > 7 ? `<button class="link" data-act="toWeekRank" data-w="${w}">Alle ${r.length} im Wochenranking</button>` : ''}`;
+    } else if (note) rank += `<p class="small t2">${note}</p>`;
+  }
+  const kv = [['Seit Start', tn(lossStr(me.latest))]];
+  if (openSlot() === null) { const nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
+  const last = Math.max(...Object.keys(me.wb).map(Number));
+  if (last > me.js && me.weeks[last]) kv.push(['Letztes Wiegen', `+${me.weeks[last].weigh} P. (Woche ${last})`]);
+  if (me.missed) kv.push(['Verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
+  return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2></div>${rank}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
+}
+// Wochenletzter der zuletzt abgeschlossenen Woche: von Montag 12 Uhr bis zum nächsten Wiegen
+function loserCard() {
+  const lc = lastClosedSlot(), cw = curWeek();
+  if (lc < 1 || cw !== lc + 1 || cw > CONFIG.weeks || openSlot() !== null) return '';
+  const l = weekLosers(C, lc); if (!l.length) return '';
+  const r = rankWeek(C, lc), ls = r.filter(x => l.includes(x.uid)), me = l.includes(S.me), many = ls.length > 1;
+  const up = r.filter(x => !l.includes(x.uid)), next = up[up.length - 1];
+  const who = me ? (many ? 'Du und ' + andJoin(ls.filter(x => x.uid !== S.me).map(x => esc(x.name))) : 'Du') : andJoin(ls.map(x => esc(x.name)));
+  const ch = S.weekly[cw], ex = exclusiveUntil(cw);
+  const pick = ch ? `Gewählte Challenge: ${esc(ch.text)}.` : now() < ex ? `${me ? (many ? 'Ihr wählt' : 'Du wählst') : many ? 'Sie wählen' : 'Wählt'} die Challenge bis ${fmtDT(ex)}.` : 'Die Challenge darf jetzt jeder wählen.';
+  const pay = me ? `${many ? 'Ihr zahlt je' : 'Du zahlst'} ${eur(CONFIG.loserFee)}.` : `${many ? 'Zahlen je' : 'Zahlt'} ${eur(CONFIG.loserFee)}.`;
+  return `<section class="card loser${me ? ' me' : ''}" data-k="loser"><div class="hd"><h2>Wochenletzter · Woche ${lc}</h2><span class="aside"><b>${ptsStr(ls[0].total)}</b></span></div>
+    <p class="lname">${who}</p>
+    <p class="small t2">${next ? `${next.total - ls[0].total} hinter ${esc(next.name)}. ` : ''}${pay} ${pick}</p></section>`;
+}
+const dayHeads = (d0, today) => [0, 1, 2, 3, 4, 5, 6].map(i => { const d = d0 + i; return `<span class="dh${d === today ? ' today' : ''}">${d === today ? 'Heute' : WD[(i + 1) % 7]}<b>${dayDate(d).getDate()}.</b></span>`; }).join('');
+// Klick-Animation überlebt das Neuzeichnen nach dem Speichern: neues Element startet mit negativer Verzögerung
+const TAP = { k: null, t: 0 };
+function tapFx(k) { const dt = performance.now() - TAP.t; return TAP.k === k && dt < 700 ? { cls: ' tap', st: ` style="--tapd:-${Math.round(dt)}ms"` } : { cls: '', st: '' }; }
+function habitsCard(me, p, focus) {
+  const today = dayIdx(); const cw = curWeek();
+  const habits = p.habits || [];
+  if (cw === 0) return `<section class="card" data-k="habits"><div class="hd"><h2>Deine Gewohnheiten</h2><span class="aside">ab ${fmtD(START)}</span></div><ol class="t2" style="padding-left:20px">${habits.map(x => `<li>${esc(x)}</li>`).join('')}</ol><p class="small muted">Ändern über dein Profil.</p></section>`;
+  const cur = Math.min(cw, CONFIG.weeks);
+  const minW = Math.min(cur, Math.max(1, (p.joinedSlot || 0) + 1));
+  const w = clamp(UI.habitWeek ?? cur, minW, cur);
+  const d0 = 7 * (w - 1);
+  const minDay = 7 * (p.joinedSlot || 0);
+  const wk = me.weeks[w];
+  const ch = S.weekly[w];
+  const canEdit = d => d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
+  const prevEditable = w === cur && w > minW && [1, 2, 3].some(i => canEdit(d0 - i));
+  const rows = habits.map((hn, hi) => [esc(hn), hn, hi, false]);
+  if (ch) rows.push([`<b>Challenge:</b> ${esc(ch.text)}`, 'Challenge: ' + ch.text, 3, true]);
+  let g = `<div class="hgrid${focus ? ' focus' : ''}"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div>`;
+  for (const [html, plain, hi, isCh] of rows) {
+    g += `<div class="hrow${isCh ? ' ch' : ''}"><span class="hname" title="${esc(plain)}">${html}</span><div class="hcells">`;
+    for (let i = 0; i < 7; i++) {
+      const d = d0 + i; const on = !!me.hl[d]?.[hi];
+      const edit = canEdit(d), fx = tapFx(`h${d}_${hi}`);
+      const cls = ['hc', on && 'on', d === today && 'td', d > today || d < minDay ? 'off' : edit ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
+      g += `<button class="${cls}"${fx.st} ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-pressed="${on}" aria-label="${esc(plain)}, ${fmtD(dayDate(d))}">${svg('check', 'ck')}</button>`;
+    }
+    g += '</div></div>';
+  }
+  g += '</div>';
+  const st = me.streak;
+  const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${st.cur === 1 ? '1 Tag' : st.cur + ' Tage'}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (${fmtD(dayDate(st.jokerDay))})`}</span></p>` : '';
+  const score = `<span class="aside"><b>${wk ? wk.habits : 0}</b>/21${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
+  return `<section class="card" data-k="habits"><div class="hd"><h2>Gewohnheiten</h2>${score}</div>${streak}
+    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}
+    ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen</button>` : ''}</section>`;
+}
+// Punktestand vieler Spieler als umbrechende Chips (sortiert)
+const chips = arr => `<div class="chips">${arr.map(({ p, v }) => `<span class="chip${p.uid === S.me ? ' me' : ''}"><i style="background:${p.color}"></i>${esc(p.name)} <b>${v}</b></span>`).join('')}</div>`;
+function weeklyCard(me) {
+  const cw = curWeek(); const w = cw === 0 ? 1 : Math.min(cw, CONFIG.weeks);
+  const ch = S.weekly[w];
+  let inner, aside = '';
+  if (ch) {
+    const per = ch.kind === 'daily' ? '1 Punkt pro Tag' : `${Math.round(CONFIG.challengePts / chTarget(ch))} Punkte pro Mal`;
+    const lbl = chLabel(ch);
+    const stand = Object.values(C).filter(p => p.active && p.js < w).map(p => ({ p, v: p.weeks[w]?.weekly || 0 })).sort((a, b) => b.v - a.v || a.p.name.localeCompare(b.p.name));
+    if (cw > 0 && me.active) aside = `<span class="aside"><b>${me.weeks[w]?.weekly || 0}</b>/${CONFIG.challengePts} P.</span>`;
+    inner = `<p class="chtext">${esc(ch.text)}</p>
+      <p class="small t2">${cap(lbl)} · ${per} · von ${esc(ch.setByName)}</p>
+      ${cw > 0 && stand.length ? chips(stand) : cw === 0 ? '<p class="small muted">Startet am Montag.</p>' : ''}`;
+  } else if (canSetWeekly(S, C, w)) {
+    const excl = w > 1 ? exclusiveUntil(w) : null;
+    const why = w === 1 ? 'Die erste Challenge darf jeder festlegen, wer zuerst kommt.'
+      : now() < excl ? `Du warst letzte Woche Letzter: Nur du darfst bis <b>${fmtDT(excl)}</b> wählen (noch ${countdown(excl)}).`
+      : 'Der Letzte hat nichts festgelegt. Jetzt darf jeder, wer zuerst kommt.';
+    inner = `<p class="small t2">${why}</p>
+      <input class="inp" id="wText" maxlength="60" placeholder="z. B. Treppe statt Aufzug" aria-label="Challenge">
+      <div class="row"><select class="inp grow" id="wKind" aria-label="Wie oft">
+        <option value="daily">Täglich (1 P./Tag, max. ${CONFIG.challengePts})</option>
+        <option value="1">1× diese Woche (${CONFIG.challengePts} P.)</option>
+        <option value="2">2× diese Woche (je ${Math.round(CONFIG.challengePts / 2)} P.)</option>
+      </select><button class="btn ghost" data-act="setWeekly" data-w="${w}">Festlegen</button></div>`;
+  } else if (w > 1 && now() < slotDeadline(w - 1)) {
+    inner = `<p class="small t2">Ab ${CONFIG.deadlineHour}:00 Uhr wählt der Wochenletzte, ${CONFIG.chooseHours} Std. lang. Danach darf jeder.</p>`;
+  } else {
+    const s = weeklySetters(C, w) || [];
+    const names = s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') || 'Der Wochenletzte';
+    inner = `<p class="small t2"><b>${names}</b> wählt bis ${fmtDT(exclusiveUntil(w))}. Danach darf jeder, wer zuerst kommt.</p>`;
+  }
+  // Hinweis auf die Teamwoche, wenn diese Woche keine läuft
+  let team = '';
+  if (cw >= 0 && cw < CONFIG.weeks && !TEAM[cw]) {
+    const nt = cw + 1, ng = S.teamgoals[nt];
+    if (ng) team = `<p class="small t2 sep">Teamwoche ${nt}: ${esc(ng.text)}</p>`;
+    else if (canSetTeam(nt)) team = `<p class="small t2 sep">Kein Teamziel für Woche ${nt}. <button class="link" data-tab="challenges">Vorschlagen</button></p>`;
+  }
+  return `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenge</h2>${aside}</div>${inner}${team}</section>`;
+}
+function teamCard(me) {
+  const cw = curWeek(); const t = cw >= 1 && cw <= CONFIG.weeks ? TEAM[cw] : null; if (!t) return '';
+  return `<section class="card" data-k="team">${teamHead(t, cw)}${teamEntry(t, cw)}</section>`;
+}
+function teamHead(t, w) {
+  const g = t.goal; const pc = clamp(t.sum / g.target, 0, 1);
+  const by = Object.values(C).filter(p => t.by[p.uid]).map(p => ({ p, v: teamFmt(g, t.by[p.uid]), n: t.by[p.uid] })).sort((a, b) => b.n - a.n);
+  const state = t.closed ? (t.reached ? `<span class="ok">Erreicht.</span> +${CONFIG.teamPts} P. für alle, die etwas eingetragen haben.` : 'Nicht erreicht.')
+    : t.reached ? `<span class="ok">Erreicht.</span> +${CONFIG.teamPts} P. für alle mit Eintrag, fest ab ${fmtD(slotStart(w))} ${CONFIG.deadlineHour}:00 Uhr.`
+    : `Noch ${teamFmt(g, g.target - t.sum)} bis ${fmtD(slotStart(w))}, ${CONFIG.deadlineHour}:00 Uhr. Erreicht: +${CONFIG.teamPts} P. für alle mit Eintrag.`;
+  return `<div class="hd"><h2>Teamwoche</h2><span class="aside"><b>${nf(t.sum)}</b> / ${teamFmt(g, g.target)}</span></div>
+    <p class="chtext">${esc(g.text)}</p>
+    <div class="bar${t.reached ? ' done' : ''}" role="progressbar" aria-label="Fortschritt Teamziel" aria-valuemin="0" aria-valuemax="${g.target}" aria-valuenow="${t.sum}"><i style="width:${(pc * 100).toFixed(1)}%"></i></div>
+    <p class="small t2">${state}</p>${by.length ? chips(by) : ''}`;
+}
+function teamEntry(t, w) {
+  const me = C[S.me]; if (!me?.active || t.closed) return '';
+  const d0 = 7 * (w - 1), today = dayIdx(), g = t.goal;
+  const myv = d => S.teamlogs[S.me + '_' + d]?.value || 0;
+  if (g.kind === 'count') {
+    const cells = [0, 1, 2, 3, 4, 5, 6].map(i => {
+      const d = d0 + i, on = myv(d) > 0, ed = teamEditable(d, me.js), fx = tapFx('t' + d);
+      const cls = ['hc', on && 'on', d === today && 'td', d > today ? 'off' : ed ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
+      return `<button class="${cls}"${fx.st} ${ed ? `data-act="teamTog" data-day="${d}"` : 'disabled'} aria-pressed="${on}" aria-label="Teamziel ${fmtD(dayDate(d))}">${svg('check', 'ck')}</button>`;
+    }).join('');
+    return `<div class="hgrid team"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div><div class="hrow"><span class="hname">Deine Tage</span><div class="hcells">${cells}</div></div></div>`;
+  }
+  const days = [0, 1, 2].map(i => today - i).filter(d => d >= d0 && d < d0 + 7 && teamEditable(d, me.js));
+  if (!days.length) return '';
+  const lbl = d => d === today ? 'Heute' : d === today - 1 ? 'Gestern' : fmtD(dayDate(d));
+  return `<div class="row entry"><select class="inp auto" id="tmDay" aria-label="Tag">${days.map(d => `<option value="${d}">${lbl(d)}</option>`).join('')}</select>
+    <input class="inp grow" id="tmVal" inputmode="numeric" autocomplete="off" placeholder="${esc(g.unit || 'Wert')}" aria-label="Dein Wert" value="${myv(days[0]) || ''}">
+    <button class="btn ghost" data-act="teamLog">Eintragen</button></div>`;
+}
+
+/* ---------- LIVETICKER: wird nur aus den Daten im Speicher gebaut, keine eigene Sammlung ---------- */
+const FEED = { seen: new Set(), init: false };
+const FEED_ICON = { weigh: 'scale', habits: 'check', task: 'challenges', confirm: 'double', challenge: 'bolt', team: 'team' };
+const FEED_DAYS = 14;
+function feedEvents() {
+  const ev = [], today = dayIdx(), from = dayDate(today - FEED_DAYS + 1).getTime();
+  const nm = uid => `<b>${esc(C[uid]?.name || S.players[uid]?.name || '?')}</b>`;
+  for (const [id, w] of Object.entries(S.weighins)) {
+    const p = C[w.uid]; if (!p || typeof w.lossPct !== 'number') continue;
+    const start = w.slot === p.js;
+    ev.push({ id: 'w' + id, k: 'weigh', t: tsNum(w.ts) || slotStart(w.slot).getTime() + 9 * 36e5, approx: !tsNum(w.ts),
+      html: start ? `${nm(w.uid)} hat das Startgewicht eingetragen` : `${nm(w.uid)} hat gewogen`,
+      sub: start ? `startet in Woche ${w.slot + 1}` : `Woche ${w.slot} · ${tn(lossStr(w.lossPct))} · +${p.weeks[w.slot]?.weigh ?? 0} P.` });
+  }
+  const lastFull = {};
+  for (const h of Object.values(S.habitlogs)) if ((h.done || []).slice(0, 3).filter(Boolean).length === 3) lastFull[h.uid] = Math.max(lastFull[h.uid] ?? -1, h.day);
+  for (const [id, h] of Object.entries(S.habitlogs)) {
+    const p = C[h.uid], d = h.done || [];
+    if (!p || h.day > today || h.day < today - FEED_DAYS || d.slice(0, 3).filter(Boolean).length < 3) continue;
+    const t = tsNum(h.ts) || dayDate(h.day).getTime() + 20 * 36e5;
+    // Der Tag steht schon als Überschrift im Ticker; nur heute/gestern und Nachträge nennen ihn extra
+    const late = !!h.ts && dayIdx(new Date(t)) > h.day;
+    const when = h.day === today ? 'heute ' : h.day === today - 1 ? 'gestern ' : late ? `für ${fmtD(dayDate(h.day))} ` : '';
+    const sub = [];
+    if (late) sub.push('nachgetragen');
+    if (d[3]) sub.push('plus Challenge');
+    if (lastFull[h.uid] === h.day && h.day >= today - 1 && p.streak.cur >= 2) sub.push(`Streak ${p.streak.cur} Tage`);
+    ev.push({ id: 'h' + id, k: 'habits', t, approx: !h.ts, html: `${nm(h.uid)} hat ${when}alle 3 abgehakt`, sub: sub.join(' · ') });
+  }
+  for (const [id, td] of Object.entries(S.taskDone)) {
+    const task = S.tasks[td.taskId]; if (!task || !C[td.uid]) continue;
+    const rt = tsNum(td.ts), ct = tsNum(td.confirmedAt), tx = `„${esc(task.text)}“`;
+    if (td.confirmedBy && (ct || rt)) ev.push({ id: 'c' + id, k: 'confirm', t: ct || rt, html: `${nm(td.confirmedBy)} hat die Aufgabe von ${nm(td.uid)} bestätigt`, sub: `${tx} · +${CONFIG.taskPts} P.` });
+    else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} geschafft`, sub: 'wartet auf Bestätigung' });
+  }
+  for (const [w, ch] of Object.entries(S.weekly)) if (tsNum(ch.ts)) ev.push({ id: 'ch' + w, k: 'challenge', t: tsNum(ch.ts), html: `${nm(ch.setBy)} hat die Challenge für Woche ${w} gewählt`, sub: esc(ch.text) });
+  for (const [w, g] of Object.entries(S.teamgoals)) if (tsNum(g.ts)) ev.push({ id: 'tg' + w, k: 'team', t: tsNum(g.ts), html: `${nm(g.setBy)} hat ein Teamziel für Woche ${w} gesetzt`, sub: esc(g.text) });
+  return ev.filter(e => e.t >= from).sort((a, b) => b.t - a.t || a.id.localeCompare(b.id));
+}
+function feedCard() {
+  const all = feedEvents(), list = all.slice(0, UI.feedN), tnow = now().getTime(), today = dayIdx();
+  const dayLbl = d => d === today ? 'Heute' : d === today - 1 ? 'Gestern' : fmtLong(dayDate(d));
+  const hhmm = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  let h = '', lastDay = null;
+  for (const e of list) {
+    const t = Math.min(e.t, tnow), d = dayIdx(new Date(t));
+    if (d !== lastDay) { h += `<li class="fday">${dayLbl(d)}</li>`; lastDay = d; }
+    const fresh = FEED.init && !FEED.seen.has(e.id);
+    h += `<li class="fe k-${e.k}${fresh ? ' new' : ''}" data-fid="${e.id}"><span class="fi">${svg(FEED_ICON[e.k])}</span><div class="fb"><p>${e.html}</p>${e.sub ? `<p class="fs">${e.sub}</p>` : ''}</div>${e.approx ? '' : `<time>${hhmm(t)}</time>`}</li>`;
+  }
+  return `<section class="card feed"><div class="hd"><h2><span class="live" aria-hidden="true"></span>Liveticker</h2><span class="aside">letzte ${FEED_DAYS} Tage</span></div>
+    ${all.length ? `<ol class="flist">${h}</ol>${all.length > list.length ? `<button class="link" data-act="feedMore">Ältere anzeigen (${all.length - list.length})</button>` : ''}`
+      : '<p class="small t2">Noch ruhig. Sobald jemand wiegt, alle 3 abhakt oder eine Aufgabe bestätigt, steht es hier.</p>'}</section>`;
+}
+function markFeedSeen() { // was einmal gezeigt wurde, gleitet beim nächsten Update nicht noch einmal herein
+  const els = document.querySelectorAll('#app [data-fid]');
+  els.forEach(el => FEED.seen.add(el.dataset.fid));
+  if (document.querySelector('#app .feed')) FEED.init = true;
+}
+
+/* ---------- RANKING ---------- */
+function metaLine(p) {
+  if (!p) return '';
+  const a = activity(p.lastActive); const out = [];
+  if (a) out.push(`<span class="${a.still ? 'still' : ''}">${a.t}</span>`);
+  if (p.streak.cur > 0) out.push(`<span class="stk" title="Streak: ${p.streak.cur} Tage am Stück alle 3 Gewohnheiten, Rekord ${p.streak.best}">${svg('flame')}${p.streak.cur}</span>`);
+  for (const m of topMilestones(p)) out.push(`<span class="ms" title="Meilenstein: ${m.label}">${m.short || m.label}</span>`);
+  return out.length ? `<span class="meta">${out.join('')}</span>` : '';
+}
+function viewRanking() {
+  const cw = curWeek(); const cwc = clamp(cw, 1, CONFIG.weeks);
+  if (UI.rankWeek === null) UI.rankWeek = cwc;
+  if (UI.rankEtappe === null) UI.rankEtappe = etappeOf(cwc);
+  const seg = `<div class="seg" role="group" aria-label="Wertung">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt'], ['kasse', 'Kasse']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}" aria-pressed="${UI.rankMode === k}">${l}</button>`).join('')}</div>`;
+  const etNav = e => navBar('re', e, 1, etappeOf(cwc), `Etappe ${e} · ${fmtD(dayDate(7 * (e - 1) * CONFIG.etappeWeeks))}–${fmtD(dayDate(7 * Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks) - 1))}`);
+  if (UI.rankMode === 'kasse') return `<div class="view">${seg}${viewKasse(etNav)}</div>`;
+  let list, title, note = '', losers = [];
+  if (UI.rankMode === 'woche') {
+    const w = UI.rankWeek; list = rankWeek(C, w);
+    title = navBar('rw', w, 1, cwc, `Woche ${w} · ${weekRange(w)}`);
+    if (lastClosedSlot() < w) note = `<p class="small muted">Vorläufig: Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu.</p>`;
+    else losers = weekLosers(C, w);
+  } else if (UI.rankMode === 'etappe') {
+    list = rankEtappe(C, UI.rankEtappe); title = etNav(UI.rankEtappe);
+  } else {
+    list = rankTotal(C);
+    title = `<div class="hd"><h2>Gesamtwertung</h2><span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
+  }
+  const cols = [['Waage', 'weigh'], ['Gewohn&shy;heiten', 'habits'], ['Chal&shy;lenge', 'weekly']];
+  if (UI.rankMode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks']);
+  cols.push(['Team', 'team']);
+  if (UI.rankMode === 'gesamt') cols.push(['Strafen', 'fee']);
+  const top = list.length ? list[0].total : 0;
+  const head = `<div class="rk head"><span class="pos">#</span><span class="who">Name</span><span class="br">${cols.map(([l]) => `<span>${l}</span>`).join('')}</span><span class="pts">Punkte</span></div>`;
+  const rows = list.map(r => {
+    const pos = 1 + list.filter(x => x.total > r.total).length;
+    const fee = UI.rankMode === 'gesamt' ? fees(C[r.uid], null).strafen : 0;
+    const cls = ['rk', r.total === top && top > 0 && 'lead', r.uid === S.me && 'me', losers.includes(r.uid) && 'lo'].filter(Boolean).join(' ');
+    return `<div class="${cls}"><span class="pos">${pos}</span>
+      <span class="who"><span class="nm"><span class="dot" style="background:${r.color}"></span><span>${esc(r.name)}</span>${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="tag bad">Letzter · zahlt ${eur(CONFIG.loserFee)}</span>` : ''}</span>${metaLine(C[r.uid])}</span>
+      <span class="br">${cols.map(([l, k]) => `<span data-l="${l.replace(/&shy;/g, '')}">${k === 'fee' ? (fee ? eur(fee) : '–') : r[k]}</span>`).join('')}</span>
+      <span class="pts"><b>${nf(r.total)}</b><small>${tn(lossStr(r.latest))}</small></span></div>`;
+  }).join('');
+  const listCard = `<section class="card" style="--n:${cols.length}">${title}${note}${list.length ? `<div class="rlist">${head}${rows}</div>` : '<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>'}</section>`;
+  const ps = Object.values(C).filter(p => p.active);
+  CHARTS.points = { series: pointsSeries(), yFmt: v => nf(v), xFmt: k => k === 0 ? 'Start' : 'W' + k, tip: v => nf(v) + ' P.', tipHead: k => k === 0 ? 'Start' : `Woche ${k} · bis ${fmtD(dayDate(7 * k - 1))}`, xMin: 4, hi: 10, hl: S.me, aria: 'Punkte aufsummiert pro Woche' };
+  const chartCard = ps.length ? `<section class="card only-wide"><div class="hd"><h2>Punkte, aufsummiert</h2><span class="aside">pro Woche</span></div><div class="chart" data-chart="points"></div>${legend(ps)}</section>` : '';
+  return `<div class="view">${seg}<div class="split rank">${listCard}${chartCard}</div></div>`;
+}
+function pointsSeries() {
+  const last = clamp(curWeek(), 1, CONFIG.weeks);
+  return Object.values(C).filter(p => p.active && p.js < last).map(p => {
+    const pts = [[p.js, 0]]; let cum = 0;
+    for (let w = p.js + 1; w <= last; w++) {
+      cum += p.weeks[w]?.total || 0;
+      for (let e = 1; e <= NUM_ETAPPEN; e++) if (Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks, last) === w) cum += p.taskPts[e] || 0;
+      pts.push([w, cum]);
+    }
+    return { uid: p.uid, name: p.name, color: p.color, pts };
+  });
+}
+const legend = ps => ps.length > 4 ? `<div class="legend">${ps.map(p => `<span><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span>`).join('')}</div>` : '';
+function viewKasse(etNav) {
+  const e = UI.rankEtappe;
+  const ps = Object.values(C).filter(p => p.active).map(p => ({ p, f: fees(p, e), g: fees(p, null) })).sort((a, b) => b.f.total - a.f.total || a.p.name.localeCompare(b.p.name));
+  const po = pot(C);
+  const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
+  let sumE = 0, sumG = 0;
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  return `<section class="card">${etNav(e)}
+    ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th><th>Verpasst</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
+    <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
+    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz, ${po.missed}× verpasst, ${po.losers}× Letzter).</p></section>`;
+}
+
+/* ---------- CHALLENGES ---------- */
+function viewChallenges() {
+  const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
+  if (UI.etView === null) UI.etView = ce;
+  const e = UI.etView;
+  const tasks = Object.entries(S.tasks).filter(([, t]) => t.etappe === e).sort((a, b) => tsNum(a[1].ts) - tsNum(b[1].ts));
+  const ed = taskEditable(e) && S.member;
+  const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
+  const nav = navBar('ev', e, 1, ce, `Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}`);
+  const nAct = Object.values(C).filter(p => p.active || p.uid === S.me).length;
+  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${tasks.length}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>`;
+  if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
+  for (const [id, t] of tasks) {
+    const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
+    const mine = S.taskDone[id + '_' + S.me];
+    let my;
+    if (!mine) my = ed && cw > 0 ? `<button class="btn ghost sm" data-act="mark" data-id="${id}" data-on="1">Hab ich geschafft</button>` : '';
+    else if (!mine.confirmedBy) my = `<span class="tag">Wartet auf Bestätigung</span>${ed ? `<button class="link" data-act="mark" data-id="${id}" data-on="0">Zurückziehen</button>` : ''}`;
+    else my = `<span class="tag ok">+${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
+    const others = tds.filter(([, d]) => d.uid !== S.me).sort((a, b) => (C[a[1].uid]?.name || '').localeCompare(C[b[1].uid]?.name || '')).map(([tid, d]) => {
+      const n = esc(C[d.uid]?.name || '?');
+      return d.confirmedBy ? `<span class="tag ok">${n} geschafft</span>` : `<button class="btn ghost sm" data-act="confirm" data-id="${tid}">${n} bestätigen</button>`;
+    }).join('');
+    const canDel = t.createdBy === S.me && !tds.length;
+    h += `<div class="task"><div class="row top"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="small muted">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="link" data-act="delTask" data-id="${id}">Löschen</button>` : ''}</div>
+      ${my + others ? `<div class="who">${my}${others}</div>` : ''}</div>`;
+  }
+  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e}</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Aufgabe"><button class="btn" data-act="addTask" data-e="${e}">Stellen</button></div>`;
+  else if (tasks.length) h += `<p class="small muted">Zählt, sobald jemand anderes bestätigt.</p>`;
+  h += `</section>`;
+  // Wochen-Challenges der Etappe
+  let wl = '';
+  for (let w = ws; w <= we; w++) {
+    const ch = S.weekly[w]; if (!ch) continue;
+    const who = Object.values(C).filter(p => p.weeks[w]?.weekly).map(p => ({ p, v: p.weeks[w].weekly })).sort((a, b) => b.v - a.v);
+    wl += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="small muted">${chLabel(ch)} · von ${esc(ch.setByName)}</div>${who.length ? `<div class="who">${chips(who)}</div>` : ''}</div></div></div>`;
+  }
+  const wc = `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenges</h2></div>${wl || '<p class="t2">Noch keine.</p>'}</section>`;
+  return `<div class="view">${nav}<div class="split">${h}<div class="view">${teamSection(e, ce, ws, we)}${wc}</div></div></div>`;
+}
+function teamSection(e, ce, ws, we) {
+  const cw = curWeek();
+  let h = `<section class="card" data-k="team"><div class="hd"><h2>Teamwoche</h2><span class="aside">+${CONFIG.teamPts} P. bei Erfolg</span></div>`;
+  let any = false;
+  for (let w = ws; w <= we; w++) {
+    const t = TEAM[w]; if (!t || w > cw) continue; any = true;
+    const g = t.goal;
+    const st = w === cw && !t.closed ? `läuft: ${nf(t.sum)} / ${teamFmt(g, g.target)}` : t.reached ? `<span class="ok">erreicht</span>, ${nf(t.sum)} / ${teamFmt(g, g.target)}` : `nicht erreicht, ${nf(t.sum)} / ${teamFmt(g, g.target)}`;
+    h += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(g.text)}</div><div class="small muted">${st} · von ${esc(g.setByName)}</div>
+      ${w === cw && !t.closed ? `<div class="bar${t.reached ? ' done' : ''}" style="margin-top:8px"><i style="width:${(clamp(t.sum / g.target, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}</div></div></div>`;
+  }
+  const nw = cw === 0 ? 1 : cw + 1;
+  if (e === ce && nw <= CONFIG.weeks) {
+    const ng = S.teamgoals[nw];
+    if (ng) { any = true; h += `<div class="task"><div class="row top"><span class="wk">W${nw}</span><div class="grow"><div class="tt">${esc(ng.text)}</div><div class="small muted">startet ${fmtD(slotStart(nw - 1))} · von ${esc(ng.setByName)}</div></div></div></div>`; }
+    else if (canSetTeam(nw)) {
+      any = true;
+      h += `<h3>Teamziel für Woche ${nw} vorschlagen</h3>
+        <input class="inp" id="gText" maxlength="60" placeholder="z. B. 300.000 Schritte gemeinsam" aria-label="Teamziel">
+        <select class="inp" id="gKind" aria-label="Art des Ziels"><option value="sum">Summe: jeder trägt täglich eine Zahl ein</option><option value="count">Anzahl: jeder hakt täglich ab</option></select>
+        <div class="row"><input class="inp grow" id="gTarget" inputmode="numeric" placeholder="Ziel, z. B. 300000" aria-label="Zielwert"><input class="inp grow" id="gUnit" maxlength="20" placeholder="Einheit, z. B. Schritte" aria-label="Einheit (nur bei Summe)"></div>
+        <button class="btn ghost" data-act="setTeam" data-w="${nw}">Für Woche ${nw} festlegen</button>`;
+    }
+  }
+  if (!any) h += `<p class="t2">In dieser Etappe gab es keine Teamwoche.</p>`;
+  return h + `</section>`;
+}
+
+/* ---------- VERLAUF ---------- */
+function viewVerlauf() {
+  const players = Object.values(C).filter(p => p.active);
+  let h = `<section class="card"><div class="hd"><h2>Abnahme seit Start</h2><button class="link" data-act="ctab">${UI.chartTable ? 'Als Diagramm' : 'Als Tabelle'}</button></div>
+    <p class="small muted">In Prozent vom eigenen Startgewicht. Deine kg-Werte stehen unter <button class="link" data-tab="ich">Ich</button>, nur für dich.</p>`;
+  if (!players.length) h += `<p class="t2">Noch keine Daten.</p>`;
+  else if (UI.chartTable) {
+    const maxS = Math.max(...players.flatMap(p => Object.keys(p.wb).map(Number)));
+    h += `<div class="tscroll"><table class="t"><tr><th>Woche</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr>`;
+    for (let k = 0; k <= maxS; k++) h += `<tr><td>${k === 0 ? 'Start' : k}</td>${players.map(p => `<td>${p.wb[k] !== undefined ? tn(lossStr(p.wb[k])) : '–'}</td>`).join('')}</tr>`;
+    h += `</table></div>`;
+  } else {
+    CHARTS.loss = {
+      series: players.map(p => ({ uid: p.uid, name: p.name, color: p.color, pts: Object.keys(p.wb).map(Number).sort((a, b) => a - b).map(k => [k, p.wb[k]]) })),
+      yFmt: v => Math.abs(v) < 1e-9 ? '0' : (v > 0 ? '−' : '+') + pct(Math.abs(v)), xFmt: k => k === 0 ? 'Start' : 'W' + k,
+      tip: v => lossStr(v), tipHead: k => (k === 0 ? 'Start' : 'Woche ' + k) + ' · ' + fmtD(slotStart(k)), xMin: 4, hi: 2, hl: S.me, aria: 'Abnahme in Prozent pro Woche',
+    };
+    h += `<div class="chart" data-chart="loss"></div>${legend(players)}`;
+  }
+  h += `</section>`;
+  return `<div class="split">${h}${chronicleCard()}</div>`;
+}
+// Sieger und Letzte jeder abgeschlossenen Woche, neueste oben
+function chronicleCard() {
+  const lc = Math.min(lastClosedSlot(), CONFIG.weeks); if (lc < 1) return '';
+  let rows = '';
+  for (let w = lc; w >= 1; w--) {
+    const r = rankWeek(C, w); if (!r.length) continue;
+    const top = r[0].total, win = r.filter(x => x.total === top), lo = weekLosers(C, w);
+    const loN = r.filter(x => lo.includes(x.uid));
+    rows += `<tr><td>W${w}</td><td>${win.map(x => esc(x.name)).join(', ')} <span class="muted">${top}</span></td><td>${loN.length ? `<span class="bad">${loN.map(x => esc(x.name)).join(', ')}</span> <span class="muted">${loN[0].total}</span>` : '–'}</td></tr>`;
+  }
+  return rows ? `<section class="card"><div class="hd"><h2>Wochen-Chronik</h2><span class="aside">Sieger und Letzte</span></div><div class="tscroll"><table class="t chron"><tr><th>Woche</th><th>Sieger</th><th>Letzter</th></tr>${rows}</table></div></section>` : '';
+}
+
+/* Liniendiagramm: wird in echter Pixelbreite gezeichnet, damit die Schrift bei jeder Breite 12 px bleibt.
+   Optionen: zero:false (y-Achse nicht ab 0, z. B. kg), x0 (erste Woche), area (Fläche bei 1 Linie), refs (Hilfslinien), hl (uid hervorheben) */
+const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(es => es.forEach(e => drawChart(e.target))) : null;
+function wireCharts() { RO?.disconnect(); document.querySelectorAll('#app .chart[data-chart]').forEach(el => { drawChart(el); RO?.observe(el); }); }
+function drawChart(el) {
+  const c = CHARTS[el.dataset.chart]; const W = Math.floor(el.clientWidth);
+  if (!c || W < 120 || el._w === W) return; el._w = W;
+  const s = c.series.filter(x => x.pts.length);
+  if (!s.length) { el.innerHTML = '<p class="t2">Noch keine Daten.</p>'; return; }
+  const many = s.length > 6; el.classList.toggle('many', many);
+  const H = clamp(Math.round(W * .55), 200, 320);
+  const names = c.labels ?? s.length <= 4;
+  const R = names ? 14 + Math.max(...s.map(x => x.name.length * 7.4)) : 12, L = 44, T = 14, B = 26;
+  const refs = c.refs || [];
+  const vals = [...s.flatMap(x => x.pts.map(p => p[1])), ...refs.map(r => r.v)];
+  let lo, hi;
+  if (c.zero === false) { lo = Math.min(...vals); hi = Math.max(...vals); const span = c.minSpan ?? 2; if (hi - lo < span) { const m = (hi + lo) / 2; lo = m - span / 2; hi = m + span / 2; } }
+  else { lo = Math.min(0, ...vals); hi = Math.max(c.hi ?? 1, ...vals); }
+  const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw || 1));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw - 1e-9);
+  lo = Math.floor(lo / step + 1e-9) * step; hi = Math.ceil(hi / step - 1e-9) * step; if (hi <= lo) hi = lo + step;
+  const x0 = c.x0 ?? 0;
+  const xm = Math.max(x0 + (c.xMin ?? 4), ...s.flatMap(x => x.pts.map(p => p[0])));
+  const per = (W - L - R) / (xm - x0);
+  const x = k => L + per * (k - x0), y = v => T + (H - T - B) * (hi - v) / (hi - lo);
+  let g = '';
+  for (let i = 0; lo + i * step <= hi + 1e-9; i++) { const v = lo + i * step; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="${Math.abs(v) < 1e-9 ? 'zero' : 'gl'}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${c.yFmt(v)}</text>`; }
+  const xs = [1, 2, 4, 8, 12, 24].find(n => n * per >= 36) || 24;
+  for (let k = x0; k <= xm; k += xs) g += `<text x="${x(k)}" y="${H - 8}" text-anchor="middle">${c.xFmt(k)}</text>`;
+  for (const r of refs) { const yy = y(r.v).toFixed(1); g += `<line class="ref" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/>${r.label ? `<text class="reft" x="${W - R}" y="${(y(r.v) - 6).toFixed(1)}" text-anchor="end">${esc(r.label)}</text>` : ''}`; }
+  let defs = '', lines = '', dl = ''; const lab = [];
+  const ordered = [...s].sort((a, b) => (a.uid === c.hl) - (b.uid === c.hl)); // hervorgehobene Linie zuletzt = oben
+  for (const se of ordered) {
+    const lit = !many || se.uid === c.hl;
+    const P = se.pts.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`);
+    if (c.area && s.length === 1) {
+      const id = 'ar-' + el.dataset.chart, base = (H - B).toFixed(1);
+      defs += `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${se.color};stop-opacity:.32"/><stop offset="1" style="stop-color:${se.color};stop-opacity:0"/></linearGradient>`;
+      lines += `<path d="M${P.join(' L')} L${x(se.pts[se.pts.length - 1][0]).toFixed(1)},${base} L${x(se.pts[0][0]).toFixed(1)},${base} Z" fill="url(#${id})"/>`;
+    }
+    lines += `<polyline class="ln${se.uid === c.hl ? ' hi' : ''}" style="color:${se.color}"${lit ? ' filter="url(#fx-glow)"' : ''} points="${P.join(' ')}"/>`;
+    if (se.pts.length <= 12 && lit) lines += se.pts.map(p => `<circle class="pt" cx="${x(p[0]).toFixed(1)}" cy="${y(p[1]).toFixed(1)}" r="3.5" style="color:${se.color}"/>`).join('');
+    const lp = se.pts[se.pts.length - 1]; lab.push({ x: x(lp[0]), y: y(lp[1]), name: se.name });
+  }
+  if (names) { lab.sort((a, b) => a.y - b.y); for (let i = 1; i < lab.length; i++) if (lab[i].y - lab[i - 1].y < 15) lab[i].y = lab[i - 1].y + 15; dl = lab.map(l => `<text class="nm" x="${(l.x + 8).toFixed(1)}" y="${(l.y + 4).toFixed(1)}">${esc(l.name)}</text>`).join(''); }
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.aria || '')}">${defs ? `<defs>${defs}</defs>` : ''}${g}<line class="xh" y1="${T}" y2="${H - B}" style="display:none"/>${lines}${dl}</svg><div class="tip" hidden></div>`;
+  el._c = { x, x0, xm, per, L, s, c };
+  if (el._wired) return; el._wired = true;
+  const move = ev => {
+    const z = el._c, svgEl = el.querySelector('svg'), tip = el.querySelector('.tip'), xh = el.querySelector('.xh'); if (!svgEl) return;
+    const r = svgEl.getBoundingClientRect();
+    const k = clamp(Math.round((ev.clientX - r.left - z.L) / z.per) + z.x0, z.x0, z.xm);
+    let rows = z.s.map(se => ({ se, p: se.pts.find(p => p[0] === k) })).filter(o => o.p).sort((a, b) => b.p[1] - a.p[1]);
+    if (!rows.length) { tip.hidden = true; xh.style.display = 'none'; return; }
+    let more = 0; // bei vielen Spielern: die besten 9 und du
+    if (rows.length > 10) { const keep = rows.slice(0, 9), mine = rows.find(o => o.se.uid === z.c.hl); if (mine && !keep.includes(mine)) keep.push(mine); more = rows.length - keep.length; rows = keep; }
+    xh.setAttribute('x1', z.x(k)); xh.setAttribute('x2', z.x(k)); xh.style.display = '';
+    tip.innerHTML = `<div class="muted" style="margin-bottom:4px">${z.c.tipHead(k)}</div>` + rows.map(o => `<div class="tr"><span class="row" style="gap:6px"><span class="dot" style="background:${o.se.color}"></span>${esc(o.se.name)}</span><b>${z.c.tip(o.p[1], k)}</b></div>`).join('') + (more ? `<div class="muted" style="margin-top:4px">+${more} weitere</div>` : '');
+    tip.hidden = false;
+    const px = z.x(k), tw = tip.offsetWidth;
+    tip.style.left = (px + 12 + tw > r.width ? Math.max(0, px - tw - 12) : px + 12) + 'px';
+  };
+  el.addEventListener('pointermove', move); el.addEventListener('pointerdown', move);
+  el.addEventListener('pointerleave', () => { const tip = el.querySelector('.tip'), xh = el.querySelector('.xh'); if (tip) tip.hidden = true; if (xh) xh.style.display = 'none'; });
+}
+
+/* ---------- ICH (privat: nur der eigene Browser zeigt kg und Ziel) ---------- */
+function myKg() { // eigene kg aus players/{uid}/private/weights
+  const me = C[S.me], ks = Object.keys(S.myWeights).map(Number).sort((a, b) => a - b);
+  const lk = ks[ks.length - 1];
+  return { ks, start: S.myWeights[me?.js ?? 0], last: lk !== undefined ? S.myWeights[lk] : undefined };
+}
+function viewIch() {
+  const me = C[S.me], p = S.players[S.me];
+  return `<div class="ich">${goalCard(me)}${kgCard(me)}${heatCard(me, p)}${msCard(me)}</div>`;
+}
+function goalCard(me) {
+  const g = S.myGoal, act = !!me?.active, cur = act ? me.latest : 0;
+  const prog = g && act ? Math.max(0, cur) / g : 0;
+  const done = !!(g && act && me.bestLoss >= g - 1e-9);
+  let txt;
+  if (!act) txt = 'Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.';
+  else if (!g) txt = 'Setz dir ein eigenes Ziel in Prozent vom Startgewicht. Sieht nur du, bringt keine Punkte.';
+  else if (done) txt = `<b class="ok">Ziel geschafft.</b> ${cur >= g - 1e-9 ? '' : `Bester Wert: ${tn(lossStr(me.bestLoss))}. `}Zeit für ein neues Ziel.`;
+  else txt = `Noch <b>${tn(pct(g - Math.max(0, cur)))} %</b> bis zum Ziel, ${Math.round(prog * 100)} % geschafft.`;
+  const kg = myKg(), lost = kg.start !== undefined && kg.last !== undefined ? kg.start - kg.last : null;
+  const tiles = act ? `<div class="tiles">
+    <div class="tile"><b class="num">${lost === null ? '–' : tn((lost >= 0 ? '−' : '+') + fmt1(Math.abs(lost)))}</b><span>kg seit Start</span></div>
+    <div class="tile"><b class="num">${tn(lossStr(me.bestLoss))}</b><span>bester Wert</span></div>
+    <div class="tile"><b class="num">${me.streak.best}</b><span>Streak-Rekord</span></div></div>` : '';
+  return `<section class="card goal${done ? ' done' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}nur für dich</span></div>
+    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %` : 'noch kein Ziel'}</small></div></div>
+    <p class="small t2">${txt}</p>
+    <div class="row"><label class="pctin"><span aria-hidden="true">−</span><input id="goal" type="number" inputmode="decimal" step="0.5" min="0.5" max="30" placeholder="z. B. 8" aria-label="Ziel in Prozent vom Startgewicht" value="${g ?? ''}"><span aria-hidden="true">%</span></label><button class="btn${g ? ' ghost' : ''}" data-act="setGoal">${g ? 'Ändern' : 'Ziel setzen'}</button></div>
+    ${tiles}${g ? '<button class="link" data-act="clearGoal">Ziel entfernen</button>' : ''}
+    ${seasonOver() && act ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
+}
+function kgCard(me) {
+  const kg = myKg();
+  let h = `<section class="card kg" data-k="weigh"><div class="hd"><h2>Dein Gewicht</h2>${kg.ks.length ? `<button class="link" data-act="kgtab">${UI.kgTable ? 'Als Diagramm' : 'Als Tabelle'}</button>` : ''}</div>`;
+  if (!kg.ks.length) return h + `<p class="t2">Noch keine Werte. Montags 0–${CONFIG.deadlineHour} Uhr wiegen, dann steht hier dein Verlauf in kg.</p></section>`;
+  const js = me?.js ?? kg.ks[0];
+  const goalKg = S.myGoal && kg.start ? kg.start * (1 - S.myGoal / 100) : null;
+  if (UI.kgTable) {
+    h += `<div class="tscroll"><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
+      ${kg.ks.slice().reverse().map(k => `<tr><td>${k === js ? 'Start' : k}</td><td>${tn(fmt1(S.myWeights[k]))}</td><td>${me?.wb[k] !== undefined ? tn(lossStr(me.wb[k])) : '–'}</td><td>${k > js && me?.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
+  } else {
+    CHARTS.kg = {
+      series: [{ uid: S.me, name: 'Du', color: 'var(--pink)', pts: kg.ks.map(k => [k, S.myWeights[k]]) }], zero: false, area: true, labels: false, x0: js, xMin: 4, minSpan: 2,
+      yFmt: v => pct(v), xFmt: k => k === js ? 'Start' : 'W' + k, tip: (v, k) => `${fmt1(v)} kg${k !== js && me?.wb[k] !== undefined ? ' · ' + lossStr(me.wb[k]) : ''}`,
+      tipHead: k => (k === js ? 'Start' : 'Woche ' + k) + ' · ' + fmtD(slotStart(k)), refs: goalKg ? [{ v: goalKg, label: `Ziel ${fmt1(goalKg)} kg` }] : [], aria: 'Dein Gewicht in kg pro Woche',
+    };
+    h += `<div class="chart" data-chart="kg"></div>`;
+  }
+  return h + `<p class="small muted">Nur du siehst die kg-Werte, die anderen sehen nur Prozente.</p></section>`;
+}
+// GitHub-artige Heatmap über die ganze Saison: Spalte = Woche, Zeile = Wochentag (Mo–So)
+function heatCard(me, p) {
+  const W = CONFIG.weeks, today = dayIdx(), js = p?.joinedSlot || 0, hl = me?.hl || {};
+  let cells = '', perfect = 0, ticks = 0, possible = 0;
+  for (let d = 0; d < W * 7; d++) {
+    const done = hl[d] || [], n = done.slice(0, 3).filter(Boolean).length, lvl = Math.min(4, n + (done[3] ? 1 : 0));
+    const fut = d > today, pre = d < 7 * js;
+    if (!fut && !pre) { ticks += n; possible += d < today ? 3 : n; if (n === 3) perfect++; }
+    const tip = fut || pre ? fmtD(dayDate(d)) : `${fmtD(dayDate(d))}: ${n} von 3${done[3] ? ' + Challenge' : ''}`;
+    cells += `<i class="${fut ? 'f' : pre ? 'x' : 'l' + lvl}${d === today ? ' td' : ''}" style="--c:${Math.floor(d / 7) + d % 7}" title="${tip}"></i>`;
+  }
+  const top = Array.from({ length: NUM_ETAPPEN }, (_, i) => `<span style="--span:${Math.min(CONFIG.etappeWeeks, W - i * CONFIG.etappeWeeks)}">E${i + 1}</span>`).join('');
+  const days = ['Mo', '', 'Mi', '', 'Fr', '', 'So'].map(t => `<span>${t}</span>`).join('');
+  const leg = `<div class="hm-legend" aria-hidden="true"><span>weniger</span>${[0, 1, 2, 3, 4].map(l => `<i class="${l ? 'l' + l : ''}"></i>`).join('')}<span>mehr</span></div>`;
+  return `<section class="card heat" data-k="habits"><div class="hd"><h2>Gewohnheiten, ganze Saison</h2><span class="aside">${W} Wochen · ${W * 7} Tage</span></div>
+    <div class="heatbox" style="--w:${W}"><div class="heatg"><div class="hm-top" aria-hidden="true">${top}</div><div class="hm-days" aria-hidden="true">${days}</div>
+    <div class="hm" role="img" aria-label="Heatmap: ${perfect} perfekte Tage, ${ticks} Haken">${cells}</div></div></div>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap"><p class="hm-sum"><span><b>${perfect}</b> perfekte Tage</span><span><b>${ticks}</b> Haken${possible ? ` · ${Math.round(ticks / possible * 100)} %` : ''}</span></p>${leg}</div></section>`;
+}
+function msCard(me) {
+  const cats = [['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Pause'], ['s', 'Streak']];
+  const prog = m => m.cat === 'l' ? `bisher ${pct(Math.max(0, me.bestLoss))} %` : m.cat === 'w' ? `bisher ${me.weighRun}` : `Rekord ${me.streak.best}`;
+  const groups = cats.map(([c, t]) => `<div><h4>${t}</h4><div class="chips">${MILESTONES.filter(m => m.cat === c).map(m => { const got = me.ms.includes(m.id); return `<span class="msi${got ? ' got' : ''}" title="${esc(m.label + (got ? ': erreicht' : ': ' + prog(m)))}">${got ? svg('check') : ''}${m.short || m.label}</span>`; }).join('')}</div></div>`).join('');
+  const next = me.active ? ['l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
+    x.cat === 'l' ? `${x.label} (noch ${fmt1(x.n - me.bestLoss)} %)` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${me.streak.best})`) : [];
+  return `<section class="card msc" data-k="rank"><div class="hd"><h2>Meilensteine</h2><span class="aside"><b>${me.ms.length}</b>/${MILESTONES.length}</span></div><div class="msg">${groups}</div>
+    ${next.length ? `<p class="small muted">Als Nächstes: ${next.join(' · ')}</p>` : ''}</section>`;
+}
+
+/* ---------- SAISONRÜCKBLICK (Wrapped) ---------- */
+function wrappedData() {
+  const p = C[S.me]; if (!p?.active) return null;
+  const tot = rankTotal(C), mine = tot.find(x => x.uid === S.me); if (!mine) return null;
+  const f = fees(p, null), ser = pointsSeries(), ms = ser.find(x => x.uid === S.me);
+  // Nemesis: wessen Punktestand lag über die Saison im Schnitt am nächsten an deinem (Wochen, in denen beide dabei waren)?
+  let nem = null;
+  if (ms) for (const q of ser) {
+    if (q.uid === S.me) continue;
+    const qm = new Map(q.pts), from = Math.max(p.js, C[q.uid]?.js ?? 0);
+    let sum = 0, n = 0, last = null;
+    for (const [w, v] of ms.pts) if (w > from && qm.has(w)) { sum += Math.abs(v - qm.get(w)); n++; last = v - qm.get(w); }
+    if (!n) continue;
+    const avg = sum / n;
+    if (!nem || avg < nem.avg - 1e-9 || (Math.abs(avg - nem.avg) < 1e-9 && q.name.localeCompare(nem.name) < 0)) nem = { name: q.name, avg, n, pts: q.pts, last };
+  }
+  // Wochensiege: Wochen, in denen niemand mehr Punkte hatte (bei Gleichstand zählt es für alle Ersten)
+  let wins = 0, weeks = 0;
+  for (let w = p.js + 1; w <= CONFIG.weeks; w++) {
+    const r = rankWeek(C, w), m = r.find(x => x.uid === S.me); if (!m) continue;
+    weeks++; if (r.length > 1 && m.total > 0 && m.total === r[0].total) wins++;
+  }
+  return { name: p.name, loss: p.latest, pos: 1 + tot.filter(x => x.total > mine.total).length, of: tot.length, total: mine.total, wins, weeks,
+    strafen: f.strafen, missed: f.missed, losers: f.losers, streak: p.streak.best, nem, mine: ms?.pts || [], winner: tot[0], pot: pot(C).total };
+}
+function duelSvg(a, b) { // Mini-Diagramm: du (durchgezogen) gegen Nemesis (gestrichelt)
+  const all = [...a, ...b], x0 = Math.min(...all.map(p => p[0])), xm = Math.max(x0 + 1, ...all.map(p => p[0])), ym = Math.max(1, ...all.map(p => p[1]));
+  const Wd = 300, H = 56, x = k => ((k - x0) / (xm - x0) * (Wd - 4) + 2).toFixed(1), y = v => (H - 3 - v / ym * (H - 6)).toFixed(1);
+  const line = (pts, cls) => `<polyline class="${cls}" vector-effect="non-scaling-stroke" points="${pts.map(p => `${x(p[0])},${y(p[1])}`).join(' ')}"/>`;
+  return `<svg viewBox="0 0 ${Wd} ${H}" preserveAspectRatio="none" aria-hidden="true">${line(b, 'nem')}${line(a, 'me')}</svg>`;
+}
+function wrappedHtml(fresh) {
+  const d = wrappedData(); if (!d) return '';
+  const end = dayDate(CONFIG.weeks * 7 - 1), gain = d.loss < 0.05;
+  const fd = d.nem ? Math.round(d.nem.last) : 0;
+  const final = !d.nem ? '' : fd > 0 ? `am Ende ${ptsStr(fd)} vorn` : fd < 0 ? `am Ende ${ptsStr(-fd)} dahinter` : 'am Ende punktgleich';
+  const fee = d.strafen ? [d.missed && `${d.missed}× verpasst`, d.losers && `${d.losers}× Letzter`].filter(Boolean).join(' · ') : 'kein einziger Euro';
+  return `<div class="wrapped${fresh ? ' fresh' : ''}" role="dialog" aria-modal="true" aria-label="Saisonrückblick" tabindex="-1">
+    <article class="wcard">
+      <header class="wtop"><span>Club der Fettsäcke</span><span>Saison ${START.getFullYear()}/${String(end.getFullYear()).slice(2)}</span></header>
+      <p class="wname">${esc(d.name)}</p>
+      <div class="wb w-loss${gain ? ' gain' : ''}"><span class="wl">${gain ? 'seit Start' : 'vom Startgewicht verloren'}</span><b class="wbig" data-cnt="${d.loss}" data-f="loss">${tn(lossStr(d.loss))}</b></div>
+      <div class="wgrid">
+        <div class="wb w-rank"><span class="wl">Platz</span><b class="wnum" data-cnt="${d.pos}">${d.pos}</b><span class="ws">von ${d.of} · ${nf(d.total)} Punkte</span></div>
+        <div class="wb w-streak"><span class="wl">Längste Streak</span><b class="wnum" data-cnt="${d.streak}">${d.streak}</b><span class="ws">Tage am Stück, alle 3</span></div>
+        <div class="wb w-fee"><span class="wl">Strafen in den Topf</span><b class="wnum" data-cnt="${d.strafen}" data-f="eur">${eur(d.strafen)}</b><span class="ws">${fee}</span></div>
+        <div class="wb w-wins"><span class="wl">Wochensiege</span><b class="wnum" data-cnt="${d.wins}">${d.wins}</b><span class="ws">von ${d.weeks} Wochen ganz oben</span></div>
+        ${d.nem ? `<div class="wb w-nem"><span class="wl">Deine Nemesis</span><b class="wnum">${esc(d.nem.name)}</b><span class="ws">im Schnitt ${tn(fmt1(d.nem.avg))} Punkte Abstand über ${d.nem.n} Wochen, ${final}</span>${duelSvg(d.mine, d.nem.pts)}</div>` : ''}
+      </div>
+      <footer class="wfoot"><span>Sieger: <b>${esc(d.winner.name)}</b></span><span>Topf: <b>${eur(d.pot)}</b></span></footer>
+    </article>
+    <div class="wact"><span class="small t2">Screenshot machen und ab in die Gruppe.</span><button class="btn ghost" data-act="closeModal">Schließen</button></div></div>`;
+}
+function runCountUps(root) {
+  if (reducedMotion()) return;
+  const els = [...root.querySelectorAll('[data-cnt]')]; if (!els.length) return;
+  const F = { loss: v => lossStr(v), eur: v => eur(Math.round(v)), int: v => nf(v) };
+  els.forEach(el => { el._to = +el.dataset.cnt; el._f = F[el.dataset.f] || F.int; el.innerHTML = tn(el._f(0)); });
+  const t0 = performance.now(), dur = 1300;
+  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - (1 - k) ** 3; els.forEach(el => { el.innerHTML = tn(el._f(el._to * e)); }); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+/* ---------- REGELN ---------- */
+function viewRegeln() {
+  const end = dayDate(CONFIG.weeks * 7 - 1);
+  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
+  return `<section class="card rules"><div class="hd"><h2>Regeln</h2></div>
+  <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
+  <h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
+   <li>Jeden <b>Montag 0–${CONFIG.deadlineHour} Uhr</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
+   <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
+   <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
+   <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
+  <h3>Gewohnheiten (max. 21 P./Woche)</h3><ul>
+   <li>Jeder wählt <b>3 eigene</b>, die Überwindung kosten. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
+   <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
+  <h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
+   <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
+   <li>Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}, ein Tag Puffer) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Gewohnheiten.</li></ul>
+  <h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
+   <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
+   <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
+  <h3>Teamwoche (+${CONFIG.teamPts} P.)</h3><ul>
+   <li>Jeder kann ein <b>Teamziel für die nächste Woche</b> festlegen, eins pro Woche, z. B. „300.000 Schritte gemeinsam“. Entweder Summe (jeder trägt täglich eine Zahl ein) oder Anzahl (jeder hakt täglich ab).</li>
+   <li>Eintragen bis zu ${CONFIG.backfillDays} Tage rückwirkend, spätestens Montag ${CONFIG.deadlineHour} Uhr. Ist das Ziel dann erreicht, bekommt <b>jeder, der etwas eingetragen hat, +${CONFIG.teamPts} Punkte</b> für diese Woche.</li></ul>
+  <h3>Streak und Joker (keine Punkte)</h3><ul>
+   <li>Streak = Tage am Stück mit allen 3 Gewohnheiten. Die Challenge zählt nicht mit.</li>
+   <li>Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch den ersten verpassten Tag, an dem gerade eine Streak läuft.</li></ul>
+  <h3>Meilensteine und eigenes Ziel</h3><ul>
+   <li>−2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 7 und 30 Tage.</li>
+   <li>Im Tab <b>Ich</b> setzt du dir ein eigenes Ziel in Prozent. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul>
+  <h3>Topf</h3><ul>
+   <li>${eur(CONFIG.einsatz)} Einsatz (einmalig) + ${eur(CONFIG.strafe)} pro verpasstem Wiegen + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
+   <li>Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
+   <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
+  <h3>Erinnerungen</h3><ul>
+   <li>Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn noch Gewohnheiten offen sind. Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).</li></ul></section>`;
+}
+
+/* ---------- PROFIL / OVERLAYS ---------- */
+function pushInfo() {
+  if (DB.pushState() === 'on') return 'on';
+  if (DEMO) return 'off';
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (ios && !standalone) return 'ios';
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  return 'off';
+}
+function profileHtml(fresh) {
+  const p = S.players[S.me]; const he = habitsEditable();
+  const code = p.invite && !DEMO ? `<h3>Neue Leute einladen</h3><p class="small t2">Schick ihnen den Link und den Code <b>${esc(p.invite)}</b>.</p>` : '';
+  const when = 'montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn Gewohnheiten offen sind';
+  const push = {
+    on: `<p class="small t2">Aktiv auf diesem Gerät: ${when}.</p><button class="link" data-act="pushOff">Ausschalten</button>`,
+    off: `<p class="small t2">Push-Nachricht ${when}.</p><button class="btn ghost" data-act="push">Erinnerungen aktivieren</button>`,
+    ios: `<p class="small t2">Auf dem iPhone gehen Erinnerungen nur aus der installierten App: in Safari auf Teilen → „Zum Home-Bildschirm“, dann die App von dort öffnen (ab iOS 16.4).</p>`,
+    unsupported: `<p class="small t2">Dieser Browser kann keine Push-Nachrichten empfangen.</p>`,
+    denied: `<p class="small t2">Benachrichtigungen sind für diese Seite blockiert. Erlaube sie in den Browser-Einstellungen und öffne das Profil neu.</p>`,
+  }[pushInfo()];
+  return `<div class="modal${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet" data-stop role="dialog" aria-modal="true" aria-labelledby="pTitle" tabindex="-1">
+    <div class="hd"><h2 id="pTitle">Profil</h2><button class="iconbtn" data-act="closeModal" aria-label="Schließen">${svg('close')}</button></div>
+    <label class="f" for="pName">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
+    <label class="f">Gewohnheiten ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'}</label>
+    <div class="stack">${[0, 1, 2].map(i => `<input class="inp" id="pH${i}" maxlength="40" value="${esc(p.habits?.[i] || '')}" ${he ? '' : 'disabled'} aria-label="Gewohnheit ${i + 1}">`).join('')}</div>
+    <button class="btn full" data-act="saveProfile">Speichern</button>
+    <h3>Erinnerungen</h3>${push}
+    <h3>Dein Fortschritt</h3><p class="small t2">Ziel, Gewichtsverlauf in kg, Heatmap und Meilensteine stehen im Tab <button class="link" data-tab="ich">Ich</button>.</p>
+    ${code}
+    ${DEMO ? '' : `<h3>Konto</h3><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
+}
+function renderModal() {
+  const m = document.getElementById('modal');
+  const k = S.member && S.synced ? UI.modal : null;
+  if (!k) { if (m.innerHTML) m.innerHTML = ''; m.dataset.k = ''; document.body.classList.remove('locked'); return; }
+  const fresh = m.dataset.k !== k;
+  if (k === 'wrapped' && !fresh) return; // nicht neu zeichnen, sonst laufen Animationen und Zähler erneut
+  const sc = m.querySelector('.sheet')?.scrollTop || 0;
+  const html = k === 'wrapped' ? wrappedHtml(fresh) : profileHtml(fresh);
+  if (!html) { UI.modal = null; renderModal(); return; }
+  m.innerHTML = html; m.dataset.k = k; document.body.classList.add('locked');
+  if (!fresh) { const sh = m.querySelector('.sheet'); if (sh) sh.scrollTop = sc; return; }
+  // Fokus ins Overlay (ohne Tastatur aufzuklappen), damit Daten-Updates es nicht neu zeichnen
+  m.querySelector('.sheet, .wrapped')?.focus({ preventScroll: true });
+  if (k === 'wrapped') setTimeout(() => runCountUps(m), 250);
+}
+
+/* ---------- EVENTS ---------- */
+const val = id => (document.getElementById(id)?.value || '').trim();
+const intVal = id => parseInt(val(id).replace(/[^\d]/g, ''), 10);
+function setTab(tab) { UI.tab = TAB_KEYS.includes(tab) ? tab : 'heute'; window.scrollTo(0, 0); render(); }
+function go(tab) { // Tab im Hash merken (Neuladen, Lesezeichen), ohne den Verlauf vollzuschreiben
+  if (UI.modal === 'profile') UI.modal = null;
+  if (location.hash.slice(1) !== tab) history.replaceState(null, '', '#' + tab);
+  setTab(tab);
+}
+window.addEventListener('hashchange', () => setTab(location.hash.slice(1)));
+function tapStart(el, key) { // Federn sofort starten, render() übernimmt den Stand
+  TAP.k = key; TAP.t = performance.now();
+  el.classList.remove('tap'); el.style.removeProperty('--tapd'); void el.offsetWidth; el.classList.add('tap');
+}
+document.addEventListener('click', async ev => {
+  const tab = ev.target.closest('[data-tab]');
+  if (tab) { go(tab.dataset.tab); return; }
+  const el = ev.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'closeModal' && ev.target.closest('[data-stop]') && el.classList.contains('modal')) return;
+  const a = el.dataset.act;
+  try {
+    switch (a) {
+      case 'signin': await DB.signIn(); break;
+      case 'signout': UI.modal = null; await DB.signOut(); break;
+      case 'register': {
+        const name = val('rName'), habits = [val('rH0'), val('rH1'), val('rH2')];
+        if (!name) return toast('Name fehlt.');
+        if (habits.some(h => !h)) return toast('Bitte alle 3 Gewohnheiten eintragen.');
+        const k = nextJoinSlot(); if (k === null) return;
+        await DB.register({ name, habits, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
+        toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} bis ${CONFIG.deadlineHour} Uhr eintragen.`); break;
+      }
+      case 'weigh': {
+        const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
+        if (!(kg >= 30 && kg <= 300)) return toast('Bitte ein gültiges Gewicht eingeben.');
+        const p = S.players[S.me]; const js = p.joinedSlot || 0;
+        let loss = 0;
+        if (slot !== js) { const st = S.myWeights[js]; if (!st) return toast('Startgewicht fehlt.'); loss = Math.round((st - kg) / st * 10000) / 100; }
+        document.activeElement?.blur();
+        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss);
+        toast(slot === js ? 'Startgewicht gespeichert.' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
+      }
+      case 'habit': {
+        tapStart(el, `h${el.dataset.day}_${el.dataset.h}`);
+        el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); // sofortiges Feedback
+        const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
+        while (cur.length < 4) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur); break;
+      }
+      case 'hw': {
+        const cur = Math.min(curWeek(), CONFIG.weeks); const minW = Math.min(cur, Math.max(1, (S.players[S.me]?.joinedSlot || 0) + 1));
+        UI.habitWeek = clamp((UI.habitWeek ?? cur) + +el.dataset.d, minW, cur); if (UI.habitWeek === cur) UI.habitWeek = null; render(); break;
+      }
+      case 'setWeekly': {
+        const t = val('wText'); if (!t) return toast('Text fehlt.');
+        const k = document.getElementById('wKind')?.value || 'daily';
+        document.activeElement?.blur();
+        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge gespeichert.'); break;
+      }
+      case 'setTeam': {
+        const w = +el.dataset.w, text = val('gText'), kind = val('gKind') === 'count' ? 'count' : 'sum', target = intVal('gTarget'), unit = kind === 'sum' ? val('gUnit').slice(0, 20) : '';
+        if (!text) return toast('Text fehlt.');
+        if (!(target >= 1 && target <= 1e7)) return toast('Ziel als Zahl zwischen 1 und 10.000.000 eingeben.');
+        document.activeElement?.blur();
+        await DB.setTeamGoal(w, { text, kind, target, unit }); toast(`Teamziel für Woche ${w} gespeichert.`); break;
+      }
+      case 'teamLog': {
+        const d = +val('tmDay'), v = intVal('tmVal');
+        if (!(v >= 0 && v <= 1e6)) return toast('Bitte eine Zahl zwischen 0 und 1.000.000 eingeben.');
+        if (!teamEditable(d, C[S.me]?.js || 0)) return toast('Dieser Tag ist nicht mehr offen.');
+        document.activeElement?.blur();
+        await DB.setTeamLog(d, weekOfDay(d), v); toast(`Eingetragen: ${nf(v)} für ${fmtD(dayDate(d))}`); break;
+      }
+      case 'teamTog': {
+        const d = +el.dataset.day, on = (S.teamlogs[S.me + '_' + d]?.value || 0) > 0;
+        tapStart(el, 't' + d);
+        el.classList.toggle('on', !on); await DB.setTeamLog(d, weekOfDay(d), on ? 0 : 1); break;
+      }
+      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
+      case 'delTask': await DB.deleteTask(el.dataset.id); break;
+      case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
+      case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt.'); break;
+      case 'rmode': UI.rankMode = el.dataset.m; render(); break;
+      case 'rw': UI.rankWeek = clamp(UI.rankWeek + +el.dataset.d, 1, CONFIG.weeks); render(); break;
+      case 're': UI.rankEtappe = clamp(UI.rankEtappe + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
+      case 'ev': UI.etView = clamp(UI.etView + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
+      case 'toWeekRank': UI.rankMode = 'woche'; UI.rankWeek = +el.dataset.w; go('ranking'); break;
+      case 'ctab': UI.chartTable = !UI.chartTable; render(); break;
+      case 'kgtab': UI.kgTable = !UI.kgTable; render(); break;
+      case 'feedMore': UI.feedN += 12; render(); break;
+      case 'setGoal': {
+        const g = Math.round(parseFloat(val('goal').replace(',', '.').replace(/^[-−]/, '')) * 10) / 10;
+        if (!(g >= 0.5 && g <= 30)) return toast('Ziel als Zahl zwischen 0,5 und 30 eingeben, z. B. 8 für −8 %.');
+        document.activeElement?.blur(); await DB.setGoal(g); toast(`Ziel gespeichert: −${pct(g)} %. Sieht nur du.`); break;
+      }
+      case 'clearGoal': await DB.setGoal(null); toast('Ziel entfernt.'); break;
+      case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
+      case 'profile': UI.modal = 'profile'; renderModal(); break;
+      case 'closeModal': UI.modal = null; renderModal(); break;
+      case 'push': await DB.enablePush(); renderModal(); break;
+      case 'pushOff': await DB.disablePush(); renderModal(); break;
+      case 'saveProfile': {
+        const name = val('pName'); if (!name) return toast('Name fehlt.');
+        const d = { name }; if (habitsEditable()) { const hs = [val('pH0'), val('pH1'), val('pH2')]; if (hs.some(h => !h)) return toast('3 Gewohnheiten nötig.'); d.habits = hs; }
+        document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; renderModal(); toast('Gespeichert'); break;
+      }
+      case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; break;
+      case 'demoMon': { const d = dayIdx(); const k = Math.max(0, Math.floor(d / 7) + 1); const t = slotStart(Math.min(k, CONFIG.weeks)); t.setHours(9); setNow(t); break; }
+    }
+  } catch (e) { console.warn(e); /* Fehler wurde schon angezeigt */ }
+});
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'demoTime' && ev.target.value) setNow(new Date(ev.target.value));
+  if (ev.target.id === 'tmDay') { const i = document.getElementById('tmVal'); if (i) i.value = S.teamlogs[S.me + '_' + ev.target.value]?.value || ''; }
+});
+function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh(); }
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && UI.modal) { UI.modal = null; renderModal(); return; }
+  if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row')?.querySelector('.btn'); if (b) b.click(); }
+});
+
+/* ---------- START ---------- */
+(async function init() {
+  ensureDefs();
+  const h = location.hash.slice(1); if (TAB_KEYS.includes(h)) UI.tab = h;
+  const q = QS.get('now');
+  if (DEMO) {
+    const stored = +LS.getItem('cdf-demo-now');
+    if (q) NOW_OVERRIDE = new Date(q).getTime();
+    else if (stored) NOW_OVERRIDE = stored;
+    else { const t = dayDate(14); t.setHours(9); NOW_OVERRIDE = Math.max(Date.now(), t.getTime()); }
+    DB = makeDemoDB(onState);
+  } else {
+    if (CONFIG.testMode && q) NOW_OVERRIDE = new Date(q).getTime();
+    swReady().catch(e => console.warn('Service Worker', e));
+    try { DB = await makeFirebaseDB(CONFIG.firebase, onState); }
+    catch (e) { console.error(e); document.getElementById('app').innerHTML = `<section class="card"><div class="hd"><h2>Verbindung fehlgeschlagen</h2></div><p class="t2">Firebase konnte nicht geladen werden. Prüf die Config in app.js.</p></section>`; }
+  }
+  setInterval(() => { if (S.ready && !UI.modal) render(); }, 60000);
+})();

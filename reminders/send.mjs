@@ -10,7 +10,7 @@ import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
-// Muss zu CONFIG in index.html passen.
+// Muss zu CONFIG in app.js passen.
 const SEASON = { start: [2026, 11, 23], weeks: 24, deadlineHour: 12, backfillDays: 2, strafe: 2 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';

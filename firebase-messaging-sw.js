@@ -1,6 +1,6 @@
 /* Service Worker für Push-Erinnerungen (Firebase Cloud Messaging) und die installierbare App.
    Liegt neben index.html, damit der Scope /fettsaecke/ ist (GitHub Pages).
-   Die Config muss zu CONFIG.firebase in index.html passen (sie ist öffentlich, Schutz läuft über die Regeln). */
+   Die Config muss zu CONFIG.firebase in app.js passen (sie ist öffentlich, Schutz läuft über die Regeln). */
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 

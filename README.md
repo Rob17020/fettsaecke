@@ -2,15 +2,17 @@
 
 Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), täglich 3 Gewohnheiten abhaken, Wochen-Challenge, Extra-Aufgaben, Teamwoche, Kasse.
 
-- App: `index.html` (eine Datei, kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
+- App: `index.html` + `style.css` + `app.js` (kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
 - Daten: Firebase (Spark-Plan, kostenlos): Google-Login + Firestore
-- Ohne Firebase-Config (`CONFIG.firebase = null`) läuft ein Demo-Modus mit simulierten Mitspielern.
+- Ohne Firebase-Config (`CONFIG.firebase = null`) oder mit `?demo` in der URL läuft ein Demo-Modus mit simulierten Mitspielern.
 
 ## Dateien
 
 | Datei | Zweck |
 |---|---|
-| `index.html` | die komplette App |
+| `index.html` | Hülle: lädt `style.css` und `app.js` (Versionsnummer `?v=` nach Änderungen hochzählen) |
+| `style.css` | komplettes Design |
+| `app.js` | die App: `CONFIG`, Punkte-Logik, Firebase/Demo, Oberfläche |
 | `firestore.rules` | Sicherheitsregeln, in der Firebase-Konsole einfügen und veröffentlichen |
 | `manifest.json`, `icons/` | installierbare App (Zum Home-Bildschirm) |
 | `firebase-messaging-sw.js` | Service Worker für Push-Nachrichten |
@@ -24,10 +26,10 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 
 1. **Web-Push-Schlüssel erzeugen**
    Firebase-Konsole → Projekteinstellungen → Cloud Messaging → *Web-Push-Zertifikate* → *Schlüsselpaar generieren*.
-   Den öffentlichen Schlüssel in `index.html` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
+   Den öffentlichen Schlüssel in `app.js` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
 
 2. **Regeln veröffentlichen**
-   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen (neu: `teamgoals`, `teamlogs`).
+   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen (neu: `confirmedAt` beim Bestätigen von Aufgaben, für den Liveticker).
 
 3. **Service-Account als GitHub-Secret**
    Firebase-Konsole → Projekteinstellungen → Dienstkonten → *Neuen privaten Schlüssel generieren* (lädt eine JSON-Datei herunter).
@@ -58,9 +60,23 @@ GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- 
 - **Öffentliche Repos:** GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im Repo passiert. Dann unter Actions → *Erinnerungen* → *Enable workflow* wieder einschalten (oder zwischendurch etwas committen).
 - Die Logs der Actions sind bei öffentlichen Repos öffentlich. Das Skript loggt deshalb nur Zahlen, keine Namen oder Tokens.
 
+## Lokal ausprobieren
+
+ES-Module laden nicht per `file://`, deshalb über einen kleinen Server:
+
+```
+python3 -m http.server 8000
+```
+
+Dann `http://localhost:8000/index.html?demo` öffnen. Nützliche Zusätze:
+
+- `?demo&bots=18`: 20 Spieler, um zu sehen, wie Ranking und Diagramme mit vielen Leuten aussehen
+- `&now=2027-01-18T09:00`: Zeit setzen (z. B. Montag im Wiegefenster), `&now=2027-05-10T14:00` zeigt den Saisonrückblick
+- `#ich`, `#ranking`, `#verlauf`: direkt einen Tab öffnen
+
 ## Vor dem Saisonstart
 
-- `CONFIG.testMode` in `index.html` auf `false`
+- `CONFIG.testMode` in `app.js` auf `false`
 - `TESTMODE()` in `firestore.rules` auf `false`, Regeln veröffentlichen
 - Test-Sammlungen in Firestore löschen (inkl. `teamgoals`, `teamlogs`, `reminderRuns`)
-- `START_MS` (Regeln), `CONFIG.start` (index.html) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen
+- `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen

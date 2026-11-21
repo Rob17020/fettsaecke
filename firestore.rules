@@ -1,7 +1,7 @@
 rules_version = '2';
 // Club der Fettsäcke – Firestore-Sicherheitsregeln
 // 1) EINLADUNGSCODE unten ändern (Zeile mit 'FETTSACK2026')
-// 2) START_MS muss zum Start in der index.html passen (Mo 23.11.2026 00:00 Uhr deutscher Zeit)
+// 2) START_MS muss zum Start in app.js (CONFIG.start) passen (Mo 23.11.2026 00:00 Uhr deutscher Zeit)
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -96,10 +96,11 @@ service cloud.firestore {
       // eigene Erledigung melden (unbestätigt)
       allow create: if member() && ownNew() && request.resource.data.confirmedBy == null
         && id == request.resource.data.taskId + '_' + me();
-      // nur JEMAND ANDERES darf bestätigen
+      // nur JEMAND ANDERES darf bestätigen; confirmedAt (für den Liveticker) nur als Serverzeit
       allow update: if member() && resource.data.uid != me()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmedBy', 'confirmedByName'])
-        && request.resource.data.confirmedBy == me();
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmedBy', 'confirmedByName', 'confirmedAt'])
+        && request.resource.data.confirmedBy == me()
+        && (!('confirmedAt' in request.resource.data) || request.resource.data.confirmedAt == request.time);
       // zurückziehen nur solange unbestätigt
       allow delete: if member() && ownOld() && resource.data.confirmedBy == null;
     }
@@ -136,6 +137,8 @@ service cloud.firestore {
 
     // Hinweise:
     // - players/{uid}.lastActive schreibt die App selbst (Update-Regel oben erlaubt das Feld).
+    // - habitlogs.ts und taskDone.ts (Zeitpunkt für den Liveticker) sind zusätzliche Felder, die Regeln oben lassen sie zu.
+    // - Das private Ziel (goal, in %) liegt im Dokument players/{uid}/private/weights (Regel "private").
     // - Push-Tokens liegen in players/{uid}/private/tokens (nur Besitzer, Regel "private" oben).
     // - reminderRuns/* schreibt nur das Erinnerungs-Skript mit Admin-Rechten; ohne Regel kein Client-Zugriff.
   }
