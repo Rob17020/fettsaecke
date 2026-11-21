@@ -22,6 +22,7 @@ const CONFIG = {
   habitFee: 0.5,      // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
   loserFee: 0.5,      // € für den Letzten im Wochenranking
   habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
+  pauseWeeks: 2,      // so viele Wochen darf jeder pro Saison pausieren (krank, Urlaub)
   holdBand: 1,        // Haltephase (Ziel erreicht): Woche zählt, wenn das Wiegen höchstens so viele Prozentpunkte vom Ziel abweicht
   weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
   deadlineHour: 14,   // … bis 14:00 Uhr
@@ -144,10 +145,13 @@ function compute(S) {
     const wb = {};
     for (const w of Object.values(S.weighins)) if (w.uid === uid && typeof w.lossPct === 'number') wb[w.slot] = w.lossPct;
     const active = wb[js] !== undefined;
+    /* Pause (krank, Urlaub): Woche w = Haken Mo–So von Woche w + Wiegen am Montag danach (Slot w). Keine Punkte, keine Strafen,
+       nicht im Wochenranking und nicht Wochenletzter, Streak bleibt stehen. Das nächste Wiegen vergleicht wie immer mit dem Tiefstwert. */
+    const paused = new Set((Array.isArray(p.pausedWeeks) ? p.pausedWeeks : []).filter(w => Number.isInteger(w) && w > js && w <= CONFIG.weeks));
     // persönliches Ziel (max. Abnahme in % vom Startgewicht), fest ab dem Startgewicht; goalWeek = erstes Wiegen mit lossPct >= Ziel
     const goal = typeof p.maxLossPct === 'number' && p.maxLossPct > 0 ? p.maxLossPct : null;
     let goalWeek = null;
-    if (goal) for (let k = js + 1; k <= CONFIG.weeks; k++) if (wb[k] !== undefined && wb[k] >= goal - 1e-9) { goalWeek = k; break; }
+    if (goal) for (let k = js + 1; k <= CONFIG.weeks; k++) if (!paused.has(k) && wb[k] !== undefined && wb[k] >= goal - 1e-9) { goalWeek = k; break; }
     const hl = hlBy[uid] || {};
     const weeks = {};
     let best = 0;
@@ -158,6 +162,7 @@ function compute(S) {
     // Ausgestiegen (Ziel erreicht): nur Wochen bis finishedWeek zählen, danach keine Punkte und keine Strafen
     const finished = p.status === 'finished' && Number.isInteger(p.finishedWeek), lastW = finished ? Math.min(p.finishedWeek, CONFIG.weeks) : CONFIG.weeks;
     for (let w = js + 1; w <= lastW; w++) {
+      if (paused.has(w)) { weeks[w] = { paused: true, weigh: 0, habits: 0, bonus: 0, weekly: 0, chCnt: 0, cnt: tickCounts(hl, w), targets: habitsFor(p, w).map(h => h.target), met: false, hold: goalWeek !== null && w > goalWeek, inBand: false, total: 0, weighed: wb[w] !== undefined }; continue; }
       const has = wb[w] !== undefined, hold = goalWeek !== null && w > goalWeek;
       const inBand = hold && has && Math.abs(wb[w] - goal) <= CONFIG.holdBand + 1e-9;
       const weigh = hold ? (inBand ? wMax : 0) : has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighMaxTenths) * CONFIG.weighPerTenth : 0;
@@ -171,21 +176,21 @@ function compute(S) {
     }
     // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee; in der Haltephase freiwillig)
     const missedHabitWeeks = [];
-    if (active) for (let w = js + 1; w <= lastW && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold) missedHabitWeeks.push(w);
+    if (active) for (let w = js + 1; w <= lastW && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold && !weeks[w].paused) missedHabitWeeks.push(w);
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
       if (td.uid === uid && td.confirmedBy && t && t.etappe <= etappeOf(lastW)) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
     }
     const missedSlots = [];
-    if (active) for (let k = js + 1; k <= Math.min(lc, lastW); k++) if (wb[k] === undefined) missedSlots.push(k);
+    if (active) for (let k = js + 1; k <= Math.min(lc, lastW); k++) if (wb[k] === undefined && !paused.has(k)) missedSlots.push(k);
     const missed = missedSlots.length;
     const slots = Object.keys(wb).map(Number).sort((a, b) => a - b);
     const latest = slots.length ? wb[slots[slots.length - 1]] : 0;
     // längste Serie Wiegen ohne Verpassen (für Meilensteine)
     let run = 0, weighRun = 0;
-    if (active) for (let k = js + 1; k <= lastW; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
-    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, hold: active && goalWeek !== null && !finished, finished, fw: lastW, finishedAt: tsNum(p.finishedAt), weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
+    if (active) for (let k = js + 1; k <= lastW; k++) { if (paused.has(k)) continue; if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
+    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, hold: active && goalWeek !== null && !finished, finished, paused: [...paused].sort((a, b) => a - b), fw: lastW, finishedAt: tsNum(p.finishedAt), weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
       weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
     x.streak = active ? streakOf(x) : { cur: 0, best: 0, joker: true, jokerWeek: null };
     x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
@@ -227,7 +232,7 @@ const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.choo
 function tsNum(t) { if (!t) return 0; if (typeof t === 'number') return t; if (t.toMillis) return t.toMillis(); if (t.seconds) return t.seconds * 1000; return 0; }
 function sortRank(arr) { return arr.sort((a, b) => b.total - a.total || b.latest - a.latest || a.name.localeCompare(b.name)); }
 function rankWeek(C, w) {
-  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], habits: p.weeks[w].habits + p.weeks[w].bonus, uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
+  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w] && !p.weeks[w].paused).map(p => ({ ...p.weeks[w], habits: p.weeks[w].habits + p.weeks[w].bonus, uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
 }
 function rankRange(C, wFrom, wTo, etappen) {
   // Ausgestiegene nur in Etappen, die vor ihrem Ausstieg schon fertig waren (Gesamt: eigener Abschnitt "Ziel erreicht")
@@ -292,7 +297,7 @@ function teamMonth(S, C, e) {
   const tasks = drawIdeas(ideasFor(S, e), e); if (!tasks.length) return null;
   const w0 = etFirstWeek(e), w1 = etEndWeek(e), d0 = 7 * (w0 - 1), d1 = 7 * w1;
   let pw = 0; // Spielerwochen
-  for (const p of Object.values(C)) if (p.active) for (let w = w0; w <= w1; w++) if (w > p.js && (!p.finished || w <= p.fw)) pw++;
+  for (const p of Object.values(C)) if (p.active) for (let w = w0; w <= w1; w++) if (w > p.js && (!p.finished || w <= p.fw) && !p.weeks[w]?.paused) pw++;
   const by = {}, sums = {};
   for (const l of Object.values(S.teamlogs || {})) {
     if (!l.vals || l.day < d0 || l.day >= d1 || !C[l.uid]?.active || (C[l.uid].finished && l.day >= 7 * C[l.uid].fw)) continue;
@@ -325,7 +330,7 @@ function streakOf(x) {
   for (let w = x.js + 1; w <= last; w++) {
     const wk = x.weeks[w]; if (!wk) continue;
     if (wk.met) { best = Math.max(best, ++cur); continue; }
-    if (!weekFinal(w) || wk.hold) continue; // läuft noch bzw. Haltephase (Gewohnheiten freiwillig)
+    if (!weekFinal(w) || wk.hold || wk.paused) continue; // läuft noch, Haltephase (Gewohnheiten freiwillig) oder Pause
     const e = etappeOf(w);
     if (cur > 0 && used[e] === undefined) { used[e] = w; continue; }
     cur = 0;
@@ -834,6 +839,17 @@ const goalHint = 'z. B. 10 % = bei 100 kg Startgewicht 10 kg. Ab dem Startgewich
 const readGoal = id => { const g = Math.round(parseFloat(val(id).replace(',', '.')) * 10) / 10; return g >= GOAL_MIN && g <= GOAL_MAX ? g : null; };
 // Ändern geht bis zum Startgewicht. Wer (aus Testzeiten) noch kein Ziel hat, darf es im Demo-/Testmodus auch danach einmal setzen.
 const goalEditable = (me, p) => !me?.active || (typeof p?.maxLossPct !== 'number' && (DEMO || CONFIG.testMode));
+// Pause: laufende Woche bis Mittwoch 23:59, jede spätere jederzeit. Zurücknehmen nur, solange die Woche noch nicht begonnen hat.
+const pauseDeadline = w => dayDate(7 * (w - 1) + 3);
+const canUnpause = w => now() < dayDate(7 * (w - 1));
+const pauseLbl = w => `Woche ${w} · ${shortRange(w)}, kein Wiegen am ${fmtD(slotStart(w))}`;
+function pauseOptions(me) {
+  if (!me || me.finished || me.paused.length >= CONFIG.pauseWeeks) return [];
+  const out = [];
+  for (let w = Math.max(me.js + 1, curWeek(), 1); w <= CONFIG.weeks; w++) if (!me.paused.includes(w) && now() < pauseDeadline(w)) out.push(w);
+  return out;
+}
+const pausedNow = p => !!p?.weeks?.[clamp(curWeek(), 1, CONFIG.weeks)]?.paused && curWeek() >= 1;
 const HOLD_LBL = 'Haltephase – nur Montag wiegen';
 const exitBtn = me => canExit(me) ? `<button class="btn ghost danger" data-act="exitAsk">Ziel erreicht – aussteigen</button>` : '';
 function goalBar(me) {
@@ -924,6 +940,7 @@ function weighCard(me, p) {
       <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
   if (os === null || os < js || me.finished) return { due: false, html: '' };
+  if (me.weeks[os]?.paused) return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Heute kein Wiegen</h2><span class="aside">Woche ${os}</span></div><p class="small t2">Woche ${os} ist pausiert, das Wiegen heute fällt weg. Nächste Woche vergleicht die Waage wie immer mit deinem Tiefstwert.</p></section>` };
   if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
     <p class="when">Noch ${cdHtml(slotDeadline(os))} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>${weighInput(os, 'Eintragen', '', true)}</section>` };
   const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
@@ -978,7 +995,9 @@ function statusCard(me) {
       rank += `<p class="gap">${cap(parts.join(', ')) || 'Alle gleichauf'}. <span class="muted">${note}</span></p><div class="lb">${lb}</div>
         ${r.length > 7 ? `<button class="link" data-act="toWeekRank" data-w="${w}">Alle ${r.length} im Wochenranking</button>` : ''}`;
     } else if (note) rank += `<p class="small t2">${note}</p>`;
-  }
+  } else if (me.weeks[w]?.paused) rank = `<p class="t2"><b>Pause.</b> Woche ${w} zählt für dich nicht: keine Punkte, keine Strafen, Streak bleibt stehen.</p>`;
+  const pz = Object.values(C).filter(x => x.uid !== S.me && x.weeks[w]?.paused).map(x => esc(x.name));
+  if (pz.length) rank += `<p class="small muted">Pause: ${andJoin(pz)}</p>`;
   const kv = me.goal ? [] : [['Seit Start', tn(lossStr(me.latest))]];
   const gb = me.goal ? goalBar(me) : goalEditable(me, S.players[S.me]) ? `<p class="small t2 sep">Noch kein Ziel gesetzt. <button class="link" data-tab="ich">Ziel festlegen</button></p>` : '';
   if (openSlot() === null) { const nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
@@ -1035,7 +1054,7 @@ function habitsCard(me, p, focus) {
     g += `<div class="hrow${isCh ? ' ch' : ''}"><span class="hname" title="${esc(plain)}">${html}</span><div class="hcells">`;
     for (let i = 0; i < 7; i++) {
       const d = d0 + i; const on = !!me.hl[d]?.[hi];
-      const edit = canEdit(d), fx = tapFx(`h${d}_${hi}`);
+      const edit = canEdit(d) && !wk?.paused, fx = tapFx(`h${d}_${hi}`);
       const cls = ['hc', on && 'on', d === today && 'td', d > today || d < minDay ? 'off' : edit ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
       g += `<button class="${cls}"${fx.st} ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-pressed="${on}" aria-label="${esc(plain)}, ${fmtD(dayDate(d))}">${svg('check', 'ck')}</button>`;
     }
@@ -1043,7 +1062,7 @@ function habitsCard(me, p, focus) {
   }
   g += '</div>';
   const st = me.streak;
-  const hold = me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Gewohnheiten sind freiwillig und bringen weiter Punkte, bis das Wochenmaximum voll ist.</p>` : '';
+  const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Gewohnheiten sind freiwillig und bringen weiter Punkte, bis das Wochenmaximum voll ist.</p>` : '';
   const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span></p>` : '';
   const score = `<span class="aside"><b>${wk ? wk.habits : 0}</b>/${habitMax()}${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
   // Warnung: Vorwoche kann noch nachgetragen werden, aber nicht alle Wochenziele sind erreicht (sonst Strafe)
@@ -1066,7 +1085,7 @@ function weeklyCard(me) {
   if (ch) {
     const per = ch.kind === 'daily' ? '1 Punkt pro Tag' : `${Math.round(CONFIG.challengePts / chTarget(ch))} Punkte pro Mal`;
     const lbl = chLabel(ch);
-    const stand = Object.values(C).filter(p => p.active && p.js < w && (cw === 0 || p.weeks[w])).map(p => ({ p, v: p.weeks[w]?.weekly || 0 })).sort((a, b) => b.v - a.v || a.p.name.localeCompare(b.p.name));
+    const stand = Object.values(C).filter(p => p.active && p.js < w && (cw === 0 || (p.weeks[w] && !p.weeks[w].paused))).map(p => ({ p, v: p.weeks[w]?.weekly || 0 })).sort((a, b) => b.v - a.v || a.p.name.localeCompare(b.p.name));
     if (cw > 0 && me.active && !me.finished) aside = `<span class="aside"><b>${me.weeks[w]?.weekly || 0}</b>/${CONFIG.challengePts} P.</span>`;
     inner = `<p class="chtext">${esc(ch.text)}</p>
       <p class="small t2">${cap(lbl)} · ${per} · von ${esc(ch.setByName)}</p>
@@ -1206,6 +1225,7 @@ function metaLine(p) {
   const a = activity(p.lastActive); const out = [];
   if (a) out.push(`<span class="${a.still ? 'still' : ''}">${a.t}</span>`);
   if (p.hold) out.push(`<span class="ms hold">${HOLD_LBL}</span>`);
+  if (pausedNow(p)) out.push('<span class="ms">Pause</span>');
   if (p.streak.cur > 0) out.push(`<span class="stk" title="Streak: ${wochen(p.streak.cur)} am Stück alle Wochenziele, Rekord ${p.streak.best}">${svg('flame')}${p.streak.cur}</span>`);
   for (const m of topMilestones(p)) out.push(`<span class="ms" title="Meilenstein: ${m.label}">${m.short || m.label}</span>`);
   return out.length ? `<span class="meta">${out.join('')}</span>` : '';
@@ -1227,6 +1247,8 @@ function rankCards(mode) { // Liste (Woche/Etappe/Gesamt) und Diagramm "Punkte, 
     const w = UI.rankWeek ?? cwc; list = rankWeek(C, w);
     title = navBar('rw', w, 1, cwc, `Woche ${w} · ${weekRange(w)}`);
     if (lastClosedSlot() < w) note = `<p class="small muted">Vorläufig: Waage-Punkte kommen am ${fmtD(slotStart(w))} bis ${CONFIG.deadlineHour} Uhr dazu.</p>`;
+    const pz = Object.values(C).filter(p => p.weeks[w]?.paused).map(p => esc(p.name));
+    if (pz.length) note += `<p class="small muted">Pause: ${andJoin(pz)}</p>`;
     else losers = weekLosers(C, w);
   } else if (mode === 'etappe') {
     list = rankEtappe(C, UI.rankEtappe ?? etappeOf(cwc)); title = etNav(UI.rankEtappe ?? etappeOf(cwc));
@@ -1655,6 +1677,14 @@ function pushInfo() {
   if (Notification.permission === 'denied') return 'denied';
   return 'off';
 }
+function pauseBlock() {
+  const me = C[S.me]; if (!me || me.finished) return '';
+  const left = CONFIG.pauseWeeks - me.paused.length, opts = pauseOptions(me);
+  const list = me.paused.map(w => `<div class="row"><span class="small grow">${pauseLbl(w)}</span>${canUnpause(w) ? `<button class="link" data-act="unpause" data-w="${w}">Zurücknehmen</button>` : ''}</div>`).join('');
+  return `<h3>Pause (krank, Urlaub)</h3>
+    <p class="small t2">Noch <b>${left}</b> von ${CONFIG.pauseWeeks} Pausenwochen. Eine Pause gilt für eine ganze Woche (Mo–So) und das Wiegen am Montag danach: keine Punkte, keine Strafen, Streak bleibt stehen. Die laufende Woche geht bis Mittwoch 23:59.</p>
+    ${list}${opts.length ? `<div class="row"><select class="inp grow" id="pWeek" aria-label="Woche pausieren">${opts.map(w => `<option value="${w}">${pauseLbl(w)}</option>`).join('')}</select><button class="btn ghost" data-act="pause">Pausieren</button></div>` : ''}`;
+}
 function profileHtml(fresh) {
   const p = S.players[S.me]; const he = habitsEditable(p.joinedSlot || 0);
   const code = p.invite && !DEMO ? `<h3>Neue Leute einladen</h3><p class="small t2">Schick ihnen den Link und den Code <b>${esc(p.invite)}</b>.</p>` : '';
@@ -1673,6 +1703,7 @@ function profileHtml(fresh) {
     ${habitInputs('p', normHabits(p.habits), !he)}
     <p class="small muted">Jede bringt bis zu ${CONFIG.habitMaxPts} Punkte pro Woche, anteilig zum Wochenziel. Änderungen gelten ab der laufenden Etappe.</p>
     <button class="btn full" data-act="saveProfile">Speichern</button>
+    ${pauseBlock()}
     <h3>Erinnerungen</h3>${push}
     <h3>Dein Fortschritt</h3><p class="small t2">Ziel, Gewichtsverlauf in kg, Heatmap und Meilensteine stehen im Tab <button class="link" data-tab="ich">Ich</button>.</p>
     ${code}
@@ -1700,7 +1731,7 @@ function onboardingHtml(fresh) {
       <li><b>Extra-Aufgaben:</b> +${CONFIG.taskPts} pro geschaffter Aufgabe, ein anderer bestätigt. Team-Monat: +${CONFIG.teamPts}, wenn alle Ziele klappen.</li></ul>
       <h3>Eine realistische Woche</h3>${exampleWeek()}`],
     ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<p class="t2">Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, gleiche Waage, Foto in die Gruppe. Die anderen sehen nur Prozente, nie deine kg.</p>
-      <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf.</p>
+      <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf. Krank oder im Urlaub? Bis zu ${CONFIG.pauseWeeks} Wochen pro Saison pausieren, im Profil.</p>
       <p class="t2">Dein Ziel${me?.goal ? ` (−${tn(pct(me.goal))} %)` : ''} ist ab dem Startgewicht fest: Erreichst du es, hältst du es in der Haltephase (nur noch montags wiegen) oder steigst aus und bekommst deinen Einsatz zurück.</p>`],
     ['Kasse', `<p class="t2"><b>${eur(CONFIG.einsatz)} Einsatz</b> zahlt jeder einmal. Dazu kommen:</p>
       <ul class="small t2 xlist"><li><b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen</li><li><b>${eur(CONFIG.habitFee)}</b> pro Woche, in der nicht alle 3 Wochenziele geschafft sind</li><li><b>${eur(CONFIG.loserFee)}</b> für den Wochenletzten</li></ul>
@@ -1860,6 +1891,16 @@ document.addEventListener('click', async ev => {
       case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
       case 'profile': UI.modal = 'profile'; renderModal(); break;
       case 'exitAsk': UI.modal = 'exit'; renderModal(); break;
+      case 'pause': {
+        const w = parseInt(val('pWeek'), 10), me = C[S.me];
+        if (!pauseOptions(me).includes(w)) return toast('Diese Woche kann nicht mehr pausiert werden.');
+        await DB.updatePlayer({ pausedWeeks: [...me.paused, w].sort((a, b) => a - b) }); renderModal(); toast(`Woche ${w} pausiert.`); break;
+      }
+      case 'unpause': {
+        const w = +el.dataset.w, me = C[S.me];
+        if (!canUnpause(w)) return toast('Die Woche hat schon begonnen.');
+        await DB.updatePlayer({ pausedWeeks: me.paused.filter(x => x !== w) }); renderModal(); toast(`Pause für Woche ${w} zurückgenommen.`); break;
+      }
       case 'exitDo': {
         if (!canExit(C[S.me])) { UI.modal = null; renderModal(); return toast('Aussteigen geht gerade nicht.'); }
         UI.modal = null; renderModal(); await DB.finish(+el.dataset.w);

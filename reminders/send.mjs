@@ -66,6 +66,7 @@ async function main() {
     if (KIND === 'weigh') {
       const k = FORCE && !Number.isInteger(slot) ? Math.ceil(slot) : slot;
       if (k < js) continue;
+      if ((p.pausedWeeks || []).includes(k)) continue;                     // Woche pausiert: kein Wiegen nötig
       if (k > js && !(await exists(`weighins/${p.uid}_${js}`))) continue; // nie gestartet
       if (await exists(`weighins/${p.uid}_${k}`)) continue;               // schon gewogen
       const dl = `${SEASON.deadlineHour}:00 Uhr`;
@@ -74,6 +75,7 @@ async function main() {
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
+      if ((p.pausedWeeks || []).includes(Math.floor(t.day / 7) + 1)) continue;          // diese Woche pausiert
       // Haltephase (Ziel bei einem früheren Wiegen erreicht): Gewohnheiten sind freiwillig, keine Erinnerung
       if (typeof p.maxLossPct === 'number') {
         const ws = await db.collection('weighins').where('uid', '==', p.uid).get();
