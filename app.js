@@ -17,10 +17,10 @@ const CONFIG = {
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
-  einsatz: 20,        // € Einsatz pro Person (einmalig)
-  strafe: 5,          // € pro verpasstem Wiegen
-  habitFee: 1,        // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
-  loserFee: 1,        // € für den Letzten im Wochenranking
+  einsatz: 5,         // € Einsatz pro Person (einmalig)
+  strafe: 1,          // € pro verpasstem Wiegen
+  habitFee: 0.5,      // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
+  loserFee: 0.5,      // € für den Letzten im Wochenranking
   habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
   weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
   deadlineHour: 14,   // … bis 14:00 Uhr
@@ -74,7 +74,8 @@ const WDL = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag
 const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
 const fmtLong = d => `${WDL[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
 const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
-const eur = x => x.toLocaleString('de-DE') + ' €';
+// 5 € / 0,50 € / 2,50 €: Cent nur, wenn es welche gibt
+const eur = x => { const c = Math.round(x * 100); return (c / 100).toLocaleString('de-DE', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; };
 const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
 const tn = s => String(s).replace(/[,.]/g, m => `<span class="pp">${m}</span>`);
 const andJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
@@ -386,7 +387,7 @@ function makeDemoDB(emit) {
       for (let d = 0; d <= today && d < CONFIG.weeks * 7; d++) {
         const rr = rng(b.uid + d), r2 = rng(b.uid + 'h' + d);
         // Wahrscheinlichkeit pro Tag passend zum Wochenziel (disc = Disziplin)
-        const done = [...b.habits.map(h => rr() < Math.min(1, h.target / 7 * (b.disc + .25))), rr() < b.disc - .2];
+        const done = [...b.habits.map(h => rr() < Math.min(1, h.target / 7 * (b.disc + .35))), rr() < b.disc - .2];
         const late = d < today && r2() < .12; // manchmal am nächsten Morgen nachgetragen
         const ts = late ? dayDate(d + 1).getTime() + (7 + r2() * 4) * 36e5 : dayDate(d).getTime() + (d === today ? 7 + r2() * 15 : 18 + r2() * 5) * 36e5;
         if (ts > tn) continue; // heute erst, wenn es schon passiert ist
@@ -1512,7 +1513,7 @@ function wrappedHtml(fresh) {
 function runCountUps(root) {
   if (reducedMotion()) return;
   const els = [...root.querySelectorAll('[data-cnt]')]; if (!els.length) return;
-  const F = { loss: v => lossStr(v), eur: v => eur(Math.round(v)), int: v => nf(v) };
+  const F = { loss: v => lossStr(v), eur: v => eur(v), int: v => nf(v) };
   els.forEach(el => { el._to = +el.dataset.cnt; el._f = F[el.dataset.f] || F.int; el.innerHTML = tn(el._f(0)); });
   const t0 = performance.now(), dur = 1300;
   const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - (1 - k) ** 3; els.forEach(el => { el.innerHTML = tn(el._f(el._to * e)); }); if (k < 1) requestAnimationFrame(step); };

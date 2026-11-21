@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
 // Muss zu CONFIG in app.js passen.
-const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, deadlineHour: 14, backfillDays: 2, strafe: 5, habitFee: 1 };
+const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, deadlineHour: 14, backfillDays: 2, strafe: 1, habitFee: 0.5 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';
 
@@ -69,7 +69,7 @@ async function main() {
       if (await exists(`weighins/${p.uid}_${k}`)) continue;               // schon gewogen
       const dl = `${SEASON.deadlineHour}:00 Uhr`;
       out.push({ p, title: k === js ? `Startgewicht bis ${dl}` : `Wiegen bis ${dl}`,
-        body: k === js ? `Trag heute bis ${dl} dein Startgewicht ein.` : `Woche ${k} ist noch nicht eingetragen. Bis ${dl}, sonst ${SEASON.strafe} € in den Topf.` });
+        body: k === js ? `Trag heute bis ${dl} dein Startgewicht ein.` : `Woche ${k} ist noch nicht eingetragen. Bis ${dl}, sonst ${eur(SEASON.strafe)} in den Topf.` });
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
