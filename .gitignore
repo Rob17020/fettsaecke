@@ -4,3 +4,7 @@ node_modules/
 service-account*.json
 serviceAccount*.json
 .env
+# Backups enthalten private kg-Werte: niemals committen (liegen verschlüsselt als Artefakt in GitHub Actions)
+backup/
+*.fsbak
+firestore-*.json

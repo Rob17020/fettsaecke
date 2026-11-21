@@ -2,19 +2,21 @@ name: Erinnerungen
 
 # GitHub-Cron läuft in UTC. Jede Zeit ist doppelt eingetragen (Sommer- und Winterzeit),
 # das Skript prüft selbst die Uhrzeit in Berlin und verschickt pro Tag nur einmal.
+# Dazu einmal pro Woche (Sonntagnacht) ein verschlüsseltes Backup aller Daten als Artefakt (90 Tage).
 on:
   schedule:
     - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 14 Uhr
     - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Gewohnheiten noch offen
+    - cron: '30 22 * * 0'    # Sonntag 23:30 (Winter) bzw. Montag 00:30 (Sommer) Berlin: Backup
   workflow_dispatch:
     inputs:
       kind:
-        description: 'Art der Nachricht'
+        description: 'Art der Nachricht (backup = nur Backup)'
         type: choice
-        options: [test, weigh, habits, auto]
+        options: [test, weigh, habits, auto, backup]
         default: test
       dry_run:
-        description: 'Nur zählen, nichts senden'
+        description: 'Nur zählen, nichts senden (gilt nicht fürs Backup)'
         type: boolean
         default: true
 
@@ -27,6 +29,7 @@ concurrency:
 
 jobs:
   send:
+    if: github.event.schedule != '30 22 * * 0' && !(github.event_name == 'workflow_dispatch' && inputs.kind == 'backup')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,3 +50,35 @@ jobs:
           KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || 'auto' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+
+  # Wöchentliches Backup: alle Sammlungen inkl. players/{uid}/private als EINE Datei, verschlüsselt mit BACKUP_PASSPHRASE.
+  # Nie committen: Artefakte öffentlicher Repos kann jeder angemeldete GitHub-Nutzer laden, deshalb nur verschlüsselt.
+  backup:
+    if: github.event.schedule == '30 22 * * 0' || (github.event_name == 'workflow_dispatch' && inputs.kind == 'backup')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: reminders
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten
+        working-directory: reminders
+        run: npm install --omit=dev --no-audit --no-fund
+      - name: Sichern
+        id: backup
+        working-directory: reminders
+        run: node backup.mjs --out=../backup
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      - name: Als Artefakt ablegen (90 Tage)
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-backup-${{ steps.backup.outputs.date }}
+          path: backup/*.fsbak
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0

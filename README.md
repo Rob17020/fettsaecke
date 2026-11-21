@@ -18,7 +18,8 @@ Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), 
 | `firebase-messaging-sw.js` | Service Worker für Push-Nachrichten |
 | `fonts/` | Schrift Schibsted Grotesk, lokal eingebunden (SIL Open Font License, `fonts/OFL.txt`) |
 | `reminders/send.mjs` | verschickt die Erinnerungen (läuft in GitHub Actions) |
-| `.github/workflows/reminders.yml` | Zeitplan für die Erinnerungen |
+| `reminders/backup.mjs`, `restore.mjs`, `backup-format.mjs` | wöchentliches verschlüsseltes Backup und Wiederherstellen |
+| `.github/workflows/reminders.yml` | Zeitplan für Erinnerungen und Backup |
 
 ## Einrichten der Erinnerungen (Push)
 
@@ -59,6 +60,38 @@ GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- 
 - **GitHub-Cron kann sich verspäten**, meist um Minuten, bei hoher Last auch mal länger. Das Skript akzeptiert deshalb Montag 8–14 Uhr bzw. 21–23 Uhr.
 - **Öffentliche Repos:** GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im Repo passiert. Dann unter Actions → *Erinnerungen* → *Enable workflow* wieder einschalten (oder zwischendurch etwas committen).
 - Die Logs der Actions sind bei öffentlichen Repos öffentlich. Das Skript loggt deshalb nur Zahlen, keine Namen oder Tokens.
+
+## Backup (wöchentlich) und Wiederherstellen
+
+Jede Nacht von Sonntag auf Montag (23:30 bzw. 0:30 Uhr Berlin) sichert der Workflow *Erinnerungen* alle Firestore-Sammlungen samt Unter-Sammlungen (auch `players/{uid}/private` mit den kg-Werten und Push-Geräten) in **eine** Datei und legt sie als Artefakt ab. Artefakte werden nach 90 Tagen automatisch gelöscht.
+
+**Wichtig:** Das Repo ist öffentlich, und Artefakte öffentlicher Repos kann jeder angemeldete GitHub-Nutzer herunterladen. Deshalb wird die Datei vorher verschlüsselt (AES-256-GCM, Schlüssel aus einer Passphrase). Ohne Passphrase bricht der Job ab, statt unverschlüsselt hochzuladen. Backups **nie committen** (`.gitignore` fängt `backup/` und `*.fsbak` ab).
+
+### Einrichten (einmal)
+
+1. Lange, zufällige Passphrase erzeugen, z. B. `openssl rand -base64 32`, und sicher aufheben (Passwort-Manager). Ohne sie ist kein Backup lesbar.
+2. GitHub → Repo → Settings → Secrets and variables → Actions → *New repository secret*: Name `BACKUP_PASSPHRASE`, Wert = die Passphrase.
+3. Testen: Actions → *Erinnerungen* → *Run workflow* → Art `backup`. Danach steht im Lauf unten unter *Artifacts* `firestore-backup-JJJJ-MM-TT`.
+
+Der Service-Account (`FIREBASE_SERVICE_ACCOUNT`) ist derselbe wie für die Erinnerungen. Ein Backup liest jedes Dokument einmal (Ende der Saison bei 20 Spielern grob 5.000 bis 10.000 Lesevorgänge), das passt ins kostenlose Tageslimit.
+
+### Wiederherstellen
+
+Das Skript schreibt nur in eine **leere** Datenbank (sonst Abbruch, `--force` überschreibt gleiche Pfade trotzdem).
+
+```
+cd reminders
+npm install
+# Artefakt herunterladen und entpacken, dann:
+export BACKUP_PASSPHRASE='…'
+node restore.mjs firestore-2027-01-17.fsbak --dry-run                     # nur lesen und zählen
+node restore.mjs firestore-2027-01-17.fsbak --key=service-account.json --dry-run   # zusätzlich Ziel prüfen (leer?)
+node restore.mjs firestore-2027-01-17.fsbak --key=service-account.json    # zurückspielen
+```
+
+Ziel ist das Projekt des Service-Accounts (`--key=…` oder `FIREBASE_SERVICE_ACCOUNT`). Für eine neue Datenbank: neues Firebase-Projekt anlegen, Firestore aktivieren, Regeln veröffentlichen, Service-Account-Schlüssel erzeugen, zurückspielen, `CONFIG.firebase` in `app.js` und `firebase-messaging-sw.js` anpassen. Den Schlüssel danach löschen.
+
+Ein Backup von Hand geht auch lokal: `node backup.mjs --key=service-account.json --out=backup` (mit `BACKUP_PASSPHRASE`). Mit dem Firestore-Emulator (`FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`) laufen beide Skripte ohne Schlüssel, gut zum Ausprobieren.
 
 ## Lokal ausprobieren
 
