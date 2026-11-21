@@ -126,7 +126,7 @@ const CONFIG = {
     messagingSenderId: "121079785562",
     appId: "1:121079785562:web:a808ec1074af013dd49063"
   },
-  testMode: true,   // TEST: true = Zeit per URL ?now=2026-11-30T09:00 simulierbar. VOR DEM START WIEDER AUF false!
+  testMode: true,    // TEST: true = Zeit per URL ?now=2026-11-30T09:00 simulierbar. VOR DEM START WIEDER AUF false!
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
@@ -258,7 +258,7 @@ function taskEditable(e) { const cw = curWeek(); if (cw === 0) return e === 1; c
 /* =====================================================================
    DATENSCHICHT: Demo (lokal) und Firebase
    ===================================================================== */
-const emptyState = () => ({ ready: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, myWeights: {} });
+const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, myWeights: {} });
 
 function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
 
@@ -310,7 +310,7 @@ function makeDemoDB(emit) {
   }
   function state() {
     const s = seed();
-    const S = { ...emptyState(), ready: true, authed: true, me: ME };
+    const S = { ...emptyState(), ready: true, synced: true, authed: true, me: ME };
     S.member = !!mine.player;
     for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
     if (mine.player) S.players[ME] = mine.player;
@@ -359,9 +359,12 @@ async function makeFirebaseDB(cfg, emit) {
   const fail = e => { console.error(e); toast(e.code === 'permission-denied' ? 'Keine Berechtigung (Regeln/Zeitfenster).' : 'Fehler: ' + (e.message || e)); };
   function subscribeAll() {
     if (allSubbed) return; allSubbed = true;
-    const col = (name) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data()); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; fire(); }, fail));
+    // erst rendern/automatisch handeln, wenn ALLE Daten einmal geladen sind
+    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'private']);
+    const got = n => { if (need.delete(n) && need.size === 0) S.synced = true; };
+    const col = (name) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data()); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; got(name); fire(); }, fail));
     ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone'].forEach(col);
-    unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => { S.myWeights = s.exists() ? (s.data().slots || {}) : {}; fire(); }, fail));
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => { S.myWeights = s.exists() ? (s.data().slots || {}) : {}; got('private'); fire(); }, fail));
   }
   Au.onAuthStateChanged(auth, user => {
     unsubs.forEach(u => u()); unsubs = []; allSubbed = false; S = emptyState();
@@ -409,7 +412,7 @@ function onState(ns) {
   S = ns; C = compute(S);
   // Startgewicht verpasst? -> automatisch nächsten Montag starten
   const p = S.players[S.me];
-  if (S.member && p && !C[S.me]?.active && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
+  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
     const k = nextJoinSlot();
     if (k !== null && k > (p.joinedSlot || 0)) { bumping = true; DB.updatePlayer({ joinedSlot: k }).finally(() => bumping = false); }
   }
@@ -454,7 +457,7 @@ function banner() {
 const toLocalInput = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 function body() {
-  if (!S.ready) return `<div class="hero"><p class="muted">Lade…</p></div>`;
+  if (!S.ready || (S.member && !S.synced)) return `<div class="hero"><p class="muted">Lade…</p></div>`;
   if (!S.authed) return viewLogin();
   if (!S.member) return viewRegister();
   return ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, regeln: viewRegeln })[UI.tab]();
