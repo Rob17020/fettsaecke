@@ -1,0 +1,8 @@
+<script>
+const ME='demo-me', st=98, mine={player:{name:'Robbi',habits:['8.000 Schritte','Kein Zucker','Vor 23 Uhr schlafen'],joinedSlot:0,joinedAt:0,invite:'DEMO'},weighins:{},habitlogs:{},weekly:{},weeklyDone:{},tasks:{},taskDone:{},teamideas:{},teamlogs:{},myWeights:{},goal:null,goalKg:88,push:false};
+const START=new Date(2026,10,23).getTime();
+for(let k=0;k<=5;k++){const kg=st-k*0.7;mine.myWeights[k]=Math.round(kg*10)/10;mine.weighins[ME+'_'+k]={uid:ME,slot:k,lossPct:Math.round((st-kg)/st*10000)/100,ts:START+k*7*864e5+8*36e5};}
+for(let d=0;d<44;d++){mine.habitlogs[ME+'_'+d]={uid:ME,day:d,done:[true,d%5!==3,d%7!==2,d%2==0],ts:START+d*864e5+20*36e5};}
+localStorage.setItem('cdf-demo-v1',JSON.stringify(mine));localStorage.removeItem('cdf-demo-now');
+location.replace('index.html'+location.search+location.hash);
+</script>

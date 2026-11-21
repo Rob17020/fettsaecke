@@ -52,7 +52,7 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 .wrap{padding:12px var(--wrap) calc(88px + env(safe-area-inset-bottom));padding-left:max(var(--wrap),env(safe-area-inset-left));padding-right:max(var(--wrap),env(safe-area-inset-right))}
 @media (min-width:640px){.wrap{max-width:calc(760px + 2 * var(--wrap));margin-inline:auto;padding-top:20px}}
 @media (min-width:1025px){
-  .wrap{max-width:calc(1200px + 2 * var(--wrap));margin:0;padding:32px var(--wrap) 56px}
+  .wrap{max-width:calc(1760px + 2 * var(--wrap));margin:0;padding:32px var(--wrap) 56px}
   body.has-nav .wrap{margin-left:var(--side)}
 }
 .view{display:grid;gap:var(--gap);align-content:start;min-width:0}
@@ -65,17 +65,28 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 .page.enter{animation:pageIn .45s var(--out) both}
 @keyframes pageIn{from{opacity:0;transform:translate3d(calc(var(--dir,0) * 28px),calc((1 - var(--dir,0) * var(--dir,0)) * 10px),0)}to{opacity:1;transform:none}}
 .page.enter .dash>.col,.page.enter .ich>*{animation:rise .55s var(--out) both}
-.page.enter .dash>.col.b,.page.enter .ich>:nth-child(2){animation-delay:50ms}
-.page.enter .dash>.col.cf,.page.enter .ich>:nth-child(3){animation-delay:100ms}
+.page.enter .dash>.col.a,.page.enter .ich>:nth-child(2){animation-delay:50ms}
+.page.enter .dash>.col.b,.page.enter .ich>:nth-child(3){animation-delay:100ms}
+.page.enter .dash>.col.c{animation-delay:150ms}
 .page.enter .ich>:nth-child(n+4){animation-delay:150ms}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
-.apphead{display:flex;align-items:center;gap:6px;padding:4px 0 var(--gap)}
+.apphead{display:flex;align-items:center;gap:8px;padding:4px 0 var(--gap)}
+/* Logo (Neon-Kreis): Kopfzeile, Seitenleiste, Anmeldung */
+.mark{display:block;flex:none;width:40px;height:40px;border-radius:50%}
+.mark.sm{width:18px;height:18px}
+.mark.lg{width:64px;height:64px;margin-bottom:14px}
+.mark.xl{width:min(132px,34vw);height:auto;aspect-ratio:1;margin-bottom:4px}
+/* Regeln: auf Handy/Tablet als beschrifteter Knopf oben rechts */
+.hrules{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:36px;padding:0 10px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:transform .35s var(--spring),background-color .12s,border-color .12s}
+.hrules .ico{width:18px;height:18px}
+.hrules:hover{background:var(--card-3)}
+.hrules:active{transform:scale(.95)}
+.hrules.on{border-color:var(--lime);color:var(--lime)}
 .logo{font-size:20px;font-weight:900;letter-spacing:-.04em;line-height:1.1}
 .sub{margin-top:2px;font-size:12px;color:var(--text-2)}
 .avatar{width:36px;height:36px;flex:none;display:grid;place-items:center;margin-left:4px;border:0;border-radius:50%;background:var(--pc,var(--lime));color:#000;font-size:15px;font-weight:900;cursor:pointer;transition:transform .35s var(--spring)}
 .avatar:active{transform:scale(.92)}
-.hbtn.on{color:var(--lime)}
 .ptitle{display:none}
 @media (min-width:1025px){
   body.has-nav .apphead{display:none}
@@ -143,16 +154,15 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 /* ---------- Heute ---------- */
 .dash{display:grid;gap:var(--gap);align-items:start}
 .dash .col{display:grid;gap:var(--gap);align-content:start;min-width:0}
-.dash .col.cf{display:contents}
+/* Handy: Liveticker, Wiegen/Status, Gewohnheiten, Challenge (DOM-Reihenfolge). Liveticker immer oben. */
+@media (orientation:landscape) and (max-height:520px){.dash>.col.b{order:-1}.dash>.col.f{order:-2}}
 @media (min-width:640px){
-  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"a c" "a f" "b b"}
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"f f" "a c" "b b"}
   .col.a{grid-area:a}.col.b{grid-area:b}.col.c{grid-area:c}.col.f{grid-area:f}
 }
-@media (min-width:640px) and (orientation:landscape) and (max-height:520px){.dash{grid-template-areas:"b b" "a c" "a f"}}
+@media (min-width:640px) and (orientation:landscape) and (max-height:520px){.dash{grid-template-areas:"f f" "b b" "a c"}}
 @media (min-width:1025px){
-  .dash{grid-template-columns:minmax(240px,.95fr) minmax(400px,1.5fr) minmax(240px,.95fr);grid-template-areas:"a b c"}
-  .dash .col.cf{display:grid;grid-area:c}
-  .col.c,.col.f{grid-area:auto}
+  .dash{grid-template-columns:minmax(280px,1fr) minmax(440px,1.6fr) minmax(280px,1fr);grid-template-areas:"f f f" "a b c"}
 }
 /* Fokus (Grün): montags die Wiege-Karte */
 .card.due{border-color:rgba(182,255,60,.55);box-shadow:0 0 0 1px rgba(182,255,60,.2),0 0 40px -16px var(--lime-glow)}
@@ -256,6 +266,19 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .streak .ico{width:16px;height:16px;color:var(--lime)}
 .streak b{color:var(--text);font-weight:800}
 .streak .m:not(:last-child)::after{content:" ·";color:var(--muted)}
+/* Team-Monat */
+.tmi .tt{font-weight:800}
+.tmi .bar{margin-top:8px}
+.tmi+.tmi{padding-top:12px;border-top:1px solid var(--line)}
+.tmentry{display:grid;gap:8px}
+.tmrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,150px);align-items:center;gap:10px}
+.tmrow .hc{width:100%;height:44px;color:var(--cyan-ink)}
+.tmrow .hc.on{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 16px -6px var(--cyan-glow)}
+.tmrow .hc.tap.on{animation:tap .55s var(--spring) var(--tapd,0ms) both}
+.tmrow .hname{white-space:normal}
+.idea{margin-top:12px}
+.wrapr{flex-wrap:wrap}
+.wrapr .inp.grow{flex:1 1 120px}
 .bar{height:6px;overflow:hidden;border-radius:3px;background:var(--card-3)}
 .bar i{display:block;height:100%;border-radius:3px;background:var(--cyan);box-shadow:0 0 10px var(--cyan-glow);transition:width .6s var(--out)}
 .bar.done i{background:var(--lime);box-shadow:0 0 10px var(--lime-glow)}
@@ -280,6 +303,8 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .fe.new .fi{animation:fiPop .9s var(--spring) both}
 @keyframes feedIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 @keyframes fiPop{0%{transform:scale(.4);box-shadow:0 0 0 0 var(--fc)}50%{transform:scale(1.15);box-shadow:0 0 22px 2px var(--fc)}100%{transform:scale(1)}}
+.feed.top .flist{column-gap:40px}
+@media (min-width:1025px){.feed.top .flist{columns:2 340px}.feed.top .fe,.feed.top .fday{break-inside:avoid}.feed.top .fday{break-after:avoid}}
 .k-weigh{--fc:var(--pink)}.k-habits{--fc:var(--lime)}.k-task,.k-confirm,.k-challenge,.k-team{--fc:var(--cyan)}
 
 /* ---------- Ranking ---------- */
@@ -372,6 +397,9 @@ table.t.chron th,table.t.chron td{text-align:left}
 .ich>.goal{grid-area:goal}.ich>.kg{grid-area:kg}.ich>.heat{grid-area:heat}.ich>.msc{grid-area:ms}
 @media (min-width:640px){.ich{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"goal ms" "kg kg" "heat heat"}}
 @media (min-width:1025px){.ich{grid-template-columns:minmax(300px,1fr) minmax(0,2fr);grid-template-areas:"goal kg" "heat heat" "ms ms"}}
+.sect{margin:32px 0 var(--gap);font-size:22px;font-weight:900;letter-spacing:-.03em}
+.goal.compact .goalring .rings{width:min(150px,60vw)}
+.goal.compact .ringc b{font-size:30px}
 .privnote{display:inline-flex;align-items:center;gap:4px}
 .privnote .ico{width:14px;height:14px}
 .goalring{position:relative;display:grid;place-items:center;padding:4px 0}

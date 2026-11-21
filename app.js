@@ -17,17 +17,20 @@ const CONFIG = {
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
-  einsatz: 10,        // € Einsatz pro Person (einmalig)
-  strafe: 2,          // € pro verpasstem Wiegen
+  einsatz: 20,        // € Einsatz pro Person (einmalig)
+  strafe: 5,          // € pro verpasstem Wiegen
+  habitFee: 1,        // € pro Tag ohne alle 3 Gewohnheiten (zählt, sobald der Tag nicht mehr nachgetragen werden kann)
   loserFee: 1,        // € für den Letzten im Wochenranking
-  deadlineHour: 12,   // Wiegen montags bis 12:00 Uhr
+  weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
+  deadlineHour: 14,   // … bis 14:00 Uhr
   chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
   backfillDays: 2,    // Gewohnheiten bis zu 2 Tage nachtragen
   weighPerTenth: 3,   // Waage-Punkte pro 0,1 % unter dem bisherigen Tiefstwert
   weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte)
   challengePts: 6,    // max. Punkte Wochen-Challenge
   taskPts: 15,        // Punkte pro Extra-Aufgabe (jeder stellt 1 Aufgabe pro Etappe)
-  teamPts: 10,        // Teamwoche: Punkte für jeden, der etwas eingetragen hat, wenn das Ziel erreicht ist
+  teamPts: 40,        // Team-Monat: Punkte für jeden, der etwas eingetragen hat, wenn ALLE gezogenen Ziele erreicht sind
+  teamDraw: 3,        // so viele Vorschläge werden pro Etappe für den Team-Monat gezogen
   activeEveryMin: 10, // "zuletzt aktiv" höchstens alle 10 Min. speichern
   vapidKey: '',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
 };
@@ -48,13 +51,15 @@ const now = () => NOW_OVERRIDE ? new Date(NOW_OVERRIDE) : new Date();
 const dayDate = d => new Date(START.getFullYear(), START.getMonth(), START.getDate() + d);
 const dayIdx = (t = now()) => Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - START) / DAY);
 const slotStart = k => dayDate(7 * k);
+const slotOpen = k => { const x = dayDate(7 * k); x.setHours(CONFIG.weighStartHour); return x; };
 const slotDeadline = k => { const x = dayDate(7 * k); x.setHours(CONFIG.deadlineHour); return x; };
+const weighHours = `${CONFIG.weighStartHour}–${CONFIG.deadlineHour} Uhr`;
 const weekOfDay = d => d < 0 ? 0 : Math.floor(d / 7) + 1;
 const curWeek = () => Math.min(weekOfDay(dayIdx()), CONFIG.weeks + 1); // 0 = vor Start, weeks+1 = vorbei
 const etappeOf = w => Math.max(1, Math.ceil(w / CONFIG.etappeWeeks));
 const NUM_ETAPPEN = Math.ceil(CONFIG.weeks / CONFIG.etappeWeeks);
 function lastClosedSlot() { const t = now(); let k = -1; for (let i = 0; i <= CONFIG.weeks; i++) { if (slotDeadline(i) <= t) k = i; else break; } return k; }
-function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotStart(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
+function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotOpen(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
 function nextJoinSlot() { const t = now(); for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
 const seasonOver = () => lastClosedSlot() >= CONFIG.weeks;
 
@@ -107,12 +112,11 @@ Object.assign(I, {
 /* =====================================================================
    PUNKTE-LOGIK
    ===================================================================== */
-let TEAM = {}; // Woche -> Stand der Teamwoche (wird in compute() gesetzt)
+let TEAM = {}; // Etappe -> Stand des Team-Monats (wird in compute() gesetzt)
 function compute(S) {
   const C = {};
   const lc = lastClosedSlot();
-  TEAM = {};
-  for (const w of Object.keys(S.teamgoals || {}).map(Number)) { const t = teamStatus(S, w); if (t) TEAM[w] = t; }
+  const closedDay = Math.min(dayIdx() - CONFIG.backfillDays - 1, CONFIG.weeks * 7 - 1); // letzter Tag, der nicht mehr nachgetragen werden kann
   const ordered = Object.entries(S.players).sort((a, b) => (tsNum(a[1].joinedAt) - tsNum(b[1].joinedAt)) || a[0].localeCompare(b[0]));
   const hlBy = {};
   for (const h of Object.values(S.habitlogs)) (hlBy[h.uid] ||= {})[h.day] = h.done || [];
@@ -131,9 +135,11 @@ function compute(S) {
       let habits = 0, chCnt = 0;
       for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) { habits += hl[d].slice(0, 3).filter(Boolean).length; if (hl[d][3]) chCnt++; }
       const weekly = challengePoints(S.weekly[w], chCnt);
-      const t = TEAM[w]; const team = t && t.closed && t.reached && t.by[uid] ? CONFIG.teamPts : 0;
-      weeks[w] = { weigh, habits, weekly, team, chCnt, total: weigh + habits + weekly + team, weighed: has };
+      weeks[w] = { weigh, habits, weekly, chCnt, total: weigh + habits + weekly, weighed: has };
     }
+    // Tage ohne alle 3 Gewohnheiten, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee)
+    const missedDays = [];
+    if (active) for (let d = 7 * js; d <= closedDay; d++) if ((hl[d] || []).slice(0, 3).filter(Boolean).length < 3) missedDays.push(d);
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
@@ -147,12 +153,19 @@ function compute(S) {
     // längste Serie Wiegen ohne Verpassen (für Meilensteine)
     let run = 0, weighRun = 0;
     if (active) for (let k = js + 1; k <= CONFIG.weeks; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
-    const x = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, missed, missedSlots, loserWeeks: [], latest, color: colorOf(idx), idx,
+    const x = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, teamPts: {}, missed, missedSlots, missedDays, loserWeeks: [], latest, color: colorOf(idx), idx,
       streak: active ? streakOf(hl, js) : { cur: 0, best: 0, joker: true, jokerDay: null }, weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
     x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
     C[uid] = x;
   });
   for (let w = 1; w <= Math.min(lc, CONFIG.weeks); w++) for (const u of weekLosers(C, w)) C[u].loserWeeks.push(w);
+  // Team-Monat: Bonus für jeden mit Eintrag, wenn am Ende der Etappe alle gezogenen Ziele erreicht sind
+  TEAM = {};
+  for (let e = 1; e <= NUM_ETAPPEN; e++) {
+    const t = teamMonth(S, C, e); if (!t) continue;
+    TEAM[e] = t;
+    if (t.closed && t.reached) for (const u of Object.keys(t.by)) if (C[u]) C[u].teamPts[e] = CONFIG.teamPts;
+  }
   return C;
 }
 function chTarget(ch) { return ch?.kind === 'daily' ? 7 : clamp(ch?.target || 1, 1, 7); }
@@ -170,8 +183,9 @@ function weekLosers(C, w) { // Letzte(r) einer abgeschlossenen Woche, nur wenn n
 function fees(p, e) { // e = Etappe oder null für gesamt
   const inE = w => e === null || etappeOf(w) === e;
   const einsatz = p.active && (e === null || etappeOf(p.js + 1) === e) ? CONFIG.einsatz : 0;
-  const missed = p.missedSlots.filter(inE).length, losers = p.loserWeeks.filter(inE).length;
-  return { einsatz, missed, losers, strafen: missed * CONFIG.strafe + losers * CONFIG.loserFee, total: einsatz + missed * CONFIG.strafe + losers * CONFIG.loserFee };
+  const missed = p.missedSlots.filter(inE).length, losers = p.loserWeeks.filter(inE).length, habitDays = p.missedDays.filter(d => inE(weekOfDay(d))).length;
+  const strafen = missed * CONFIG.strafe + losers * CONFIG.loserFee + habitDays * CONFIG.habitFee;
+  return { einsatz, missed, losers, habitDays, strafen, total: einsatz + strafen };
 }
 const fmtDT = d => fmtD(d) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const exclusiveUntil = w => new Date(slotDeadline(w - 1).getTime() + CONFIG.chooseHours * 3600e3);
@@ -183,15 +197,15 @@ function rankWeek(C, w) {
 function rankRange(C, wFrom, wTo, etappen) {
   return sortRank(Object.values(C).filter(p => p.active && p.js < wTo).map(p => {
     const r = { uid: p.uid, name: p.name, color: p.color, latest: p.latest, weigh: 0, habits: 0, weekly: 0, team: 0, tasks: 0, missed: p.missed };
-    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits; r.weekly += p.weeks[w].weekly; r.team += p.weeks[w].team; }
-    for (const e of etappen) r.tasks += p.taskPts[e] || 0;
+    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits; r.weekly += p.weeks[w].weekly; }
+    for (const e of etappen) { r.tasks += p.taskPts[e] || 0; r.team += p.teamPts[e] || 0; }
     r.total = r.weigh + r.habits + r.weekly + r.team + r.tasks;
     return r;
   }));
 }
 const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
 const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
-function pot(C) { const r = { total: 0, players: 0, missed: 0, losers: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.missed += f.missed; r.losers += f.losers; } return r; }
+function pot(C) { const r = { total: 0, players: 0, missed: 0, losers: 0, habitDays: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.missed += f.missed; r.losers += f.losers; r.habitDays += f.habitDays; } return r; }
 function weeklySetters(C, w) { // null = jeder, [] = noch offen
   if (w <= 1) return null;
   if (lastClosedSlot() < w - 1) return [];
@@ -209,23 +223,54 @@ function canSetWeekly(S, C, w) {
 const habitsEditable = () => { const cw = curWeek(); return cw === 0 || (cw <= CONFIG.weeks && (cw - 1) % CONFIG.etappeWeeks === 0); };
 function taskEditable(e) { const cw = curWeek(); if (cw === 0) return e === 1; const end = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks); return (etappeOf(cw) === e && cw <= CONFIG.weeks) || (now() < slotDeadline(end)); }
 
-/* ---------- Teamwoche ---------- */
-function teamStatus(S, w) {
-  const g = S.teamgoals?.[w]; if (!g || !(w >= 1 && w <= CONFIG.weeks)) return null;
-  const by = {}; let sum = 0;
+/* ---------- Team-Monat ----------
+   Jeder schlägt pro Etappe ein Ziel vor: "pro Person X pro Tag/Woche/Monat". Am ersten Montag der Etappe (Wiegeschluss)
+   werden CONFIG.teamDraw Vorschläge zufällig, aber für alle gleich gezogen (Zufall aus der Etappe und den Vorschlägen).
+   Das Teamziel = Satz pro Person × Spielerwochen in der Etappe (wer später einsteigt, zählt nur seine Wochen). */
+const etFirstWeek = e => (e - 1) * CONFIG.etappeWeeks + 1;
+const etEndWeek = e => Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
+const drawTime = e => slotDeadline(etFirstWeek(e) - 1);
+const PERIOD = { day: 'Tag', week: 'Woche', month: 'Monat' };
+const perWeek = i => (+i.per || 0) * (i.period === 'day' ? 7 : i.period === 'week' ? 1 : 1 / CONFIG.etappeWeeks);
+function ideasFor(S, e) {
+  const dt = drawTime(e).getTime();
+  return Object.entries(S.teamideas || {}).filter(([, x]) => x.etappe === e && x.text)
+    // nach der Ziehung eingereichte Vorschläge ignorieren (nur mit echter Uhrzeit prüfbar)
+    .filter(([, x]) => NOW_OVERRIDE || !tsNum(x.ts) || tsNum(x.ts) <= dt + 5 * 60e3)
+    .map(([id, x]) => ({ ...x, id })).sort((a, b) => a.id.localeCompare(b.id));
+}
+function drawIdeas(list, e) { // deterministisch: alle Geräte ziehen dieselben
+  const r = rng('team-e' + e + '|' + list.map(x => x.id + x.text).join('|')), a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a.slice(0, CONFIG.teamDraw);
+}
+function teamMonth(S, C, e) {
+  if (now() < drawTime(e)) return null;
+  const tasks = drawIdeas(ideasFor(S, e), e); if (!tasks.length) return null;
+  const w0 = etFirstWeek(e), w1 = etEndWeek(e), d0 = 7 * (w0 - 1), d1 = 7 * w1;
+  let pw = 0; // Spielerwochen
+  for (const p of Object.values(C)) if (p.active) for (let w = w0; w <= w1; w++) if (w > p.js) pw++;
+  const by = {}, sums = {};
   for (const l of Object.values(S.teamlogs || {})) {
-    if (l.day < 7 * (w - 1) || l.day >= 7 * w) continue;
-    const v = g.kind === 'count' ? (l.value > 0 ? 1 : 0) : Math.max(0, +l.value || 0);
-    if (!v) continue;
-    by[l.uid] = (by[l.uid] || 0) + v; sum += v;
+    if (!l.vals || l.day < d0 || l.day >= d1 || !C[l.uid]?.active) continue;
+    for (const t of tasks) {
+      const raw = +l.vals[t.id] || 0, v = t.kind === 'count' ? (raw > 0 ? 1 : 0) : clamp(raw, 0, 1e6);
+      if (!v) continue;
+      sums[t.id] = (sums[t.id] || 0) + v; const b = (by[l.uid] ||= {}); b[t.id] = (b[t.id] || 0) + v;
+    }
   }
-  return { goal: g, by, sum, reached: sum >= g.target, closed: lastClosedSlot() >= w };
+  const items = tasks.map(t => { const target = Math.max(1, Math.ceil(perWeek(t) * pw - 1e-9)), sum = sums[t.id] || 0; return { ...t, target, sum, reached: sum >= target }; });
+  return { e, items, by, pw, reached: items.every(i => i.reached), closed: lastClosedSlot() >= w1 };
 }
 const teamFmt = (g, v) => g.kind === 'count' ? `${nf(v)}×` : `${nf(v)}${g.unit ? ' ' + esc(g.unit) : ''}`;
-function canSetTeam(w) { const cw = curWeek(); return S.member && w >= 1 && w <= CONFIG.weeks && !S.teamgoals[w] && (cw === 0 ? w === 1 : w === cw + 1); }
-function teamEditable(d, js) { // eigener Wert für Tag d: Nachtragefenster wie Gewohnheiten, aber nur bis zum Wiegen am Montag
-  const today = dayIdx(), w = weekOfDay(d);
-  return d >= 0 && d <= today && d >= today - CONFIG.backfillDays && d >= 7 * js && w <= CONFIG.weeks && now() < slotDeadline(w);
+const ideaRate = x => `${teamFmt(x, x.per)} pro Person und ${PERIOD[x.period] || 'Woche'}`;
+const nextDrawE = () => { for (let e = 1; e <= NUM_ETAPPEN; e++) if (now() < drawTime(e)) return e; return null; }; // nächste Ziehung
+function canSuggest(e) { // Vorschlag für Etappe e: ab Beginn der Vor-Etappe bis zur Ziehung
+  return S.member && e >= 1 && e <= NUM_ETAPPEN && now() < drawTime(e) && (e === 1 || now() >= slotStart(etFirstWeek(e - 1) - 1)) && !S.teamideas['e' + e + '_' + S.me];
+}
+function teamEditable(d, js) { // eigener Wert für Tag d: Nachtragefenster wie Gewohnheiten, bis zum Wiegeschluss nach der Etappe
+  const today = dayIdx(), e = etappeOf(weekOfDay(d));
+  return d >= 0 && d <= today && d >= today - CONFIG.backfillDays && d >= 7 * js && d < CONFIG.weeks * 7 && now() < slotDeadline(etEndWeek(e)) && !!TEAM[e];
 }
 
 /* ---------- Streak, Meilensteine, Aktivität ---------- */
@@ -261,15 +306,21 @@ function activity(ts) {
 /* =====================================================================
    DATENSCHICHT: Demo (lokal) und Firebase
    ===================================================================== */
-// myGoal: privates Ziel in % (Feld goal in players/{uid}/private/weights, nur für den Besitzer lesbar)
-const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {}, myWeights: {}, myGoal: null });
+// Privates Ziel (nur für den Besitzer lesbar, players/{uid}/private/weights): goalKg = Zielgewicht in kg (seit der Anmeldung),
+// goal = altes Ziel in %. myGoal ist immer in % vom Startgewicht (aus goalKg berechnet, sobald das Startgewicht da ist).
+const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {}, myGoal: null, myGoalKg: null });
+
+function setGoalState(S, d) { // Rohwerte aus private/weights; myGoal (%) rechnet onState() aus
+  S.myGoalKg = typeof d.goalKg === 'number' ? d.goalKg : null;
+  S.myGoalPct = typeof d.goal === 'number' ? d.goal : null;
+}
 
 function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
 
 function makeDemoDB(emit) {
   const KEY = 'cdf-demo-v1';
   const ME = 'demo-me';
-  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {}, myWeights: {}, goal: null, push: false });
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {}, goal: null, goalKg: null, push: false });
   let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
   mine = { ...blank(), ...(mine || {}) };
   const save = () => LS.setItem(KEY, JSON.stringify(mine));
@@ -283,9 +334,16 @@ function makeDemoDB(emit) {
   const nBots = clamp(parseInt(QS.get('bots'), 10) || 2, 2, 2 + EXTRA.length);
   const BOTS = [...BASE, ...EXTRA.map((name, i) => ({ uid: 'bot-' + name.toLowerCase(), name, start: 78 + (i * 7.3) % 42, trend: .25 + (i * .37) % .65, disc: .4 + (i * .13) % .5, habits: HAB[i % 3], joined: 3 + i, idle: (i % 6) * .8 }))].slice(0, nBots);
   const WEEKLY_TXT = [{ text: 'Treppe statt Aufzug', kind: 'daily' }, { text: '2× Sport (min. 45 Min)', kind: 'count', target: 2 }, { text: 'Kein Lieferdienst', kind: 'daily' }, { text: '1× 5 km laufen', kind: 'count', target: 1 }, { text: '20 Min spazieren', kind: 'daily' }];
-  const TEAM_TXT = { 2: { text: '200.000 Schritte gemeinsam', kind: 'sum', target: 200000, unit: 'Schritte' }, 3: { text: '300.000 Schritte gemeinsam', kind: 'sum', target: 300000, unit: 'Schritte' }, 5: { text: '15× 30 Min Sport gemeinsam', kind: 'count', target: 15, unit: '' } };
+  const IDEAS = [
+    { text: 'Schritte sammeln', kind: 'sum', per: 8000, period: 'day', unit: 'Schritte' },
+    { text: 'Sport, mindestens 30 Min', kind: 'count', per: 3, period: 'week', unit: '' },
+    { text: 'Laufen', kind: 'sum', per: 20, period: 'month', unit: 'km' },
+    { text: 'Tage ohne Alkohol', kind: 'count', per: 5, period: 'week', unit: '' },
+    { text: 'Liegestütze', kind: 'sum', per: 300, period: 'week', unit: 'Stück' },
+    { text: 'Gemüse zu jeder Mahlzeit', kind: 'count', per: 4, period: 'week', unit: '' },
+  ];
   function seed() {
-    const S = { players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamgoals: {}, teamlogs: {} };
+    const S = { players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {} };
     const t = now(), tn = t.getTime() - 6e4, today = dayIdx(t), lc = lastClosedSlot(), os = openSlot();
     const past = ms => Math.min(ms, tn); // simulierte Zeitstempel nie in der Zukunft
     for (const b of BOTS) {
@@ -314,11 +372,27 @@ function makeDemoDB(emit) {
       const ts = past(w === 1 ? dayDate(-2).getTime() + 20 * 36e5 : slotDeadline(w - 1).getTime() + (1 + (w % 3)) * 36e5);
       S.weekly[w] = { ...WEEKLY_TXT[(w - 1) % WEEKLY_TXT.length], setBy: w % 2 ? 'bot-julian' : 'bot-siggi', setByName: w % 2 ? 'Julian' : 'Siggi', ts };
     }
-    for (const [w, g] of Object.entries(TEAM_TXT)) if (+w <= curWeek() && !mine.teamgoals[w]) S.teamgoals[w] = { ...g, week: +w, setBy: 'bot-julian', setByName: 'Julian', ts: past(dayDate(7 * (+w - 1) - 3).getTime() + 20 * 36e5) };
-    for (const b of BOTS) for (let d = 0; d < today && d < CONFIG.weeks * 7; d++) {
-      const w = weekOfDay(d), g = S.teamgoals[w] || mine.teamgoals[w]; if (!g) continue;
-      const rr = rng(b.uid + 't' + d); if (rr() < .15) continue;
-      S.teamlogs[b.uid + '_' + d] = { uid: b.uid, day: d, week: w, value: g.kind === 'count' ? 1 : Math.round((7000 + rr() * 7000) / 100) * 100 };
+    // Team-Monat: die ersten Bots reichen Vorschläge ein, sobald das Fenster offen ist (bis zur Etappe nach der aktuellen)
+    const ceT = curWeek() >= 1 ? etappeOf(Math.min(curWeek(), CONFIG.weeks)) : 0;
+    for (let e = 1; e <= Math.min(ceT + 1, NUM_ETAPPEN); e++) BOTS.slice(0, 4).forEach((b, i) => {
+      const from = e === 1 ? dayDate(-6).getTime() : slotStart(etFirstWeek(e - 1) - 1).getTime();
+      const ts = from + (1 + i * 3 + (e % 3)) * DAY + 19 * 36e5;
+      if (ts > tn) return;
+      S.teamideas['e' + e + '_' + b.uid] = { ...IDEAS[(i + e * 2) % IDEAS.length], etappe: e, setBy: b.uid, setByName: b.name, ts };
+    });
+    const allIdeas = { ...S.teamideas, ...mine.teamideas };
+    for (let e = 1; e <= ceT; e++) {
+      if (now() < drawTime(e)) continue;
+      const tasks = drawIdeas(ideasFor({ teamideas: allIdeas }, e), e); if (!tasks.length) continue;
+      for (const b of BOTS) for (let d = 7 * (etFirstWeek(e) - 1); d < 7 * etEndWeek(e) && d < today; d++) {
+        const rr = rng(b.uid + 't' + d), vals = {};
+        for (const t of tasks) {
+          const daily = perWeek(t) / 7, x = rr();
+          if (t.kind === 'count') { if (x < daily * (b.disc + .35)) vals[t.id] = 1; }
+          else if (x < .8) vals[t.id] = Math.round(daily / .8 * (b.disc + .45) * (.6 + rr() * .8));
+        }
+        if (Object.keys(vals).length) S.teamlogs[b.uid + '_' + d] = { uid: b.uid, day: d, etappe: e, vals };
+      }
     }
     const ce = curWeek() >= 1 ? etappeOf(Math.min(curWeek(), CONFIG.weeks)) : 0;
     for (let e = 1; e <= ce; e++) {
@@ -343,10 +417,10 @@ function makeDemoDB(emit) {
     const s = seed();
     const S = { ...emptyState(), ready: true, synced: true, authed: true, me: ME };
     S.member = !!mine.player;
-    for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'teamgoals', 'teamlogs']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
+    for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'teamideas', 'teamlogs']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
     if (mine.player) S.players[ME] = mine.player;
     S.myWeights = { ...mine.myWeights };
-    S.myGoal = typeof mine.goal === 'number' ? mine.goal : null;
+    setGoalState(S, { goal: mine.goal, goalKg: mine.goalKg });
     return S;
   }
   const ts = () => now().getTime();
@@ -356,7 +430,7 @@ function makeDemoDB(emit) {
     demo: true, refresh: () => emit(state()),
     signIn() { }, signOut() { },
     reset() { LS.removeItem(KEY); for (const k of ['cdf-ms-', 'cdf-cel-', 'cdf-wrapped-']) LS.removeItem(k + ME); mine = blank(); commit(); },
-    async register(d) { mine.player = { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; commit(); },
+    async register(d) { mine.player = { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; mine.goalKg = d.goalKg; mine.goal = null; commit(); },
     async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
     async saveWeigh(slot, kg, lossPct) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; commit(); },
     async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ts: ts() }; commit(); },
@@ -378,9 +452,10 @@ function makeDemoDB(emit) {
       }
       commit();
     },
-    async setTeamGoal(w, d) { mine.teamgoals[w] = { ...d, week: w, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
-    async setTeamLog(day, week, value) { mine.teamlogs[ME + '_' + day] = { uid: ME, day, week, value }; commit(); },
-    async setGoal(g) { mine.goal = g; commit(); },
+    async addTeamIdea(e, d) { mine.teamideas['e' + e + '_' + ME] = { ...d, etappe: e, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
+    async delTeamIdea(id) { delete mine.teamideas[id]; commit(); },
+    async setTeamLog(day, etappe, vals) { mine.teamlogs[ME + '_' + day] = { uid: ME, day, etappe, vals }; commit(); },
+    async setGoalKg(kg) { mine.goalKg = kg; mine.goal = null; commit(); },
     pushState: () => mine.push ? 'on' : 'off',
     async enablePush() { mine.push = true; commit(); toast('Demo: Erinnerungen sind nur simuliert, es kommt nichts an.'); },
     async disablePush() { mine.push = false; commit(); toast('Erinnerungen aus.'); },
@@ -400,33 +475,44 @@ async function makeFirebaseDB(cfg, emit) {
   const app = A.initializeApp(cfg);
   const auth = Au.getAuth(app);
   const db = F.getFirestore(app);
-  let S = emptyState(); let unsubs = []; let allSubbed = false;
+  let S = emptyState(); let unsubs = []; let allSubbed = false; let gen = 0;
   const fire = () => emit({ ...S });
   const fail = e => { console.error(e); toast(e.code === 'permission-denied' ? 'Keine Berechtigung (Regeln/Zeitfenster).' : 'Fehler: ' + (e.message || e)); };
   function subscribeAll() {
     if (allSubbed) return; allSubbed = true;
     // erst rendern/automatisch handeln, wenn ALLE Daten einmal geladen sind
-    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone', 'teamgoals', 'teamlogs', 'private']);
+    const need = new Set(['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone', 'teamideas', 'teamlogs', 'private']);
     const got = n => { if (need.delete(n) && need.size === 0) S.synced = true; };
+    const my = gen;
+    // Ein Listener, der mit einem Fehler abbricht, meldet sich nie wieder. Direkt nach der Anmeldung kann das passieren
+    // (die Regeln sehen das neue Spieler-Dokument noch nicht) -> dann nach kurzer Pause neu abonnieren statt ewig "Lade…".
+    const retry = (name, n, again) => { if (my !== gen) return false; if (n >= 6) return false; setTimeout(() => { if (my === gen) again(n + 1); }, 800 * (n + 1)); return true; };
     // optional = neue Sammlungen: fehlen die Regeln noch, bleibt die App trotzdem benutzbar
     // serverTimestamps 'estimate': eigene, noch nicht bestätigte Zeitstempel sind sofort da (Feed-Reihenfolge)
-    const col = (name, optional) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data({ serverTimestamps: 'estimate' })); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; got(name); fire(); },
-      e => { if (optional) { console.warn(name, e.code); S[name] = {}; got(name); fire(); } else fail(e); }));
+    const col = (name, optional, n = 0) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data({ serverTimestamps: 'estimate' })); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; got(name); fire(); },
+      e => {
+        console.warn(name, e.code);
+        if (e.code === 'permission-denied' && !S.synced && retry(name, n, k => col(name, optional, k))) return;
+        if (optional) { S[name] = {}; got(name); fire(); } else { fail(e); if (!S.synced) { S.loadError = true; fire(); } }
+      }));
     ['players', 'weighins', 'habitlogs', 'weekly', 'tasks', 'taskDone'].forEach(n => col(n));
-    ['teamgoals', 'teamlogs'].forEach(n => col(n, true));
-    unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => {
+    ['teamideas', 'teamlogs'].forEach(n => col(n, true));
+    const priv = (n = 0) => unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => {
       const d = s.exists() ? s.data() : {};
-      S.myWeights = d.slots || {}; S.myGoal = typeof d.goal === 'number' ? d.goal : null;
+      S.myWeights = d.slots || {}; setGoalState(S, d);
       got('private'); fire();
-    }, fail));
+    }, e => { if (!retry('private', n, priv)) { fail(e); S.loadError = true; fire(); } }));
+    priv();
   }
   Au.onAuthStateChanged(auth, user => {
-    unsubs.forEach(u => u()); unsubs = []; allSubbed = false; S = emptyState();
+    unsubs.forEach(u => u()); unsubs = []; allSubbed = false; gen++; S = emptyState();
     if (!user) { S.ready = true; fire(); return; }
     S.authed = true; S.me = user.uid; S.displayName = user.displayName || '';
     if (LS.getItem('cdf-push-' + user.uid)) messaging().catch(() => { });
-    unsubs.push(F.onSnapshot(F.doc(db, 'players', user.uid), snap => {
-      if (snap.exists()) { S.players = { ...S.players, [user.uid]: snap.data({ serverTimestamps: 'estimate' }) }; S.member = true; subscribeAll(); }
+    // includeMetadataChanges: erst alles andere abonnieren, wenn das eigene Spieler-Dokument auf dem Server liegt.
+    // Sonst lehnen die Regeln (member() = Spieler-Dokument existiert) direkt nach dem Beitreten alle Abfragen ab.
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', user.uid), { includeMetadataChanges: true }, snap => {
+      if (snap.exists()) { S.players = { ...S.players, [user.uid]: snap.data({ serverTimestamps: 'estimate' }) }; S.member = true; if (!snap.metadata.hasPendingWrites) subscribeAll(); }
       else S.member = false;
       S.ready = true; fire();
     }, e => { S.ready = true; fail(e); fire(); }));
@@ -458,7 +544,10 @@ async function makeFirebaseDB(cfg, emit) {
     refresh: fire,
     async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else fail(e); } },
     signOut: () => Au.signOut(auth),
-    register: d => F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; }),
+    async register(d) {
+      await F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; });
+      if (d.goalKg) await F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goalKg: d.goalKg }, { merge: true }).catch(e => console.warn('goalKg', e.code));
+    },
     updatePlayer: d => wrap(F.updateDoc(F.doc(db, 'players', me()), d)),
     saveWeigh(slot, kg, lossPct) {
       const b = F.writeBatch(db);
@@ -479,9 +568,10 @@ async function makeFirebaseDB(cfg, emit) {
       try { await F.updateDoc(ref, { ...d, confirmedAt: F.serverTimestamp() }); touch(); }
       catch (e) { if (e.code !== 'permission-denied') { fail(e); throw e; } await wrap(F.updateDoc(ref, d)); }
     },
-    setGoal: g => wrap(F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goal: g === null ? F.deleteField() : g }, { merge: true })),
-    setTeamGoal: (w, d) => F.setDoc(F.doc(db, 'teamgoals', String(w)), { ...d, week: w, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, e => { toast(e.code === 'permission-denied' ? 'Geht nicht: Für diese Woche gibt es schon ein Teamziel oder das Zeitfenster ist zu.' : 'Fehler: ' + e.message); throw e; }),
-    setTeamLog: (day, week, value) => wrap(F.setDoc(F.doc(db, 'teamlogs', me() + '_' + day), { uid: me(), day, week, value })),
+    setGoalKg: kg => wrap(F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goalKg: kg === null ? F.deleteField() : kg, goal: F.deleteField() }, { merge: true })),
+    addTeamIdea: (e, d) => F.setDoc(F.doc(db, 'teamideas', 'e' + e + '_' + me()), { ...d, etappe: e, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, x => { toast(x.code === 'permission-denied' ? 'Geht nicht: Du hast schon einen Vorschlag oder die Ziehung war schon.' : 'Fehler: ' + x.message); throw x; }),
+    delTeamIdea: id => wrap(F.deleteDoc(F.doc(db, 'teamideas', id))),
+    setTeamLog: (day, etappe, vals) => wrap(F.setDoc(F.doc(db, 'teamlogs', me() + '_' + day), { uid: me(), day, etappe, vals })),
     pushState: () => LS.getItem(pushKey()) ? 'on' : 'off',
     async enablePush() {
       if (!CONFIG.vapidKey) return toast('Erinnerungen sind noch nicht eingerichtet: vapidKey fehlt in CONFIG (siehe README).');
@@ -507,7 +597,13 @@ async function makeFirebaseDB(cfg, emit) {
    UI
    ===================================================================== */
 let S = emptyState(), C = {}, DB = null, CHARTS = {};
-const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: 8 };
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: null, tmDay: null };
+// Desktop: Seitenleiste, "Ich" und "Verlauf" sind ein Tab
+const DESK = matchMedia('(min-width:1025px)');
+const isDesk = () => DESK.matches;
+const viewTab = () => isDesk() && UI.tab === 'verlauf' ? 'ich' : UI.tab;
+DESK.addEventListener?.('change', () => { if (S.ready) render(); });
+const LOAD_T0 = Date.now();
 let pendingRender = false, bumping = false, lastTab = null, tabsKey = '';
 const TABS = [['heute', 'Heute'], ['ranking', 'Ranking'], ['challenges', 'Challenges'], ['verlauf', 'Verlauf'], ['ich', 'Ich'], ['regeln', 'Regeln']];
 const TAB_KEYS = TABS.map(t => t[0]);
@@ -517,7 +613,11 @@ const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function onState(ns) {
-  S = ns; C = compute(S);
+  S = ns;
+  // Ziel in %: aus dem Zielgewicht (kg), sobald das Startgewicht da ist; sonst das alte %-Ziel
+  const st = S.myWeights[S.players[S.me]?.joinedSlot || 0];
+  S.myGoal = S.myGoalKg && st ? (st > S.myGoalKg ? Math.round((st - S.myGoalKg) / st * 1000) / 10 : null) : S.myGoalKg ? null : S.myGoalPct ?? null;
+  C = compute(S);
   // Startgewicht verpasst? -> automatisch nächsten Montag starten
   const p = S.players[S.me];
   if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
@@ -552,7 +652,7 @@ function checkMilestones() { // einmaliger Toast (und Konfetti), wenn etwas Neue
   if (!fresh.length && !cel.length) return;
   const msgs = fresh.map(id => MS_BY[id].label);
   for (const m of cel) {
-    if (m.startsWith('goal')) msgs.push(`Dein Ziel −${pct(S.myGoal)} % ist geschafft`);
+    if (m.startsWith('goal')) msgs.push(S.myGoalKg ? `Dein Zielgewicht ${fmt1(S.myGoalKg)} kg ist geschafft` : `Dein Ziel −${pct(S.myGoal)} % ist geschafft`);
     else if (!fresh.includes(m)) msgs.push(`−${m.slice(1)} % vom Startgewicht`);
   }
   // kurz nach der Bestätigung des Speicherns zeigen, sonst überschreibt die sie
@@ -580,12 +680,12 @@ function render() {
   if (a && a.matches && a.matches('#app input, #app select') && a.value) { pendingRender = true; return; }
   pendingRender = false;
   CHARTS = {};
-  const page = S.ready && S.member && S.synced;
+  const page = S.ready && S.member && S.synced, vt = viewTab();
   // Einblend-Animation nur beim Tab-Wechsel, nicht bei jedem Daten-Update
-  const enter = page && lastTab !== UI.tab;
-  const dir = enter && lastTab ? Math.sign(TAB_KEYS.indexOf(UI.tab) - TAB_KEYS.indexOf(lastTab)) : 0;
+  const enter = page && lastTab !== vt;
+  const dir = enter && lastTab ? Math.sign(TAB_KEYS.indexOf(vt) - TAB_KEYS.indexOf(lastTab)) : 0;
   document.getElementById('app').innerHTML = header() + banner() + body(enter, dir);
-  if (page) lastTab = UI.tab;
+  if (page) lastTab = vt;
   renderTabs();
   wireCharts();
   markFeedSeen();
@@ -593,17 +693,18 @@ function render() {
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) render(); }, 0));
 function renderTabs() {
-  const tabs = document.getElementById('tabs');
+  const nav = document.getElementById('tabs');
   document.body.classList.toggle('has-nav', !!S.member);
-  if (!S.member) { tabs.hidden = true; tabsKey = ''; return; }
-  const me = S.players[S.me];
-  const html = `<div class="brand"><div class="logo">Club der<br>Fettsäcke</div><div class="sub">${subline().replace(' · Topf', '<br>Topf')}</div></div>
-    <div class="in">${TABS.map(([k, l]) => `<button data-tab="${k}">${svg(k)}<span>${l}</span></button>`).join('')}</div>
+  if (!S.member) { nav.hidden = true; tabsKey = ''; return; }
+  const me = S.players[S.me], desk = isDesk(), vt = viewTab();
+  const list = desk ? TABS.filter(([k]) => k !== 'verlauf').map(([k, l]) => [k, k === 'ich' ? 'Ich & Verlauf' : l]) : TABS;
+  const html = `<div class="brand">${logoImg('mark lg')}<div class="logo">Club der<br>Fettsäcke</div><div class="sub">${subline().replace(' · Topf', '<br>Topf')}</div></div>
+    <div class="in">${list.map(([k, l]) => `<button data-tab="${k}">${svg(k)}<span>${l}</span></button>`).join('')}</div>
     <button class="prof" data-act="profile"><span class="avatar" aria-hidden="true" style="--pc:${C[S.me]?.color || 'var(--lime)'}">${initial(me?.name)}</span><span><b>${esc(me?.name)}</b><small>Profil und Erinnerungen</small></span></button>`;
-  tabs.hidden = false;
+  nav.hidden = false;
   // nur neu aufbauen, wenn sich etwas geändert hat, damit die Markierung animiert wandert
-  if (html !== tabsKey) { tabs.innerHTML = html; tabsKey = html; }
-  tabs.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === UI.tab; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  if (html !== tabsKey) { nav.innerHTML = html; tabsKey = html; }
+  nav.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === vt; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
 }
 
 function subline() {
@@ -612,11 +713,12 @@ function subline() {
   if (seasonOver()) return `Saison beendet · Topf ${eur(po.total)}`;
   return `Woche ${Math.min(cw, CONFIG.weeks)}/${CONFIG.weeks} · Etappe ${etappeOf(Math.min(cw, CONFIG.weeks))}/${NUM_ETAPPEN} · Topf ${eur(po.total)}`;
 }
+const logoImg = cls => `<img class="${cls}" src="icons/logo-256.png" alt="" width="256" height="256" decoding="async">`;
 function header() {
   const me = S.players[S.me];
   const m = me && S.member;
-  return `<header class="apphead"><div class="grow"><div class="logo">Club der Fettsäcke</div><div class="sub">${subline()}</div></div>
-    ${m ? `<button class="iconbtn hbtn${UI.tab === 'regeln' ? ' on' : ''}" data-tab="regeln" aria-label="Regeln">${svg('regeln')}</button>
+  return `<header class="apphead">${logoImg('mark')}<div class="grow"><div class="logo">Club der Fettsäcke</div><div class="sub">${subline()}</div></div>
+    ${m ? `<button class="hrules${UI.tab === 'regeln' ? ' on' : ''}" data-tab="regeln">${svg('regeln')}<span>Regeln</span></button>
     <button class="avatar" data-act="profile" aria-label="Profil und Erinnerungen" style="--pc:${C[S.me]?.color || 'var(--lime)'}">${initial(me.name)}</button>` : ''}</header>`;
 }
 function banner() {
@@ -634,28 +736,36 @@ const weekRange = w => `${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1
 const shortRange = w => { const a = dayDate(7 * (w - 1)), b = dayDate(7 * w - 1); return `${a.getDate()}.${a.getMonth() + 1}.–${b.getDate()}.${b.getMonth() + 1}.`; };
 
 function body(enter, dir) {
-  if (!S.ready || (S.member && !S.synced)) return `<p class="loading"><span class="spin" aria-hidden="true"></span>Lade…</p>`;
+  if (!S.ready || (S.member && !S.synced)) {
+    // Sicherheitsnetz: nie endlos drehen, nach 12 s Hinweis und Knopf zum Neuladen
+    const slow = S.loadError || Date.now() - LOAD_T0 > 12000;
+    if (!slow && !body._t) body._t = setTimeout(() => { body._t = null; render(); }, 12500);
+    return `<p class="loading"><span class="spin" aria-hidden="true"></span>Lade…</p>${slow ? `<section class="card narrow"><p class="t2">Das dauert ungewöhnlich lange. Meist hilft neu laden.</p><button class="btn" data-act="reload">Neu laden</button></section>` : ''}`;
+  }
   if (!S.authed) return viewLogin();
   if (!S.member) return viewRegister();
-  const title = { heute: fmtLong(now()), ranking: 'Ranking', challenges: 'Challenges', verlauf: 'Verlauf', ich: 'Mein Fortschritt', regeln: 'Regeln' }[UI.tab];
-  const v = ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, ich: viewIch, regeln: viewRegeln })[UI.tab]();
+  const vt = viewTab();
+  const title = { heute: fmtLong(now()), ranking: 'Ranking', challenges: 'Challenges', verlauf: 'Verlauf', ich: isDesk() ? 'Ich & Verlauf' : 'Mein Fortschritt', regeln: 'Regeln' }[vt];
+  const v = ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, ich: viewIch, regeln: viewRegeln })[vt]();
   return `<div class="page${enter ? ' enter' : ''}" style="--dir:${dir}"><h1 class="ptitle">${title}</h1>${v}</div>`;
 }
 
 function viewLogin() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
-  return `<div class="view login"><section class="card hero">
+  return `<div class="view login"><section class="card hero">${logoImg('mark xl')}
     <p class="kicker">${CONFIG.weeks} Wochen · ${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}</p>
     <h1 class="herot">Wer nachlässt, <em>zahlt.</em></h1>
-    <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p>
+    <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Zielgewicht, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p>
     <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div>`;
 }
 function viewRegister() {
   const k = nextJoinSlot();
   if (k === null) return `<section class="card narrow"><div class="hd"><h2>Saison vorbei</h2></div><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></section>`;
   return `<section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
-    <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen 0 und ${CONFIG.deadlineHour} Uhr eintragen. Einsatz: ${eur(CONFIG.einsatz)}.</p>
+    <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
+    <label class="f" for="rGoal">Dein Zielgewicht <span class="muted">(nur für dich sichtbar, bringt keine Punkte)</span></label>
+    <label class="pctin"><input id="rGoal" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="85"><span aria-hidden="true">kg</span></label>
     <label class="f">Deine 3 Gewohnheiten <span class="muted">(je 1 Punkt pro Tag)</span></label>
     <div class="stack"><input class="inp" id="rH0" maxlength="40" placeholder="z. B. 8.000 Schritte" aria-label="Gewohnheit 1">
     <input class="inp" id="rH1" maxlength="40" placeholder="z. B. Kein Fast Food" aria-label="Gewohnheit 2">
@@ -688,9 +798,12 @@ function viewHeute() {
   const me = C[S.me]; const p = S.players[S.me];
   if (seasonOver()) return seasonEnd(me);
   // Fokus (Grün): montags das Wiegen, sonst die heutige Spalte im Gewohnheiten-Raster
-  const wc = weighCard(me, p);
-  return `<div class="dash"><div class="col a">${wc.html}${statusCard(me)}${loserCard()}</div><div class="col b">${habitsCard(me, p, !wc.due)}</div>
-    <div class="col cf"><div class="col c">${weeklyCard(me)}${teamCard(me)}</div><div class="col f">${feedCard()}</div></div></div>`;
+  const wc = weighCard(me, p), desk = isDesk();
+  // Liveticker ganz oben. Desktop zusätzlich Ziel-Ring und Heatmap aus "Ich", damit die Startseite nicht leer wirkt.
+  return `<div class="dash"><div class="col f">${feedCard(true)}</div>
+    <div class="col a">${wc.html}${statusCard(me)}${loserCard()}${desk ? goalCard(me, true) : ''}</div>
+    <div class="col b">${habitsCard(me, p, !wc.due)}${desk && me.active ? heatCard(me, p) : ''}</div>
+    <div class="col c">${weeklyCard(me)}${teamCard(me)}${desk && me.active ? msCard(me) : ''}</div></div>`;
 }
 function seasonEnd(me) {
   const w = rankTotal(C)[0];
@@ -709,7 +822,7 @@ function weighCard(me, p) {
     if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Startgewicht bis ${dl}</h2></div>
       <p class="when">Noch ${cdHtml(slotDeadline(js))} · andere sehen nur Prozente</p>${weighInput(js, 'Speichern', '', true)}</section>` };
     return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
-      <p class="when">0–${CONFIG.deadlineHour} Uhr · in <b class="cd">${countdown(slotStart(js))}</b></p></section>` };
+      <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p></section>` };
   }
   if (os === null || os < js) return { due: false, html: '' };
   if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
@@ -750,7 +863,7 @@ function statusCard(me) {
       { c: 'var(--pink)', v: wk.weigh || 0, max: CONFIG.weighMaxTenths * CONFIG.weighPerTenth, l: 'Waage', off: !wk.weighed && !closed && (w === cw ? 'ab ' + fmtD(slotStart(w)) : 'offen') },
     ];
     const legend = defs.map(x => `<li style="--c:${x.c}"><b>${x.off ? '–' : x.v}<small>/${x.max}</small></b>${x.l}${x.off ? `<span>${x.off}</span>` : ''}</li>`).join('')
-      + (TEAM[w] ? `<li style="--c:var(--cyan)"><b>${wk.team || 0}<small>/${CONFIG.teamPts}</small></b>Teamwoche</li>` : '');
+;
     const pos = 1 + r.filter(x => x.total > mine.total).length;
     rank = `<div class="sthero"><div class="stleft"><div class="rankbig num"><small>#</small>${pos}</div><p class="small t2">von ${r.length} · <b>${ptsStr(mine.total)}</b></p></div>
       ${ringSvg(defs.map(x => ({ p: x.off ? 0 : x.v / x.max, c: x.c })), 96, 11, 3)}</div><ul class="rlegend">${legend}</ul>`;
@@ -771,10 +884,11 @@ function statusCard(me) {
   if (openSlot() === null) { const nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
   const last = Math.max(...Object.keys(me.wb).map(Number));
   if (last > me.js && me.weeks[last]) kv.push(['Letztes Wiegen', `+${me.weeks[last].weigh} P. (Woche ${last})`]);
-  if (me.missed) kv.push(['Verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
+  if (me.missed) kv.push(['Wiegen verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
+  if (me.missedDays.length) kv.push(['Tage ohne alle 3', `<span class="bad">${me.missedDays.length}× · ${eur(me.missedDays.length * CONFIG.habitFee)}</span>`]);
   return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2></div>${rank}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
 }
-// Wochenletzter der zuletzt abgeschlossenen Woche: von Montag 12 Uhr bis zum nächsten Wiegen
+// Wochenletzter der zuletzt abgeschlossenen Woche: vom Wiegeschluss am Montag bis zum nächsten Wiegen
 function loserCard() {
   const lc = lastClosedSlot(), cw = curWeek();
   if (lc < 1 || cw !== lc + 1 || cw > CONFIG.weeks || openSlot() !== null) return '';
@@ -823,8 +937,11 @@ function habitsCard(me, p, focus) {
   const st = me.streak;
   const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${st.cur === 1 ? '1 Tag' : st.cur + ' Tage'}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (${fmtD(dayDate(st.jokerDay))})`}</span></p>` : '';
   const score = `<span class="aside"><b>${wk ? wk.habits : 0}</b>/21${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
+  // Warnung: vergangene Tage, die noch nachgetragen werden können, aber unvollständig sind (sonst Strafe)
+  const open = Array.from({ length: CONFIG.backfillDays }, (_, i) => today - 1 - i).filter(d => canEdit(d) && (me.hl[d] || []).slice(0, 3).filter(Boolean).length < 3).reverse();
+  const warn = me.active && CONFIG.habitFee && open.length ? `<p class="small bad">Noch nicht alle 3: ${open.map(d => fmtD(dayDate(d))).join(', ')}. Bleibt es so, kostet jeder Tag ${eur(CONFIG.habitFee)}.</p>` : '';
   return `<section class="card" data-k="habits"><div class="hd"><h2>Gewohnheiten</h2>${score}</div>${streak}
-    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}
+    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${warn}
     ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen</button>` : ''}</section>`;
 }
 // Punktestand vieler Spieler als umbrechende Chips (sortiert)
@@ -860,48 +977,46 @@ function weeklyCard(me) {
     const names = s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') || 'Der Wochenletzte';
     inner = `<p class="small t2"><b>${names}</b> wählt bis ${fmtDT(exclusiveUntil(w))}. Danach darf jeder, wer zuerst kommt.</p>`;
   }
-  // Hinweis auf die Teamwoche, wenn diese Woche keine läuft
+  // Hinweis auf den Team-Monat: eigener Vorschlag für die nächste Ziehung fehlt noch
   let team = '';
-  if (cw >= 0 && cw < CONFIG.weeks && !TEAM[cw]) {
-    const nt = cw + 1, ng = S.teamgoals[nt];
-    if (ng) team = `<p class="small t2 sep">Teamwoche ${nt}: ${esc(ng.text)}</p>`;
-    else if (canSetTeam(nt)) team = `<p class="small t2 sep">Kein Teamziel für Woche ${nt}. <button class="link" data-tab="challenges">Vorschlagen</button></p>`;
-  }
+  const ne = nextDrawE();
+  if (ne && canSuggest(ne)) team = `<p class="small t2 sep">Team-Monat Etappe ${ne}: Dein Vorschlag fehlt noch, gezogen wird ${fmtDT(drawTime(ne))}. <button class="link" data-tab="challenges">Vorschlagen</button></p>`;
   return `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenge</h2>${aside}</div>${inner}${team}</section>`;
 }
 function teamCard(me) {
-  const cw = curWeek(); const t = cw >= 1 && cw <= CONFIG.weeks ? TEAM[cw] : null; if (!t) return '';
-  return `<section class="card" data-k="team">${teamHead(t, cw)}${teamEntry(t, cw)}</section>`;
+  const cw = curWeek(); if (cw < 1 || cw > CONFIG.weeks) return '';
+  const ce = etappeOf(cw), prev = TEAM[ce - 1];
+  // am ersten Montag der Etappe läuft bis zum Wiegeschluss noch die alte (Nachtragen), danach die neue
+  const t = TEAM[ce] || (prev && !prev.closed ? prev : null); if (!t) return '';
+  return `<section class="card" data-k="team">${teamHead(t, true)}${teamEntry(t, me)}</section>`;
 }
-function teamHead(t, w) {
-  const g = t.goal; const pc = clamp(t.sum / g.target, 0, 1);
-  const by = Object.values(C).filter(p => t.by[p.uid]).map(p => ({ p, v: teamFmt(g, t.by[p.uid]), n: t.by[p.uid] })).sort((a, b) => b.n - a.n);
-  const state = t.closed ? (t.reached ? `<span class="ok">Erreicht.</span> +${CONFIG.teamPts} P. für alle, die etwas eingetragen haben.` : 'Nicht erreicht.')
-    : t.reached ? `<span class="ok">Erreicht.</span> +${CONFIG.teamPts} P. für alle mit Eintrag, fest ab ${fmtD(slotStart(w))} ${CONFIG.deadlineHour}:00 Uhr.`
-    : `Noch ${teamFmt(g, g.target - t.sum)} bis ${fmtD(slotStart(w))}, ${CONFIG.deadlineHour}:00 Uhr. Erreicht: +${CONFIG.teamPts} P. für alle mit Eintrag.`;
-  return `<div class="hd"><h2>Teamwoche</h2><span class="aside"><b>${nf(t.sum)}</b> / ${teamFmt(g, g.target)}</span></div>
-    <p class="chtext">${esc(g.text)}</p>
-    <div class="bar${t.reached ? ' done' : ''}" role="progressbar" aria-label="Fortschritt Teamziel" aria-valuemin="0" aria-valuemax="${g.target}" aria-valuenow="${t.sum}"><i style="width:${(pc * 100).toFixed(1)}%"></i></div>
-    <p class="small t2">${state}</p>${by.length ? chips(by) : ''}`;
+function teamHead(t, hd) {
+  const done = t.items.filter(i => i.reached).length, end = slotDeadline(etEndWeek(t.e));
+  const state = t.closed ? (t.reached ? `<span class="ok">Geschafft.</span> +${CONFIG.teamPts} P. für alle mit Eintrag.` : 'Nicht geschafft, niemand bekommt den Bonus.')
+    : `${t.reached ? '<span class="ok">Alle Ziele erreicht.</span> Zählt fest ab' : 'Alle schaffen bis'} ${fmtDT(end)}: +${CONFIG.teamPts} P. für jeden mit Eintrag. Ein Ziel verfehlt = keiner bekommt etwas.`;
+  const items = t.items.map(i => `<div class="tmi"><div class="row top"><div class="grow"><div class="tt">${esc(i.text)}</div><div class="small muted">${ideaRate(i)} · von ${esc(i.setByName)}</div></div><span class="aside"><b>${nf(i.sum)}</b> / ${teamFmt(i, i.target)}</span></div>
+    <div class="bar${i.reached ? ' done' : ''}" role="progressbar" aria-label="${esc(i.text)}" aria-valuemin="0" aria-valuemax="${i.target}" aria-valuenow="${Math.round(i.sum)}"><i style="width:${(clamp(i.sum / i.target, 0, 1) * 100).toFixed(1)}%"></i></div></div>`).join('');
+  const who = Object.values(C).filter(p => t.by[p.uid]).map(p => esc(p.name));
+  return `${hd ? `<div class="hd"><h2>Team-Monat · Etappe ${t.e}</h2><span class="aside"><b>${done}</b>/${t.items.length} erreicht</span></div>` : ''}${items}
+    <p class="small t2">${state}</p>${who.length ? `<p class="small muted">Dabei: ${andJoin(who)}</p>` : ''}`;
 }
-function teamEntry(t, w) {
-  const me = C[S.me]; if (!me?.active || t.closed) return '';
-  const d0 = 7 * (w - 1), today = dayIdx(), g = t.goal;
-  const myv = d => S.teamlogs[S.me + '_' + d]?.value || 0;
-  if (g.kind === 'count') {
-    const cells = [0, 1, 2, 3, 4, 5, 6].map(i => {
-      const d = d0 + i, on = myv(d) > 0, ed = teamEditable(d, me.js), fx = tapFx('t' + d);
-      const cls = ['hc', on && 'on', d === today && 'td', d > today ? 'off' : ed ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
-      return `<button class="${cls}"${fx.st} ${ed ? `data-act="teamTog" data-day="${d}"` : 'disabled'} aria-pressed="${on}" aria-label="Teamziel ${fmtD(dayDate(d))}">${svg('check', 'ck')}</button>`;
-    }).join('');
-    return `<div class="hgrid team"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div><div class="hrow"><span class="hname">Deine Tage</span><div class="hcells">${cells}</div></div></div>`;
-  }
-  const days = [0, 1, 2].map(i => today - i).filter(d => d >= d0 && d < d0 + 7 && teamEditable(d, me.js));
+function teamEntry(t, me) {
+  if (!me?.active || t.closed) return '';
+  const today = dayIdx();
+  const days = Array.from({ length: CONFIG.backfillDays + 1 }, (_, i) => today - i).filter(d => etappeOf(weekOfDay(d)) === t.e && teamEditable(d, me.js));
   if (!days.length) return '';
+  const day = days.includes(UI.tmDay) ? UI.tmDay : days[0];
+  const mine = S.teamlogs[S.me + '_' + day]?.vals || {};
   const lbl = d => d === today ? 'Heute' : d === today - 1 ? 'Gestern' : fmtD(dayDate(d));
-  return `<div class="row entry"><select class="inp auto" id="tmDay" aria-label="Tag">${days.map(d => `<option value="${d}">${lbl(d)}</option>`).join('')}</select>
-    <input class="inp grow" id="tmVal" inputmode="numeric" autocomplete="off" placeholder="${esc(g.unit || 'Wert')}" aria-label="Dein Wert" value="${myv(days[0]) || ''}">
-    <button class="btn ghost" data-act="teamLog">Eintragen</button></div>`;
+  const rows = t.items.map(i => {
+    if (i.kind === 'count') {
+      const on = (+mine[i.id] || 0) > 0, fx = tapFx('tm' + day + i.id);
+      return `<div class="tmrow"><span class="hname">${esc(i.text)}</span><button class="hc${on ? ' on' : ''}${fx.cls}"${fx.st} data-act="tmTog" data-day="${day}" data-id="${esc(i.id)}" aria-pressed="${on}" aria-label="${esc(i.text)}, ${lbl(day)}">${svg('check', 'ck')}</button></div>`;
+    }
+    return `<div class="tmrow"><label class="hname" for="tmv-${esc(i.id)}">${esc(i.text)}</label><input class="inp" id="tmv-${esc(i.id)}" data-tm="${esc(i.id)}" inputmode="decimal" autocomplete="off" placeholder="${esc(i.unit || 'Wert')}" value="${mine[i.id] ? String(mine[i.id]).replace('.', ',') : ''}"></div>`;
+  }).join('');
+  return `<div class="tmentry sep"><div class="row"><span class="small t2 grow">Dein Beitrag</span><select class="inp auto" id="tmDay" aria-label="Tag">${days.map(d => `<option value="${d}"${d === day ? ' selected' : ''}>${lbl(d)}</option>`).join('')}</select></div>
+    ${rows}${t.items.some(i => i.kind !== 'count') ? `<button class="btn ghost full" data-act="tmSave" data-day="${day}">Eintragen</button>` : ''}</div>`;
 }
 
 /* ---------- LIVETICKER: wird nur aus den Daten im Speicher gebaut, keine eigene Sammlung ---------- */
@@ -940,11 +1055,16 @@ function feedEvents() {
     else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} geschafft`, sub: 'wartet auf Bestätigung' });
   }
   for (const [w, ch] of Object.entries(S.weekly)) if (tsNum(ch.ts)) ev.push({ id: 'ch' + w, k: 'challenge', t: tsNum(ch.ts), html: `${nm(ch.setBy)} hat die Challenge für Woche ${w} gewählt`, sub: esc(ch.text) });
-  for (const [w, g] of Object.entries(S.teamgoals)) if (tsNum(g.ts)) ev.push({ id: 'tg' + w, k: 'team', t: tsNum(g.ts), html: `${nm(g.setBy)} hat ein Teamziel für Woche ${w} gesetzt`, sub: esc(g.text) });
+  for (const [id, x] of Object.entries(S.teamideas)) if (tsNum(x.ts) && x.setBy) ev.push({ id: 'ti' + id, k: 'team', t: tsNum(x.ts), html: `${nm(x.setBy)} hat ein Ziel für den Team-Monat vorgeschlagen`, sub: `Etappe ${x.etappe} · ${esc(x.text)}, ${ideaRate(x)}` });
+  for (const t of Object.values(TEAM)) {
+    ev.push({ id: 'td' + t.e, k: 'team', t: drawTime(t.e).getTime(), html: `<b>Team-Monat Etappe ${t.e}</b> ist ausgelost`, sub: t.items.map(i => `${esc(i.text)} ${teamFmt(i, i.target)}`).join(' · ') });
+    if (t.closed) ev.push({ id: 'tr' + t.e, k: 'team', t: slotDeadline(etEndWeek(t.e)).getTime(), html: `<b>Team-Monat Etappe ${t.e}</b> ${t.reached ? 'geschafft' : 'nicht geschafft'}`, sub: t.reached ? `+${CONFIG.teamPts} P. für ${andJoin(Object.keys(t.by).map(u => esc(C[u]?.name || '?')))}` : `${t.items.filter(i => i.reached).length} von ${t.items.length} Zielen erreicht, kein Bonus` });
+  }
   return ev.filter(e => e.t >= from).sort((a, b) => b.t - a.t || a.id.localeCompare(b.id));
 }
-function feedCard() {
-  const all = feedEvents(), list = all.slice(0, UI.feedN), tnow = now().getTime(), today = dayIdx();
+const feedBase = () => isDesk() ? 6 : 3; // oben auf Heute kompakt: Handy 3, Desktop 6 (zweispaltig)
+function feedCard(top) {
+  const all = feedEvents(), list = all.slice(0, UI.feedN ?? (top ? feedBase() : 8)), tnow = now().getTime(), today = dayIdx();
   const dayLbl = d => d === today ? 'Heute' : d === today - 1 ? 'Gestern' : fmtLong(dayDate(d));
   const hhmm = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   let h = '', lastDay = null;
@@ -954,7 +1074,7 @@ function feedCard() {
     const fresh = FEED.init && !FEED.seen.has(e.id);
     h += `<li class="fe k-${e.k}${fresh ? ' new' : ''}" data-fid="${e.id}"><span class="fi">${svg(FEED_ICON[e.k])}</span><div class="fb"><p>${e.html}</p>${e.sub ? `<p class="fs">${e.sub}</p>` : ''}</div>${e.approx ? '' : `<time>${hhmm(t)}</time>`}</li>`;
   }
-  return `<section class="card feed"><div class="hd"><h2><span class="live" aria-hidden="true"></span>Liveticker</h2><span class="aside">letzte ${FEED_DAYS} Tage</span></div>
+  return `<section class="card feed${top ? ' top' : ''}"><div class="hd"><h2><span class="live" aria-hidden="true"></span>Liveticker</h2><span class="aside">letzte ${FEED_DAYS} Tage</span></div>
     ${all.length ? `<ol class="flist">${h}</ol>${all.length > list.length ? `<button class="link" data-act="feedMore">Ältere anzeigen (${all.length - list.length})</button>` : ''}`
       : '<p class="small t2">Noch ruhig. Sobald jemand wiegt, alle 3 abhakt oder eine Aufgabe bestätigt, steht es hier.</p>'}</section>`;
 }
@@ -984,7 +1104,7 @@ function viewRanking() {
   if (UI.rankMode === 'woche') {
     const w = UI.rankWeek; list = rankWeek(C, w);
     title = navBar('rw', w, 1, cwc, `Woche ${w} · ${weekRange(w)}`);
-    if (lastClosedSlot() < w) note = `<p class="small muted">Vorläufig: Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu.</p>`;
+    if (lastClosedSlot() < w) note = `<p class="small muted">Vorläufig: Waage-Punkte kommen am ${fmtD(slotStart(w))} bis ${CONFIG.deadlineHour} Uhr dazu.</p>`;
     else losers = weekLosers(C, w);
   } else if (UI.rankMode === 'etappe') {
     list = rankEtappe(C, UI.rankEtappe); title = etNav(UI.rankEtappe);
@@ -993,8 +1113,7 @@ function viewRanking() {
     title = `<div class="hd"><h2>Gesamtwertung</h2><span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
   }
   const cols = [['Waage', 'weigh'], ['Gewohn&shy;heiten', 'habits'], ['Chal&shy;lenge', 'weekly']];
-  if (UI.rankMode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks']);
-  cols.push(['Team', 'team']);
+  if (UI.rankMode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks'], ['Team', 'team']);
   if (UI.rankMode === 'gesamt') cols.push(['Strafen', 'fee']);
   const top = list.length ? list[0].total : 0;
   const head = `<div class="rk head"><span class="pos">#</span><span class="who">Name</span><span class="br">${cols.map(([l]) => `<span>${l}</span>`).join('')}</span><span class="pts">Punkte</span></div>`;
@@ -1019,7 +1138,7 @@ function pointsSeries() {
     const pts = [[p.js, 0]]; let cum = 0;
     for (let w = p.js + 1; w <= last; w++) {
       cum += p.weeks[w]?.total || 0;
-      for (let e = 1; e <= NUM_ETAPPEN; e++) if (Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks, last) === w) cum += p.taskPts[e] || 0;
+      for (let e = 1; e <= NUM_ETAPPEN; e++) if (Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks, last) === w) cum += (p.taskPts[e] || 0) + (p.teamPts[e] || 0);
       pts.push([w, cum]);
     }
     return { uid: p.uid, name: p.name, color: p.color, pts };
@@ -1032,11 +1151,11 @@ function viewKasse(etNav) {
   const po = pot(C);
   const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
   let sumE = 0, sumG = 0;
-  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td><td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.habitDays, CONFIG.habitFee)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
   return `<section class="card">${etNav(e)}
-    ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th><th>Verpasst</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
-    <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
-    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz, ${po.missed}× verpasst, ${po.losers}× Letzter).</p></section>`;
+    ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th><th>Wiegen verpasst</th><th>Tage ohne alle 3</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
+    <tr class="sum"><td>Summe</td><td></td><td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
+    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz, ${po.missed}× Wiegen verpasst, ${po.habitDays} Tage ohne alle 3, ${po.losers}× Letzter).</p></section>`;
 }
 
 /* ---------- CHALLENGES ---------- */
@@ -1077,41 +1196,34 @@ function viewChallenges() {
     wl += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="small muted">${chLabel(ch)} · von ${esc(ch.setByName)}</div>${who.length ? `<div class="who">${chips(who)}</div>` : ''}</div></div></div>`;
   }
   const wc = `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenges</h2></div>${wl || '<p class="t2">Noch keine.</p>'}</section>`;
-  return `<div class="view">${nav}<div class="split">${h}<div class="view">${teamSection(e, ce, ws, we)}${wc}</div></div></div>`;
+  return `<div class="view">${nav}<div class="split">${h}<div class="view">${teamSection(e, ce)}${wc}</div></div></div>`;
 }
-function teamSection(e, ce, ws, we) {
-  const cw = curWeek();
-  let h = `<section class="card" data-k="team"><div class="hd"><h2>Teamwoche</h2><span class="aside">+${CONFIG.teamPts} P. bei Erfolg</span></div>`;
-  let any = false;
-  for (let w = ws; w <= we; w++) {
-    const t = TEAM[w]; if (!t || w > cw) continue; any = true;
-    const g = t.goal;
-    const st = w === cw && !t.closed ? `läuft: ${nf(t.sum)} / ${teamFmt(g, g.target)}` : t.reached ? `<span class="ok">erreicht</span>, ${nf(t.sum)} / ${teamFmt(g, g.target)}` : `nicht erreicht, ${nf(t.sum)} / ${teamFmt(g, g.target)}`;
-    h += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(g.text)}</div><div class="small muted">${st} · von ${esc(g.setByName)}</div>
-      ${w === cw && !t.closed ? `<div class="bar${t.reached ? ' done' : ''}" style="margin-top:8px"><i style="width:${(clamp(t.sum / g.target, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}</div></div></div>`;
-  }
-  const nw = cw === 0 ? 1 : cw + 1;
-  if (e === ce && nw <= CONFIG.weeks) {
-    const ng = S.teamgoals[nw];
-    if (ng) { any = true; h += `<div class="task"><div class="row top"><span class="wk">W${nw}</span><div class="grow"><div class="tt">${esc(ng.text)}</div><div class="small muted">startet ${fmtD(slotStart(nw - 1))} · von ${esc(ng.setByName)}</div></div></div></div>`; }
-    else if (canSetTeam(nw)) {
-      any = true;
-      h += `<h3>Teamziel für Woche ${nw} vorschlagen</h3>
-        <input class="inp" id="gText" maxlength="60" placeholder="z. B. 300.000 Schritte gemeinsam" aria-label="Teamziel">
-        <select class="inp" id="gKind" aria-label="Art des Ziels"><option value="sum">Summe: jeder trägt täglich eine Zahl ein</option><option value="count">Anzahl: jeder hakt täglich ab</option></select>
-        <div class="row"><input class="inp grow" id="gTarget" inputmode="numeric" placeholder="Ziel, z. B. 300000" aria-label="Zielwert"><input class="inp grow" id="gUnit" maxlength="20" placeholder="Einheit, z. B. Schritte" aria-label="Einheit (nur bei Summe)"></div>
-        <button class="btn ghost" data-act="setTeam" data-w="${nw}">Für Woche ${nw} festlegen</button>`;
-    }
-  }
-  if (!any) h += `<p class="t2">In dieser Etappe gab es keine Teamwoche.</p>`;
+function teamSection(e, ce) {
+  const t = TEAM[e];
+  let h = `<section class="card" data-k="team"><div class="hd"><h2>Team-Monat</h2><span class="aside">+${CONFIG.teamPts} P. wenn alle Ziele klappen</span></div>`;
+  if (t) h += teamHead(t, false);
+  else if (now() < drawTime(e)) h += ideasBlock(e);
+  else h += `<p class="t2">In dieser Etappe gab es keinen Team-Monat (keine Vorschläge).</p>`;
+  if (e === ce && e < NUM_ETAPPEN && now() >= drawTime(e)) h += `<h3>Vorschläge für Etappe ${e + 1}</h3>${ideasBlock(e + 1)}`;
   return h + `</section>`;
+}
+function ideasBlock(e) {
+  const list = ideasFor(S, e), open = now() < drawTime(e);
+  let h = `<p class="small t2">Jeder schlägt ein Ziel pro Person vor. Am <b>${fmtDT(drawTime(e))}</b> werden ${CONFIG.teamDraw} davon zufällig gezogen und aufs ganze Team hochgerechnet.</p>`;
+  h += list.length ? list.map(x => `<div class="task"><div class="row top"><div class="grow"><div class="tt">${esc(x.text)}</div><div class="small muted">${ideaRate(x)} · von ${esc(x.setByName)}</div></div>${x.setBy === S.me && open ? `<button class="link" data-act="delIdea" data-id="${esc(x.id)}">Zurückziehen</button>` : ''}</div></div>`).join('')
+    : '<p class="small muted">Noch keine Vorschläge.</p>';
+  if (canSuggest(e)) h += `<div class="stack idea"><input class="inp" id="iText" maxlength="60" placeholder="Was? z. B. Schritte sammeln" aria-label="Was soll das Team schaffen?">
+    <select class="inp" id="iKind" aria-label="Art"><option value="sum">Menge: jeder trägt täglich eine Zahl ein</option><option value="count">Anzahl: jeder hakt ab (max. 1× pro Tag)</option></select>
+    <div class="row wrapr"><input class="inp grow" id="iPer" inputmode="decimal" placeholder="Pro Person, z. B. 8000" aria-label="Wie viel pro Person"><input class="inp grow" id="iUnit" maxlength="20" placeholder="Einheit, z. B. Schritte" aria-label="Einheit"><select class="inp auto" id="iPeriod" aria-label="Zeitraum"><option value="day">pro Tag</option><option value="week">pro Woche</option><option value="month">pro Monat</option></select></div>
+    <button class="btn ghost" data-act="addIdea" data-e="${e}">Vorschlagen</button></div>`;
+  return h;
 }
 
 /* ---------- VERLAUF ---------- */
 function viewVerlauf() {
   const players = Object.values(C).filter(p => p.active);
   let h = `<section class="card"><div class="hd"><h2>Abnahme seit Start</h2><button class="link" data-act="ctab">${UI.chartTable ? 'Als Diagramm' : 'Als Tabelle'}</button></div>
-    <p class="small muted">In Prozent vom eigenen Startgewicht. Deine kg-Werte stehen unter <button class="link" data-tab="ich">Ich</button>, nur für dich.</p>`;
+    <p class="small muted">In Prozent vom eigenen Startgewicht.${isDesk() ? '' : ' Deine kg-Werte stehen unter <button class="link" data-tab="ich">Ich</button>, nur für dich.'}</p>`;
   if (!players.length) h += `<p class="t2">Noch keine Daten.</p>`;
   else if (UI.chartTable) {
     const maxS = Math.max(...players.flatMap(p => Object.keys(p.wb).map(Number)));
@@ -1216,35 +1328,41 @@ function myKg() { // eigene kg aus players/{uid}/private/weights
 }
 function viewIch() {
   const me = C[S.me], p = S.players[S.me];
-  return `<div class="ich">${goalCard(me)}${kgCard(me)}${heatCard(me, p)}${msCard(me)}</div>`;
+  // Desktop: Ich und Verlauf in einem Tab
+  const grp = isDesk() ? `<h2 class="sect">Verlauf der Gruppe</h2>${viewVerlauf()}` : '';
+  return `<div class="ich">${goalCard(me)}${kgCard(me)}${heatCard(me, p)}${msCard(me)}</div>${grp}`;
 }
-function goalCard(me) {
-  const g = S.myGoal, act = !!me?.active, cur = act ? me.latest : 0;
+function goalCard(me, compact) { // compact = auf Heute (Desktop): nur Ring und Stand, Ändern im Tab Ich
+  const g = S.myGoal, act = !!me?.active, cur = act ? me.latest : 0, kg = myKg();
+  const goalKg = S.myGoalKg ?? (g && kg.start ? kg.start * (1 - g / 100) : null);
   const prog = g && act ? Math.max(0, cur) / g : 0;
   const done = !!(g && act && me.bestLoss >= g - 1e-9);
   let txt;
-  if (!act) txt = 'Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.';
-  else if (!g) txt = 'Setz dir ein eigenes Ziel in Prozent vom Startgewicht. Sieht nur du, bringt keine Punkte.';
+  if (!act) txt = goalKg ? `Ziel: <b>${tn(fmt1(goalKg))} kg</b>. Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.` : 'Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.';
+  else if (!goalKg) txt = 'Setz dir ein Zielgewicht. Sieht nur du, bringt keine Punkte.';
+  else if (!g) txt = 'Dein Zielgewicht liegt nicht unter deinem Startgewicht. Setz ein neues.';
   else if (done) txt = `<b class="ok">Ziel geschafft.</b> ${cur >= g - 1e-9 ? '' : `Bester Wert: ${tn(lossStr(me.bestLoss))}. `}Zeit für ein neues Ziel.`;
-  else txt = `Noch <b>${tn(pct(g - Math.max(0, cur)))} %</b> bis zum Ziel, ${Math.round(prog * 100)} % geschafft.`;
-  const kg = myKg(), lost = kg.start !== undefined && kg.last !== undefined ? kg.start - kg.last : null;
-  const tiles = act ? `<div class="tiles">
+  else txt = `Noch <b>${kg.last !== undefined ? tn(fmt1(Math.max(0, kg.last - goalKg))) + ' kg' : tn(pct(g - Math.max(0, cur))) + ' %'}</b> bis ${tn(fmt1(goalKg))} kg, ${Math.round(prog * 100)} % geschafft.`;
+  const lost = kg.start !== undefined && kg.last !== undefined ? kg.start - kg.last : null;
+  const tiles = act && !compact ? `<div class="tiles">
     <div class="tile"><b class="num">${lost === null ? '–' : tn((lost >= 0 ? '−' : '+') + fmt1(Math.abs(lost)))}</b><span>kg seit Start</span></div>
     <div class="tile"><b class="num">${tn(lossStr(me.bestLoss))}</b><span>bester Wert</span></div>
     <div class="tile"><b class="num">${me.streak.best}</b><span>Streak-Rekord</span></div></div>` : '';
-  return `<section class="card goal${done ? ' done' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}nur für dich</span></div>
-    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %` : 'noch kein Ziel'}</small></div></div>
+  const form = compact ? `<button class="link" data-tab="ich">${goalKg ? 'Ziel ändern' : 'Ziel setzen'}</button>`
+    : `<div class="row"><label class="pctin"><input id="goal" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="85" aria-label="Zielgewicht in kg" value="${goalKg ? Math.round(goalKg * 10) / 10 : ''}"><span aria-hidden="true">kg</span></label><button class="btn${goalKg ? ' ghost' : ''}" data-act="setGoal">${goalKg ? 'Ändern' : 'Ziel setzen'}</button></div>
+    ${tiles}${goalKg ? '<button class="link" data-act="clearGoal">Ziel entfernen</button>' : ''}`;
+  return `<section class="card goal${done ? ' done' : ''}${compact ? ' compact' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}nur für dich</span></div>
+    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${goalKg ? `Ziel ${tn(fmt1(goalKg))} kg${g ? ` · −${tn(pct(g))} %` : ''}` : 'noch kein Ziel'}</small></div></div>
     <p class="small t2">${txt}</p>
-    <div class="row"><label class="pctin"><span aria-hidden="true">−</span><input id="goal" type="number" inputmode="decimal" step="0.5" min="0.5" max="30" placeholder="z. B. 8" aria-label="Ziel in Prozent vom Startgewicht" value="${g ?? ''}"><span aria-hidden="true">%</span></label><button class="btn${g ? ' ghost' : ''}" data-act="setGoal">${g ? 'Ändern' : 'Ziel setzen'}</button></div>
-    ${tiles}${g ? '<button class="link" data-act="clearGoal">Ziel entfernen</button>' : ''}
-    ${seasonOver() && act ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
+    ${form}
+    ${seasonOver() && act && !compact ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
 }
 function kgCard(me) {
   const kg = myKg();
   let h = `<section class="card kg" data-k="weigh"><div class="hd"><h2>Dein Gewicht</h2>${kg.ks.length ? `<button class="link" data-act="kgtab">${UI.kgTable ? 'Als Diagramm' : 'Als Tabelle'}</button>` : ''}</div>`;
-  if (!kg.ks.length) return h + `<p class="t2">Noch keine Werte. Montags 0–${CONFIG.deadlineHour} Uhr wiegen, dann steht hier dein Verlauf in kg.</p></section>`;
+  if (!kg.ks.length) return h + `<p class="t2">Noch keine Werte. Montags ${weighHours} wiegen, dann steht hier dein Verlauf in kg.</p></section>`;
   const js = me?.js ?? kg.ks[0];
-  const goalKg = S.myGoal && kg.start ? kg.start * (1 - S.myGoal / 100) : null;
+  const goalKg = S.myGoalKg ?? (S.myGoal && kg.start ? kg.start * (1 - S.myGoal / 100) : null);
   if (UI.kgTable) {
     h += `<div class="tscroll"><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
       ${kg.ks.slice().reverse().map(k => `<tr><td>${k === js ? 'Start' : k}</td><td>${tn(fmt1(S.myWeights[k]))}</td><td>${me?.wb[k] !== undefined ? tn(lossStr(me.wb[k])) : '–'}</td><td>${k > js && me?.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
@@ -1310,7 +1428,7 @@ function wrappedData() {
     weeks++; if (r.length > 1 && m.total > 0 && m.total === r[0].total) wins++;
   }
   return { name: p.name, loss: p.latest, pos: 1 + tot.filter(x => x.total > mine.total).length, of: tot.length, total: mine.total, wins, weeks,
-    strafen: f.strafen, missed: f.missed, losers: f.losers, streak: p.streak.best, nem, mine: ms?.pts || [], winner: tot[0], pot: pot(C).total };
+    strafen: f.strafen, missed: f.missed, losers: f.losers, habitDays: f.habitDays, streak: p.streak.best, nem, mine: ms?.pts || [], winner: tot[0], pot: pot(C).total };
 }
 function duelSvg(a, b) { // Mini-Diagramm: du (durchgezogen) gegen Nemesis (gestrichelt)
   const all = [...a, ...b], x0 = Math.min(...all.map(p => p[0])), xm = Math.max(x0 + 1, ...all.map(p => p[0])), ym = Math.max(1, ...all.map(p => p[1]));
@@ -1323,10 +1441,10 @@ function wrappedHtml(fresh) {
   const end = dayDate(CONFIG.weeks * 7 - 1), gain = d.loss < 0.05;
   const fd = d.nem ? Math.round(d.nem.last) : 0;
   const final = !d.nem ? '' : fd > 0 ? `am Ende ${ptsStr(fd)} vorn` : fd < 0 ? `am Ende ${ptsStr(-fd)} dahinter` : 'am Ende punktgleich';
-  const fee = d.strafen ? [d.missed && `${d.missed}× verpasst`, d.losers && `${d.losers}× Letzter`].filter(Boolean).join(' · ') : 'kein einziger Euro';
+  const fee = d.strafen ? [d.missed && `${d.missed}× Wiegen verpasst`, d.habitDays && `${d.habitDays} Tage ohne alle 3`, d.losers && `${d.losers}× Letzter`].filter(Boolean).join(' · ') : 'kein einziger Euro';
   return `<div class="wrapped${fresh ? ' fresh' : ''}" role="dialog" aria-modal="true" aria-label="Saisonrückblick" tabindex="-1">
     <article class="wcard">
-      <header class="wtop"><span>Club der Fettsäcke</span><span>Saison ${START.getFullYear()}/${String(end.getFullYear()).slice(2)}</span></header>
+      <header class="wtop"><span class="row" style="gap:6px">${logoImg('mark sm')}Club der Fettsäcke</span><span>Saison ${START.getFullYear()}/${String(end.getFullYear()).slice(2)}</span></header>
       <p class="wname">${esc(d.name)}</p>
       <div class="wb w-loss${gain ? ' gain' : ''}"><span class="wl">${gain ? 'seit Start' : 'vom Startgewicht verloren'}</span><b class="wbig" data-cnt="${d.loss}" data-f="loss">${tn(lossStr(d.loss))}</b></div>
       <div class="wgrid">
@@ -1357,12 +1475,13 @@ function viewRegeln() {
   return `<section class="card rules"><div class="hd"><h2>Regeln</h2></div>
   <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
   <h3>Wiegen (max. ${wMax} P./Woche)</h3><ul>
-   <li>Jeden <b>Montag 0–${CONFIG.deadlineHour} Uhr</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
+   <li>Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.</li>
    <li><b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
    <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
    <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
   <h3>Gewohnheiten (max. 21 P./Woche)</h3><ul>
    <li>Jeder wählt <b>3 eigene</b>, die Überwindung kosten. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen (auch in die Vorwoche).</li>
+   <li>Jeder Tag ohne alle 3 kostet <b>${eur(CONFIG.habitFee)}</b>, sobald er nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.</li>
    <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
   <h3>Wochen-Challenge (max. ${CONFIG.challengePts} P.)</h3><ul>
    <li>Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.</li>
@@ -1370,17 +1489,18 @@ function viewRegeln() {
   <h3>Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
    <li><b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.</li>
    <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
-  <h3>Teamwoche (+${CONFIG.teamPts} P.)</h3><ul>
-   <li>Jeder kann ein <b>Teamziel für die nächste Woche</b> festlegen, eins pro Woche, z. B. „300.000 Schritte gemeinsam“. Entweder Summe (jeder trägt täglich eine Zahl ein) oder Anzahl (jeder hakt täglich ab).</li>
-   <li>Eintragen bis zu ${CONFIG.backfillDays} Tage rückwirkend, spätestens Montag ${CONFIG.deadlineHour} Uhr. Ist das Ziel dann erreicht, bekommt <b>jeder, der etwas eingetragen hat, +${CONFIG.teamPts} Punkte</b> für diese Woche.</li></ul>
+  <h3>Team-Monat (+${CONFIG.teamPts} P. pro Etappe)</h3><ul>
+   <li>Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.</li>
+   <li>Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (wer später einsteigt, zählt nur ab seinem Start).</li>
+   <li>Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b></li></ul>
   <h3>Streak und Joker (keine Punkte)</h3><ul>
    <li>Streak = Tage am Stück mit allen 3 Gewohnheiten. Die Challenge zählt nicht mit.</li>
    <li>Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch den ersten verpassten Tag, an dem gerade eine Streak läuft.</li></ul>
   <h3>Meilensteine und eigenes Ziel</h3><ul>
    <li>−2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 7 und 30 Tage.</li>
-   <li>Im Tab <b>Ich</b> setzt du dir ein eigenes Ziel in Prozent. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul>
+   <li>Dein <b>Zielgewicht</b> gibst du beim Beitreten an, ändern im Tab <b>Ich</b>. Das sieht nur du, Punkte gibt es dafür nicht.</li></ul>
   <h3>Topf</h3><ul>
-   <li>${eur(CONFIG.einsatz)} Einsatz (einmalig) + ${eur(CONFIG.strafe)} pro verpasstem Wiegen + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
+   <li><b>${eur(CONFIG.einsatz)} Einsatz</b> (einmalig) + <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen + <b>${eur(CONFIG.habitFee)}</b> pro Tag ohne alle 3 Gewohnheiten + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).</li>
    <li>Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
    <li>Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
   <h3>Erinnerungen</h3><ul>
@@ -1461,12 +1581,14 @@ document.addEventListener('click', async ev => {
       case 'signin': await DB.signIn(); break;
       case 'signout': UI.modal = null; await DB.signOut(); break;
       case 'register': {
-        const name = val('rName'), habits = [val('rH0'), val('rH1'), val('rH2')];
+        const name = val('rName'), habits = [val('rH0'), val('rH1'), val('rH2')], goalKg = Math.round(parseFloat(val('rGoal').replace(',', '.')) * 10) / 10;
         if (!name) return toast('Name fehlt.');
+        if (!(goalKg >= 30 && goalKg <= 300)) return toast('Bitte dein Zielgewicht in kg eintragen, z. B. 85.');
         if (habits.some(h => !h)) return toast('Bitte alle 3 Gewohnheiten eintragen.');
         const k = nextJoinSlot(); if (k === null) return;
-        await DB.register({ name, habits, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
-        toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} bis ${CONFIG.deadlineHour} Uhr eintragen.`); break;
+        document.activeElement?.blur();
+        await DB.register({ name, habits, goalKg, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
+        toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} zwischen ${weighHours} eintragen.`); break;
       }
       case 'weigh': {
         const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
@@ -1494,25 +1616,37 @@ document.addEventListener('click', async ev => {
         document.activeElement?.blur();
         await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge gespeichert.'); break;
       }
-      case 'setTeam': {
-        const w = +el.dataset.w, text = val('gText'), kind = val('gKind') === 'count' ? 'count' : 'sum', target = intVal('gTarget'), unit = kind === 'sum' ? val('gUnit').slice(0, 20) : '';
-        if (!text) return toast('Text fehlt.');
-        if (!(target >= 1 && target <= 1e7)) return toast('Ziel als Zahl zwischen 1 und 10.000.000 eingeben.');
+      case 'addIdea': {
+        const e = +el.dataset.e, text = val('iText'), kind = val('iKind') === 'count' ? 'count' : 'sum', period = ['day', 'week', 'month'].includes(val('iPeriod')) ? val('iPeriod') : 'week';
+        const per = Math.round(parseFloat(val('iPer').replace(/\./g, '').replace(',', '.')) * 100) / 100, unit = kind === 'sum' ? val('iUnit').slice(0, 20) : '';
+        if (!text) return toast('Was soll das Team schaffen?');
+        if (!(per > 0 && per <= 1e6)) return toast('Wie viel pro Person? Bitte eine Zahl eintragen.');
+        const maxCount = { day: 1, week: 7, month: 7 * CONFIG.etappeWeeks }[period];
+        if (kind === 'count' && per > maxCount) return toast(`Abhaken geht höchstens 1× pro Tag, also max. ${maxCount} pro ${PERIOD[period]}.`);
         document.activeElement?.blur();
-        await DB.setTeamGoal(w, { text, kind, target, unit }); toast(`Teamziel für Woche ${w} gespeichert.`); break;
+        await DB.addTeamIdea(e, { text, kind, per, period, unit }); toast(`Vorschlag für Etappe ${e} gespeichert.`); break;
       }
-      case 'teamLog': {
-        const d = +val('tmDay'), v = intVal('tmVal');
-        if (!(v >= 0 && v <= 1e6)) return toast('Bitte eine Zahl zwischen 0 und 1.000.000 eingeben.');
+      case 'delIdea': await DB.delTeamIdea(el.dataset.id); toast('Vorschlag zurückgezogen.'); break;
+      case 'tmTog': {
+        const d = +el.dataset.day, id = el.dataset.id, e = etappeOf(weekOfDay(d));
         if (!teamEditable(d, C[S.me]?.js || 0)) return toast('Dieser Tag ist nicht mehr offen.');
+        const vals = { ...(S.teamlogs[S.me + '_' + d]?.vals || {}) }; const on = (+vals[id] || 0) > 0;
+        tapStart(el, 'tm' + d + id); el.classList.toggle('on', !on);
+        vals[id] = on ? 0 : 1; await DB.setTeamLog(d, e, vals); break;
+      }
+      case 'tmSave': {
+        const d = +el.dataset.day, e = etappeOf(weekOfDay(d));
+        if (!teamEditable(d, C[S.me]?.js || 0)) return toast('Dieser Tag ist nicht mehr offen.');
+        const vals = { ...(S.teamlogs[S.me + '_' + d]?.vals || {}) };
+        for (const inp of document.querySelectorAll('#app [data-tm]')) {
+          const raw = inp.value.trim(), v = raw ? Math.round(parseFloat(raw.replace(/\./g, '').replace(',', '.')) * 100) / 100 : 0;
+          if (!(v >= 0 && v <= 1e6)) return toast('Bitte Zahlen zwischen 0 und 1.000.000 eintragen.');
+          vals[inp.dataset.tm] = v;
+        }
         document.activeElement?.blur();
-        await DB.setTeamLog(d, weekOfDay(d), v); toast(`Eingetragen: ${nf(v)} für ${fmtD(dayDate(d))}`); break;
+        await DB.setTeamLog(d, e, vals); toast(`Eingetragen für ${fmtD(dayDate(d))}.`); break;
       }
-      case 'teamTog': {
-        const d = +el.dataset.day, on = (S.teamlogs[S.me + '_' + d]?.value || 0) > 0;
-        tapStart(el, 't' + d);
-        el.classList.toggle('on', !on); await DB.setTeamLog(d, weekOfDay(d), on ? 0 : 1); break;
-      }
+      case 'reload': location.reload(); break;
       case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
@@ -1524,13 +1658,14 @@ document.addEventListener('click', async ev => {
       case 'toWeekRank': UI.rankMode = 'woche'; UI.rankWeek = +el.dataset.w; go('ranking'); break;
       case 'ctab': UI.chartTable = !UI.chartTable; render(); break;
       case 'kgtab': UI.kgTable = !UI.kgTable; render(); break;
-      case 'feedMore': UI.feedN += 12; render(); break;
+      case 'feedMore': UI.feedN = (UI.feedN ?? feedBase()) + 12; render(); break;
       case 'setGoal': {
-        const g = Math.round(parseFloat(val('goal').replace(',', '.').replace(/^[-−]/, '')) * 10) / 10;
-        if (!(g >= 0.5 && g <= 30)) return toast('Ziel als Zahl zwischen 0,5 und 30 eingeben, z. B. 8 für −8 %.');
-        document.activeElement?.blur(); await DB.setGoal(g); toast(`Ziel gespeichert: −${pct(g)} %. Sieht nur du.`); break;
+        const g = Math.round(parseFloat(val('goal').replace(',', '.')) * 10) / 10, st = myKg().start;
+        if (!(g >= 30 && g <= 300)) return toast('Zielgewicht in kg eingeben, z. B. 85.');
+        if (st && g >= st) return toast(`Dein Ziel sollte unter deinem Startgewicht (${fmt1(st)} kg) liegen.`);
+        document.activeElement?.blur(); await DB.setGoalKg(g); toast(`Ziel gespeichert: ${fmt1(g)} kg. Sieht nur du.`); break;
       }
-      case 'clearGoal': await DB.setGoal(null); toast('Ziel entfernt.'); break;
+      case 'clearGoal': await DB.setGoalKg(null); toast('Ziel entfernt.'); break;
       case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
       case 'profile': UI.modal = 'profile'; renderModal(); break;
       case 'closeModal': UI.modal = null; renderModal(); break;
@@ -1548,12 +1683,12 @@ document.addEventListener('click', async ev => {
 });
 document.addEventListener('change', ev => {
   if (ev.target.id === 'demoTime' && ev.target.value) setNow(new Date(ev.target.value));
-  if (ev.target.id === 'tmDay') { const i = document.getElementById('tmVal'); if (i) i.value = S.teamlogs[S.me + '_' + ev.target.value]?.value || ''; }
+  if (ev.target.id === 'tmDay') { UI.tmDay = +ev.target.value; ev.target.blur(); render(); }
 });
 function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh(); }
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && UI.modal) { UI.modal = null; renderModal(); return; }
-  if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row')?.querySelector('.btn'); if (b) b.click(); }
+  if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row, .tmentry, .idea')?.querySelector('.btn'); if (b) b.click(); }
 });
 
 /* ---------- START ---------- */
