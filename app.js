@@ -143,6 +143,10 @@ function compute(S) {
     const wb = {};
     for (const w of Object.values(S.weighins)) if (w.uid === uid && typeof w.lossPct === 'number') wb[w.slot] = w.lossPct;
     const active = wb[js] !== undefined;
+    // persönliches Ziel (max. Abnahme in % vom Startgewicht), fest ab dem Startgewicht; goalWeek = erstes Wiegen mit lossPct >= Ziel
+    const goal = typeof p.maxLossPct === 'number' && p.maxLossPct > 0 ? p.maxLossPct : null;
+    let goalWeek = null;
+    if (goal) for (let k = js + 1; k <= CONFIG.weeks; k++) if (wb[k] !== undefined && wb[k] >= goal - 1e-9) { goalWeek = k; break; }
     const hl = hlBy[uid] || {};
     const weeks = {};
     let best = 0;
@@ -172,7 +176,7 @@ function compute(S) {
     // längste Serie Wiegen ohne Verpassen (für Meilensteine)
     let run = 0, weighRun = 0;
     if (active) for (let k = js + 1; k <= CONFIG.weeks; k++) { if (wb[k] !== undefined) weighRun = Math.max(weighRun, ++run); else if (k <= lc) run = 0; else break; }
-    const x = { uid, name: p.name, js, wb, hl, active, weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
+    const x = { uid, name: p.name, js, wb, hl, active, goal, goalWeek, weeks, taskPts, teamPts: {}, missed, missedSlots, missedHabitWeeks, loserWeeks: [], latest, color: colorOf(idx), idx,
       weighRun, bestLoss: Math.max(0, ...Object.values(wb)), lastActive: tsNum(p.lastActive) };
     x.streak = active ? streakOf(x) : { cur: 0, best: 0, joker: true, jokerWeek: null };
     x.ms = MILESTONES.filter(m => m.test(x)).map(m => m.id);
@@ -314,15 +318,16 @@ function streakOf(x) {
 }
 const wochen = n => n === 1 ? '1 Woche' : n + ' Wochen';
 const MILESTONES = [
+  { id: 'goal', cat: 'g', n: 0, label: 'Ziel erreicht' },
   { id: 'l2', cat: 'l', n: 2, label: '−2 %' }, { id: 'l5', cat: 'l', n: 5, label: '−5 %' }, { id: 'l7', cat: 'l', n: 7.5, label: '−7,5 %' }, { id: 'l10', cat: 'l', n: 10, label: '−10 %' },
   { id: 'w4', cat: 'w', n: 4, label: '4 Wochen ohne verpasstes Wiegen', short: '4 Wochen' },
   { id: 'w10', cat: 'w', n: 10, label: '10 Wochen ohne verpasstes Wiegen', short: '10 Wochen' },
   { id: 'w20', cat: 'w', n: 20, label: '20 Wochen ohne verpasstes Wiegen', short: '20 Wochen' },
   { id: 'sw4', cat: 's', n: 4, label: 'Streak 4 Wochen (alle Wochenziele)', short: '4-Wochen-Streak' },
   { id: 'sw12', cat: 's', n: 12, label: 'Streak 12 Wochen (alle Wochenziele)', short: '12-Wochen-Streak' },
-].map(m => ({ ...m, test: x => (m.cat === 'l' ? x.bestLoss : m.cat === 'w' ? x.weighRun : x.streak.best) >= m.n - 1e-9 }));
+].map(m => ({ ...m, test: x => m.cat === 'g' ? x.goalWeek !== null : (m.cat === 'l' ? x.bestLoss : m.cat === 'w' ? x.weighRun : x.streak.best) >= m.n - 1e-9 }));
 const MS_BY = Object.fromEntries(MILESTONES.map(m => [m.id, m]));
-const topMilestones = p => ['l', 'w', 's'].map(c => MILESTONES.filter(m => m.cat === c && p.ms.includes(m.id)).pop()).filter(Boolean);
+const topMilestones = p => ['g', 'l', 'w', 's'].map(c => MILESTONES.filter(m => m.cat === c && p.ms.includes(m.id)).pop()).filter(Boolean);
 function activity(ts) {
   if (!ts) return null;
   const d = Math.max(0, dayIdx() - dayIdx(new Date(ts)));
@@ -332,21 +337,16 @@ function activity(ts) {
 /* =====================================================================
    DATENSCHICHT: Demo (lokal) und Firebase
    ===================================================================== */
-// Privates Ziel (nur für den Besitzer lesbar, players/{uid}/private/weights): goalKg = Zielgewicht in kg (seit der Anmeldung),
-// goal = altes Ziel in %. myGoal ist immer in % vom Startgewicht (aus goalKg berechnet, sobald das Startgewicht da ist).
-const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {}, myGoal: null, myGoalKg: null });
-
-function setGoalState(S, d) { // Rohwerte aus private/weights; myGoal (%) rechnet onState() aus
-  S.myGoalKg = typeof d.goalKg === 'number' ? d.goalKg : null;
-  S.myGoalPct = typeof d.goal === 'number' ? d.goal : null;
-}
+// Das Ziel (maxLossPct, max. Abnahme in % vom Startgewicht) steht öffentlich auf dem Spieler-Dokument: die anderen brauchen es für
+// Haltephase und Ausstieg. Die kg-Werte bleiben privat (players/{uid}/private/weights, nur für den Besitzer).
+const emptyState = () => ({ ready: false, synced: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {} });
 
 function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
 
 function makeDemoDB(emit) {
   const KEY = 'cdf-demo-v1';
   const ME = 'demo-me';
-  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {}, goal: null, goalKg: null, push: false });
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, myWeights: {}, push: false });
   let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
   mine = { ...blank(), ...(mine || {}) };
   const save = () => LS.setItem(KEY, JSON.stringify(mine));
@@ -448,7 +448,6 @@ function makeDemoDB(emit) {
     for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'teamideas', 'teamlogs']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
     if (mine.player) S.players[ME] = mine.player;
     S.myWeights = { ...mine.myWeights };
-    setGoalState(S, { goal: mine.goal, goalKg: mine.goalKg });
     return S;
   }
   const ts = () => now().getTime();
@@ -458,9 +457,9 @@ function makeDemoDB(emit) {
     demo: true, refresh: () => emit(state()),
     signIn() { }, signOut() { },
     reset() { LS.removeItem(KEY); for (const k of ['cdf-ms-', 'cdf-cel-', 'cdf-wrapped-']) LS.removeItem(k + ME); mine = blank(); commit(); },
-    async register(d) { mine.player = { name: d.name, habits: d.habits, habitSets: d.habitSets, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; mine.goalKg = d.goalKg; mine.goal = null; commit(); },
+    async register(d) { mine.player = { name: d.name, habits: d.habits, habitSets: d.habitSets, maxLossPct: d.maxLossPct, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; commit(); },
     async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
-    async saveWeigh(slot, kg, lossPct) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; commit(); },
+    async saveWeigh(slot, kg, lossPct, player) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; if (player) Object.assign(mine.player, player); commit(); },
     async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ts: ts() }; commit(); },
     async setWeekly(w, text, kind, target) { mine.weekly[w] = { text, kind, target, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
     async addTask(e, text) { const id = 'e' + e + '_' + ME; mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: ts() }; commit(); },
@@ -483,7 +482,6 @@ function makeDemoDB(emit) {
     async addTeamIdea(e, d) { mine.teamideas['e' + e + '_' + ME] = { ...d, etappe: e, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
     async delTeamIdea(id) { delete mine.teamideas[id]; commit(); },
     async setTeamLog(day, etappe, vals) { mine.teamlogs[ME + '_' + day] = { uid: ME, day, etappe, vals }; commit(); },
-    async setGoalKg(kg) { mine.goalKg = kg; mine.goal = null; commit(); },
     pushState: () => mine.push ? 'on' : 'off',
     async enablePush() { mine.push = true; commit(); toast('Demo: Erinnerungen sind nur simuliert, es kommt nichts an.'); },
     async disablePush() { mine.push = false; commit(); toast('Erinnerungen aus.'); },
@@ -527,7 +525,7 @@ async function makeFirebaseDB(cfg, emit) {
     ['teamideas', 'teamlogs'].forEach(n => col(n, true));
     const priv = (n = 0) => unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => {
       const d = s.exists() ? s.data() : {};
-      S.myWeights = d.slots || {}; setGoalState(S, d);
+      S.myWeights = d.slots || {};
       got('private'); fire();
     }, e => { if (!retry('private', n, priv)) { fail(e); S.loadError = true; fire(); } }));
     priv();
@@ -573,12 +571,12 @@ async function makeFirebaseDB(cfg, emit) {
     async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else fail(e); } },
     signOut: () => Au.signOut(auth),
     async register(d) {
-      await F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, habitSets: d.habitSets, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; });
-      if (d.goalKg) await F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goalKg: d.goalKg }, { merge: true }).catch(e => console.warn('goalKg', e.code));
+      await F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, habitSets: d.habitSets, maxLossPct: d.maxLossPct, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; });
     },
     updatePlayer: d => wrap(F.updateDoc(F.doc(db, 'players', me()), d)),
-    saveWeigh(slot, kg, lossPct) {
+    saveWeigh(slot, kg, lossPct, player) { // player: z. B. { maxLossPct } beim Startgewicht, im selben Schreibvorgang
       const b = F.writeBatch(db);
+      if (player) b.update(F.doc(db, 'players', me()), player);
       b.set(F.doc(db, 'weighins', me() + '_' + slot), { uid: me(), slot, lossPct, ts: F.serverTimestamp() });
       b.set(F.doc(db, 'players', me(), 'private', 'weights'), { slots: { [slot]: kg } }, { merge: true });
       return wrap(b.commit());
@@ -596,7 +594,6 @@ async function makeFirebaseDB(cfg, emit) {
       try { await F.updateDoc(ref, { ...d, confirmedAt: F.serverTimestamp() }); touch(); }
       catch (e) { if (e.code !== 'permission-denied') { fail(e); throw e; } await wrap(F.updateDoc(ref, d)); }
     },
-    setGoalKg: kg => wrap(F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), { goalKg: kg === null ? F.deleteField() : kg, goal: F.deleteField() }, { merge: true })),
     addTeamIdea: (e, d) => F.setDoc(F.doc(db, 'teamideas', 'e' + e + '_' + me()), { ...d, etappe: e, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, x => { toast(x.code === 'permission-denied' ? 'Geht nicht: Du hast schon einen Vorschlag oder die Ziehung war schon.' : 'Fehler: ' + x.message); throw x; }),
     delTeamIdea: id => wrap(F.deleteDoc(F.doc(db, 'teamideas', id))),
     setTeamLog: (day, etappe, vals) => wrap(F.setDoc(F.doc(db, 'teamlogs', me() + '_' + day), { uid: me(), day, etappe, vals })),
@@ -642,9 +639,6 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 
 function onState(ns) {
   S = ns;
-  // Ziel in %: aus dem Zielgewicht (kg), sobald das Startgewicht da ist; sonst das alte %-Ziel
-  const st = S.myWeights[S.players[S.me]?.joinedSlot || 0];
-  S.myGoal = S.myGoalKg && st ? (st > S.myGoalKg ? Math.round((st - S.myGoalKg) / st * 1000) / 10 : null) : S.myGoalKg ? null : S.myGoalPct ?? null;
   C = compute(S);
   // Startgewicht verpasst? -> automatisch nächsten Montag starten
   const p = S.players[S.me];
@@ -670,7 +664,7 @@ function seenList(key, cur) { // neue Einträge seit dem letzten Mal; beim aller
 function celebrationMarks(me) {
   const out = [];
   for (let n = 5; n <= me.bestLoss + 1e-9; n += 5) out.push('l' + n);
-  if (S.myGoal && me.active && me.bestLoss >= S.myGoal - 1e-9) out.push('goal' + S.myGoal);
+  if (me.goalWeek !== null) out.push('goal' + me.goal);
   return out;
 }
 function checkMilestones() { // einmaliger Toast (und Konfetti), wenn etwas Neues dazukommt
@@ -678,13 +672,13 @@ function checkMilestones() { // einmaliger Toast (und Konfetti), wenn etwas Neue
   const fresh = seenList('cdf-ms-' + S.me, me.ms);
   const cel = seenList('cdf-cel-' + S.me, celebrationMarks(me));
   if (!fresh.length && !cel.length) return;
-  const msgs = fresh.map(id => MS_BY[id].label);
+  const msgs = fresh.filter(id => id !== 'goal').map(id => MS_BY[id].label);
   for (const m of cel) {
-    if (m.startsWith('goal')) msgs.push(S.myGoalKg ? `Dein Zielgewicht ${fmt1(S.myGoalKg)} kg ist geschafft` : `Dein Ziel −${pct(S.myGoal)} % ist geschafft`);
+    if (m.startsWith('goal')) msgs.unshift(`Ziel erreicht: −${pct(me.goal)} % vom Startgewicht`);
     else if (!fresh.includes(m)) msgs.push(`−${m.slice(1)} % vom Startgewicht`);
   }
   // kurz nach der Bestätigung des Speicherns zeigen, sonst überschreibt die sie
-  setTimeout(() => { toast((fresh.length ? 'Meilenstein erreicht: ' : '') + msgs.join(', ')); if (cel.length) celebrate(); }, 1600);
+  setTimeout(() => { toast((fresh.some(id => id !== 'goal') ? 'Meilenstein erreicht: ' : '') + msgs.join(', ')); if (cel.length) celebrate(); }, 1600);
 }
 function celebrate() {
   if (reducedMotion()) return;
@@ -783,7 +777,7 @@ function viewLogin() {
   return `<div class="view login"><section class="card hero">${logoImg('mark xl')}
     <p class="kicker">${CONFIG.weeks} Wochen · ${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}</p>
     <h1 class="herot">Wer nachlässt, <em>zahlt.</em></h1>
-    <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Zielgewicht, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p>
+    <p class="t2">Montags wiegen, täglich 3 Gewohnheiten abhaken, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Ziel in Prozent, Gewohnheiten mit Wochenziel und den Einladungscode aus der Gruppe eintragen.</p>
     <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div>`;
 }
 function viewRegister() {
@@ -792,14 +786,28 @@ function viewRegister() {
   return `<section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
     <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
-    <label class="f" for="rGoal">Dein Zielgewicht <span class="muted">(nur für dich sichtbar, bringt keine Punkte)</span></label>
-    <label class="pctin"><input id="rGoal" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="85"><span aria-hidden="true">kg</span></label>
+    <label class="f" for="rGoal">Dein Ziel: so viel willst du abnehmen <span class="muted">(in % vom Startgewicht)</span></label>
+    ${goalInput('rGoal', null)}
+    <p class="small muted">${goalHint}</p>
     <label class="f">Deine 3 Gewohnheiten und wie oft pro Woche</label>
     <p class="small muted">Muss nicht Sport sein, z. B. „Kochen statt Lieferdienst“ oder „1× 10 km laufen“. Jede bringt bis zu ${CONFIG.habitMaxPts} Punkte pro Woche, egal wie oft. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</p>
     ${habitInputs('r', null, false)}
     ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
     <button class="btn full" data-act="register">Beitreten</button>
     ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>`;
+}
+
+// Ziel (max. Abnahme in %): Eingabe, Erklärung, wer es noch ändern darf
+const GOAL_MIN = 1, GOAL_MAX = 40;
+const goalInput = (id, v) => `<label class="pctin"><input id="${id}" type="number" inputmode="decimal" step="0.5" min="${GOAL_MIN}" max="${GOAL_MAX}" placeholder="10" aria-label="Ziel in Prozent vom Startgewicht" value="${v ?? ''}"><span aria-hidden="true">%</span></label>`;
+const goalHint = 'z. B. 10 % = bei 100 kg Startgewicht 10 kg. Ab dem Startgewicht ist das Ziel fest und alle sehen den Prozentwert. Wer es erreicht, hält das Gewicht (Haltephase) oder steigt aus.';
+const readGoal = id => { const g = Math.round(parseFloat(val(id).replace(',', '.')) * 10) / 10; return g >= GOAL_MIN && g <= GOAL_MAX ? g : null; };
+// Ändern geht bis zum Startgewicht. Wer (aus Testzeiten) noch kein Ziel hat, darf es im Demo-/Testmodus auch danach einmal setzen.
+const goalEditable = (me, p) => !me?.active || (typeof p?.maxLossPct !== 'number' && (DEMO || CONFIG.testMode));
+function goalBar(me) {
+  const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
+  return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
+    <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div></div>`;
 }
 
 // Gewohnheit + Wochenziel (Anmeldung und Profil)
@@ -837,7 +845,7 @@ function viewHeute() {
   const wc = weighCard(me, p), desk = isDesk();
   // Liveticker ganz oben. Desktop zusätzlich Ziel-Ring und Heatmap aus "Ich", damit die Startseite nicht leer wirkt.
   return `<div class="dash"><div class="col f">${feedCard(true)}</div>
-    <div class="col a">${wc.html}${statusCard(me)}${loserCard()}${desk ? goalCard(me, true) : ''}</div>
+    <div class="col a">${wc.html}${statusCard(me)}${loserCard()}</div>
     <div class="col b">${habitsCard(me, p, !wc.due)}${desk && me.active ? heatCard(me, p) : ''}</div>
     <div class="col c">${weeklyCard(me)}${teamCard(me)}${desk && me.active ? msCard(me) : ''}</div></div>`;
 }
@@ -855,10 +863,13 @@ const cdHtml = to => `<b class="cd${to - now() < 2 * 36e5 ? ' bad' : ''}">${coun
 function weighCard(me, p) {
   const js = p.joinedSlot || 0; const os = openSlot(); const dl = `${CONFIG.deadlineHour}:00 Uhr`;
   if (!me.active) {
+    // Ziel: fehlt es noch, wird es hier zusammen mit dem Startgewicht gespeichert (danach fest)
+    const goal = me.goal ? `<p class="small t2">Dein Ziel: <b>−${tn(pct(me.goal))} %</b> vom Startgewicht, ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
+      : `<label class="f" for="mlp">Dein Ziel: so viel willst du abnehmen <span class="muted">(in %)</span></label>${goalInput('mlp', null)}<p class="small muted">${goalHint}</p>`;
     if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Startgewicht bis ${dl}</h2></div>
-      <p class="when">Noch ${cdHtml(slotDeadline(js))} · andere sehen nur Prozente</p>${weighInput(js, 'Speichern', '', true)}</section>` };
+      <p class="when">Noch ${cdHtml(slotDeadline(js))} · andere sehen nur Prozente</p>${me.goal ? '' : goal}${weighInput(js, 'Speichern', '', true)}${me.goal ? goal : ''}</section>` };
     return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
-      <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p></section>` };
+      <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
   if (os === null || os < js) return { due: false, html: '' };
   if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
@@ -916,13 +927,14 @@ function statusCard(me) {
         ${r.length > 7 ? `<button class="link" data-act="toWeekRank" data-w="${w}">Alle ${r.length} im Wochenranking</button>` : ''}`;
     } else if (note) rank += `<p class="small t2">${note}</p>`;
   }
-  const kv = [['Seit Start', tn(lossStr(me.latest))]];
+  const kv = me.goal ? [] : [['Seit Start', tn(lossStr(me.latest))]];
+  const gb = me.goal ? goalBar(me) : goalEditable(me, S.players[S.me]) ? `<p class="small t2 sep">Noch kein Ziel gesetzt. <button class="link" data-tab="ich">Ziel festlegen</button></p>` : '';
   if (openSlot() === null) { const nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
   const last = Math.max(...Object.keys(me.wb).map(Number));
   if (last > me.js && me.weeks[last]) kv.push(['Letztes Wiegen', `+${me.weeks[last].weigh} P. (Woche ${last})`]);
   if (me.missed) kv.push(['Wiegen verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
   if (me.missedHabitWeeks.length) kv.push(['Wochenziele verfehlt', `<span class="bad">${me.missedHabitWeeks.length}× · ${eur(me.missedHabitWeeks.length * CONFIG.habitFee)}</span>`]);
-  return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2></div>${rank}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
+  return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2></div>${rank}${gb}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
 }
 // Wochenletzter der zuletzt abgeschlossenen Woche: vom Wiegeschluss am Montag bis zum nächsten Wiegen
 function loserCard() {
@@ -1381,37 +1393,34 @@ function viewIch() {
   const grp = isDesk() ? `<h2 class="sect">Verlauf der Gruppe</h2>${viewVerlauf()}` : '';
   return `<div class="ich">${goalCard(me)}${kgCard(me)}${heatCard(me, p)}${msCard(me)}</div>${grp}`;
 }
-function goalCard(me, compact) { // compact = auf Heute (Desktop): nur Ring und Stand, Ändern im Tab Ich
-  const g = S.myGoal, act = !!me?.active, cur = act ? me.latest : 0, kg = myKg();
-  const goalKg = S.myGoalKg ?? (g && kg.start ? kg.start * (1 - g / 100) : null);
-  const prog = g && act ? Math.max(0, cur) / g : 0;
-  const done = !!(g && act && me.bestLoss >= g - 1e-9);
+function goalCard(me) {
+  const p = S.players[S.me], g = me?.goal, act = !!me?.active, cur = act ? me.latest : 0, kg = myKg();
+  const goalKg = g && kg.start ? kg.start * (1 - g / 100) : null; // nur für dich: Ziel in kg
+  const prog = g && act ? Math.max(0, cur) / g : 0, done = !!me?.active && me.goalWeek !== null, ed = goalEditable(me, p);
   let txt;
-  if (!act) txt = goalKg ? `Ziel: <b>${tn(fmt1(goalKg))} kg</b>. Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.` : 'Sobald dein Startgewicht eingetragen ist, füllt sich der Ring.';
-  else if (!goalKg) txt = 'Setz dir ein Zielgewicht. Sieht nur du, bringt keine Punkte.';
-  else if (!g) txt = 'Dein Zielgewicht liegt nicht unter deinem Startgewicht. Setz ein neues.';
-  else if (done) txt = `<b class="ok">Ziel geschafft.</b> ${cur >= g - 1e-9 ? '' : `Bester Wert: ${tn(lossStr(me.bestLoss))}. `}Zeit für ein neues Ziel.`;
-  else txt = `Noch <b>${kg.last !== undefined ? tn(fmt1(Math.max(0, kg.last - goalKg))) + ' kg' : tn(pct(g - Math.max(0, cur))) + ' %'}</b> bis ${tn(fmt1(goalKg))} kg (−${tn(pct(g))} %), ${Math.round(prog * 100)} % geschafft.`;
+  if (!g) txt = 'Leg fest, wie viel Prozent vom Startgewicht du abnehmen willst. Ab dem Startgewicht ist das Ziel fest.';
+  else if (!act) txt = `Ab dem Startgewicht ist das Ziel fest, bis dahin kannst du es noch ändern.`;
+  else if (done) txt = `<b class="ok">Ziel erreicht</b> in Woche ${me.goalWeek}.`;
+  else txt = `Noch <b>${kg.last !== undefined && goalKg ? tn(fmt1(Math.max(0, kg.last - goalKg))) + ' kg' : tn(pct(g - Math.max(0, cur))) + ' %'}</b>${goalKg ? ` bis ${tn(fmt1(goalKg))} kg` : ''}, ${Math.round(prog * 100)} % geschafft.`;
   const lost = kg.start !== undefined && kg.last !== undefined ? kg.start - kg.last : null;
-  const tiles = act && !compact ? `<div class="tiles">
-    <div class="tile"><b class="num">${lost === null ? '–' : tn((lost >= 0 ? '−' : '+') + fmt1(Math.abs(lost)))}</b><span>kg seit Start</span></div>
+  const tiles = act ? `<div class="tiles">
+    <div class="tile"><b class="num">${lost === null ? '–' : tn((lost > 0.049 ? '−' : lost < -0.049 ? '+' : '±') + fmt1(Math.abs(lost)))}</b><span>kg seit Start</span></div>
     <div class="tile"><b class="num">${tn(lossStr(me.bestLoss))}</b><span>bester Wert</span></div>
     <div class="tile"><b class="num">${me.streak.best}</b><span>Wochen-Streak-Rekord</span></div></div>` : '';
-  const form = compact ? `<button class="link" data-tab="ich">${goalKg ? 'Ziel ändern' : 'Ziel setzen'}</button>`
-    : `<div class="row"><label class="pctin"><input id="goal" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="85" aria-label="Zielgewicht in kg" value="${goalKg ? Math.round(goalKg * 10) / 10 : ''}"><span aria-hidden="true">kg</span></label><button class="btn${goalKg ? ' ghost' : ''}" data-act="setGoal">${goalKg ? 'Ändern' : 'Ziel setzen'}</button></div>
-    ${tiles}${goalKg ? '<button class="link" data-act="clearGoal">Ziel entfernen</button>' : ''}`;
-  return `<section class="card goal${done ? ' done' : ''}${compact ? ' compact' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}nur für dich</span></div>
-    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${goalKg ? `Ziel ${tn(fmt1(goalKg))} kg` : 'noch kein Ziel'}</small></div></div>
+  const form = ed ? `<div class="row">${goalInput('goal', g)}<button class="btn${g ? ' ghost' : ''}" data-act="setGoal">${g ? 'Ändern' : 'Festlegen'}</button></div>`
+    : g ? `<p class="small muted row">${svg('lock')}Fest seit deinem Startgewicht.</p>` : '';
+  return `<section class="card goal${done ? ' done' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
+    <div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0)}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %${goalKg ? ` · ${tn(fmt1(goalKg))} kg` : ''}` : 'noch kein Ziel'}</small></div></div>
     <p class="small t2">${txt}</p>
-    ${form}
-    ${seasonOver() && act && !compact ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
+    ${form}${tiles}
+    ${seasonOver() && act ? `<button class="link" data-act="wrapped">Saisonrückblick ansehen</button>` : ''}</section>`;
 }
 function kgCard(me) {
   const kg = myKg();
   let h = `<section class="card kg" data-k="weigh"><div class="hd"><h2>Dein Gewicht</h2>${kg.ks.length ? `<button class="link" data-act="kgtab">${UI.kgTable ? 'Als Diagramm' : 'Als Tabelle'}</button>` : ''}</div>`;
   if (!kg.ks.length) return h + `<p class="t2">Noch keine Werte. Montags ${weighHours} wiegen, dann steht hier dein Verlauf in kg.</p></section>`;
   const js = me?.js ?? kg.ks[0];
-  const goalKg = S.myGoalKg ?? (S.myGoal && kg.start ? kg.start * (1 - S.myGoal / 100) : null);
+  const goalKg = me?.goal && kg.start ? kg.start * (1 - me.goal / 100) : null;
   if (UI.kgTable) {
     h += `<div class="tscroll"><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
       ${kg.ks.slice().reverse().map(k => `<tr><td>${k === js ? 'Start' : k}</td><td>${tn(fmt1(S.myWeights[k]))}</td><td>${me?.wb[k] !== undefined ? tn(lossStr(me.wb[k])) : '–'}</td><td>${k > js && me?.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
@@ -1448,13 +1457,14 @@ function heatCard(me, p) {
     <div class="row" style="justify-content:space-between;flex-wrap:wrap"><p class="hm-sum"><span><b>${met}</b>${wks.length ? ` von ${wks.length}` : ''} Wochen alle Ziele</span><span><b>${ticks}</b> Haken</span></p>${leg}</div></section>`;
 }
 function msCard(me) {
-  const cats = [['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Pause'], ['s', 'Streak']];
-  const prog = m => m.cat === 'l' ? `bisher ${pct(Math.max(0, me.bestLoss))} %` : m.cat === 'w' ? `bisher ${me.weighRun}` : `Rekord ${wochen(me.streak.best)}`;
+  const cats = [['g', 'Dein Ziel'], ['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Pause'], ['s', 'Streak']];
+  const prog = m => m.cat === 'g' ? (me.goal ? `bisher ${pct(Math.max(0, me.latest))} von ${pct(me.goal)} %` : 'noch kein Ziel') : m.cat === 'l' ? `bisher ${pct(Math.max(0, me.bestLoss))} %` : m.cat === 'w' ? `bisher ${me.weighRun}` : `Rekord ${wochen(me.streak.best)}`;
   const groups = cats.map(([c, t]) => `<div><h4>${t}</h4><div class="chips">${MILESTONES.filter(m => m.cat === c).map(m => { const got = me.ms.includes(m.id); return `<span class="msi${got ? ' got' : ''}" title="${esc(m.label + (got ? ': erreicht' : ': ' + prog(m)))}">${got ? svg('check') : ''}${m.short || m.label}</span>`; }).join('')}</div></div>`).join('');
-  const next = me.active ? ['l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
-    x.cat === 'l' ? `${x.label} (noch ${fmt1(x.n - me.bestLoss)} %)` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${wochen(me.streak.best)})`) : [];
+  const next = me.active ? ['g', 'l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
+    x.cat === 'g' ? (me.goal ? `${x.label} (noch ${fmt1(Math.max(0, me.goal - me.latest))} %)` : null) : x.cat === 'l' ? `${x.label} (noch ${fmt1(x.n - me.bestLoss)} %)` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${wochen(me.streak.best)})`) : [];
+  const nx = next.filter(Boolean);
   return `<section class="card msc" data-k="rank"><div class="hd"><h2>Meilensteine</h2><span class="aside"><b>${me.ms.length}</b>/${MILESTONES.length}</span></div><div class="msg">${groups}</div>
-    ${next.length ? `<p class="small muted">Als Nächstes: ${next.join(' · ')}</p>` : ''}</section>`;
+    ${nx.length ? `<p class="small muted">Als Nächstes: ${nx.join(' · ')}</p>` : ''}</section>`;
 }
 
 /* ---------- SAISONRÜCKBLICK (Wrapped) ---------- */
@@ -1634,23 +1644,27 @@ document.addEventListener('click', async ev => {
       case 'signin': await DB.signIn(); break;
       case 'signout': UI.modal = null; await DB.signOut(); break;
       case 'register': {
-        const name = val('rName'), habits = readHabits('r'), goalKg = Math.round(parseFloat(val('rGoal').replace(',', '.')) * 10) / 10;
+        const name = val('rName'), habits = readHabits('r'), maxLossPct = readGoal('rGoal');
         if (!name) return toast('Name fehlt.');
-        if (!(goalKg >= 30 && goalKg <= 300)) return toast('Bitte dein Zielgewicht in kg eintragen, z. B. 85.');
+        if (!maxLossPct) return toast(`Bitte dein Ziel in Prozent eintragen (${GOAL_MIN}–${GOAL_MAX} %), z. B. 10.`);
         if (habits.some(h => !h.name)) return toast('Bitte alle 3 Gewohnheiten eintragen.');
         const k = nextJoinSlot(); if (k === null) return;
         document.activeElement?.blur();
-        await DB.register({ name, habits, habitSets: { [etappeOf(k + 1)]: habits }, goalKg, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
+        await DB.register({ name, habits, habitSets: { [etappeOf(k + 1)]: habits }, maxLossPct, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
         toast(`Dabei. Startgewicht am ${fmtD(slotStart(k))} zwischen ${weighHours} eintragen.`); break;
       }
       case 'weigh': {
         const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
         if (!(kg >= 30 && kg <= 300)) return toast('Bitte ein gültiges Gewicht eingeben.');
         const p = S.players[S.me]; const js = p.joinedSlot || 0;
-        let loss = 0;
+        let loss = 0, extra = null;
         if (slot !== js) { const st = S.myWeights[js]; if (!st) return toast('Startgewicht fehlt.'); loss = Math.round((st - kg) / st * 10000) / 100; }
+        else if (typeof p.maxLossPct !== 'number') { // Ziel fehlt noch: zusammen mit dem Startgewicht festschreiben
+          const g = readGoal('mlp'); if (!g) return toast(`Erst dein Ziel eintragen (${GOAL_MIN}–${GOAL_MAX} %).`);
+          extra = { maxLossPct: g };
+        }
         document.activeElement?.blur();
-        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss);
+        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss, extra);
         toast(slot === js ? 'Startgewicht gespeichert.' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
       case 'habit': {
@@ -1713,12 +1727,11 @@ document.addEventListener('click', async ev => {
       case 'kgtab': UI.kgTable = !UI.kgTable; render(); break;
       case 'feedMore': UI.feedN = (UI.feedN ?? feedBase()) + 12; render(); break;
       case 'setGoal': {
-        const g = Math.round(parseFloat(val('goal').replace(',', '.')) * 10) / 10, st = myKg().start;
-        if (!(g >= 30 && g <= 300)) return toast('Zielgewicht in kg eingeben, z. B. 85.');
-        if (st && g >= st) return toast(`Dein Ziel sollte unter deinem Startgewicht (${fmt1(st)} kg) liegen.`);
-        document.activeElement?.blur(); await DB.setGoalKg(g); toast(`Ziel gespeichert: ${fmt1(g)} kg. Sieht nur du.`); break;
+        const g = readGoal('goal'); if (!g) return toast(`Ziel in Prozent eingeben (${GOAL_MIN}–${GOAL_MAX} %), z. B. 10.`);
+        if (!goalEditable(C[S.me], S.players[S.me])) return toast('Dein Ziel ist seit dem Startgewicht fest.');
+        document.activeElement?.blur(); await DB.updatePlayer({ maxLossPct: g });
+        toast(C[S.me]?.active ? `Ziel gespeichert: −${pct(g)} %.` : `Ziel gespeichert: −${pct(g)} %. Ab dem Startgewicht ist es fest.`); break;
       }
-      case 'clearGoal': await DB.setGoalKg(null); toast('Ziel entfernt.'); break;
       case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
       case 'profile': UI.modal = 'profile'; renderModal(); break;
       case 'closeModal': UI.modal = null; renderModal(); break;

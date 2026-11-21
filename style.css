@@ -290,6 +290,11 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .bar{height:6px;overflow:hidden;border-radius:3px;background:var(--card-3)}
 .bar i{display:block;height:100%;border-radius:3px;background:var(--cyan);box-shadow:0 0 10px var(--cyan-glow);transition:width .6s var(--out)}
 .bar.done i{background:var(--lime);box-shadow:0 0 10px var(--lime-glow)}
+/* Ziel-Fortschritt (Pink = Gewicht/Ziel) */
+.bar.pk i{background:var(--pink);box-shadow:0 0 10px var(--pink-glow)}
+.bar.pk.done i{background:var(--lime);box-shadow:0 0 10px var(--lime-glow)}
+.goalbar{display:grid;gap:6px;padding-top:14px;border-top:1px solid var(--line)}
+.goalbar b{font-weight:800;font-variant-numeric:tabular-nums}
 
 /* Liveticker */
 .live{position:relative;width:8px;height:8px;flex:none;border-radius:50%;background:var(--lime)}
@@ -406,8 +411,6 @@ table.t.chron th,table.t.chron td{text-align:left}
 @media (min-width:640px){.ich{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"goal ms" "kg kg" "heat heat"}}
 @media (min-width:1025px){.ich{grid-template-columns:minmax(300px,1fr) minmax(0,2fr);grid-template-areas:"goal kg" "heat heat" "ms ms"}}
 .sect{margin:32px 0 var(--gap);font-size:22px;font-weight:900;letter-spacing:-.03em}
-.goal.compact .goalring .rings{width:min(150px,60vw)}
-.goal.compact .ringc b{font-size:30px}
 .privnote{display:inline-flex;align-items:center;gap:4px}
 .privnote .ico{width:14px;height:14px}
 .goalring{position:relative;display:grid;place-items:center;padding:4px 0}
