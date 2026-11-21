@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Club der Fettsäcke</title>
+<meta name="theme-color" content="#121211">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --line:#2e2e2b;
+  --text:#f0efec; --text-2:#c3c2b7; --muted:#8c8b83;
+  --accent:#ff7a1a; --accent-ink:#1d0e00; --accent-soft:rgba(255,122,26,.14);
+  --good:#0ca30c; --warn:#c98500; --bad:#e66767;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#0ca30c; --s7:#9085e9; --s8:#e66767;
+  --r:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+.wrap{max-width:640px;margin:0 auto;padding:0 14px calc(90px + env(safe-area-inset-bottom))}
+header{padding:18px 0 10px;display:flex;align-items:center;gap:12px}
+.logo{font-weight:900;font-size:22px;letter-spacing:-.02em;line-height:1.05}
+.logo span{color:var(--accent)}
+.sub{color:var(--text-2);font-size:13px;margin-top:3px}
+.avatar{margin-left:auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);font-weight:800;cursor:pointer}
+.banner{background:var(--accent-soft);border:1px solid rgba(255,122,26,.35);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text-2);margin:6px 0 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.banner b{color:var(--text)}
+.banner input{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:12px 0}
+.card h2{margin:0 0 4px;font-size:17px;font-weight:800;letter-spacing:-.01em}
+.card h3{margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.muted{color:var(--muted)} .t2{color:var(--text-2)} .small{font-size:13px}
+.row{display:flex;gap:10px;align-items:center}
+.grow{flex:1}
+.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--line)}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
+.inp{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none}
+.inp:focus{border-color:var(--accent)}
+label.f{display:block;font-size:13px;color:var(--text-2);margin:10px 0 4px}
+.big{font-size:34px;font-weight:900;letter-spacing:-.03em;line-height:1}
+.pill{display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--text-2);white-space:nowrap}
+.pill.ok{color:#7fd67f;border-color:rgba(12,163,12,.45)}
+.pill.warn{color:#e6b34d;border-color:rgba(201,133,0,.5)}
+.pill.acc{color:var(--accent);border-color:rgba(255,122,26,.45)}
+/* habit grid */
+.hgrid{display:grid;grid-template-columns:minmax(64px,1.4fr) repeat(7,minmax(0,1fr));gap:4px;align-items:center}
+.hgrid .dh{font-size:11px;color:var(--muted);text-align:center}
+.hgrid .dh.today{color:var(--accent);font-weight:800}
+.hname{font-size:12px;line-height:1.25;color:var(--text-2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.hc{aspect-ratio:1;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center;font-weight:900;font-size:15px;padding:0;width:100%}
+.hc.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.hc.edit{cursor:pointer}
+.hc.edit:not(.on){border-color:#4a4a45}
+.hc.lock{opacity:.45}
+.hc.off{opacity:.15}
+/* ranking */
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;padding:8px;border-radius:9px;font-weight:700;cursor:pointer;color:var(--text-2)}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+.rk{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.rk:first-of-type{border-top:0}
+.rk .pos{font-weight:900;font-size:18px;color:var(--muted);text-align:center}
+.rk.first .pos{color:var(--accent)}
+.rk>div:nth-child(2){min-width:0}
+.rk .nm{font-weight:800;display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.rk .br{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.rk .pts{font-weight:900;font-size:22px;text-align:right;line-height:1}
+.rk .pts small{display:block;white-space:nowrap;font-size:11px;color:var(--muted);font-weight:600;margin-top:3px}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 4px}
+.nav b{font-size:15px}
+/* tasks */
+.task{border-top:1px solid var(--line);padding:12px 0}
+.task:first-of-type{border-top:0}
+.task .tt{font-weight:800}
+.task .who{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+/* chart */
+.chart{position:relative}
+.chart svg{width:100%;height:auto;display:block;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:#0b0b0b;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;min-width:120px;display:none;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.tip .tr{display:flex;align-items:center;gap:6px;justify-content:space-between}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 0;font-size:13px;color:var(--text-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+table.t th,table.t td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{color:var(--muted);font-weight:600}
+/* bottom nav */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(18,18,17,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:10}
+.tabs .in{max-width:640px;margin:0 auto;display:flex}
+.tabs button{flex:1;border:0;background:transparent;padding:6px 2px;cursor:pointer;color:var(--muted);font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabs button .i{font-size:20px;line-height:1;filter:grayscale(1);opacity:.7}
+.tabs button.on{color:var(--text)}
+.tabs button.on .i{filter:none;opacity:1}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#0b0b0b;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;z-index:30;display:none;max-width:90vw}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.modal .sheet{background:var(--surface);border:1px solid var(--line);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:18px 16px calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+.rules p,.rules li{color:var(--text-2)} .rules b{color:var(--text)}
+.rules ul{padding-left:18px;margin:6px 0}
+.hero{text-align:center;padding:26px 16px}
+.hero .big{font-size:42px}
+.center{text-align:center}
+.cd{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="hero"><div class="big">🔥</div><p class="muted">Lade…</p></div></div>
+<div class="tabs" id="tabs" style="display:none"></div>
+<div class="toast" id="toast"></div>
+<div id="modal"></div>
+
+<script type="module">
+/* =====================================================================
+   KONFIGURATION – hier anpassen
+   ===================================================================== */
+const CONFIG = {
+  apiKey: "AIzaSyBurXm-bT9lu_O_QddU_eUO2MwkjgmXUmo",
+  authDomain: "club-der-fettsaecke.firebaseapp.com",
+  projectId: "club-der-fettsaecke",
+  storageBucket: "club-der-fettsaecke.firebasestorage.app",
+  messagingSenderId: "121079785562",
+  appId: "1:121079785562:web:a808ec1074af013dd49063"
+
+};
+
+  */
+  start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
+  weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
+  etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
+  einsatz: 10,        // € Einsatz pro Person
+  strafe: 2,          // € pro verpasstem Wiegen
+  deadlineHour: 12,   // Wiegen montags bis 12:00 Uhr
+  backfillDays: 2,    // Gewohnheiten bis zu 2 Tage nachtragen
+  weighCap: 10,       // max. Waage-Punkte pro Woche (= 1 %)
+  weeklyPts: 5,       // Punkte für die Wochen-Challenge
+  taskPts: 15,        // Punkte pro Extra-Aufgabe
+  tasksPerEtappe: 3,  // max. Extra-Aufgaben pro Etappe
+};
+// Wenn du start/weeks änderst: auch START_MS in firestore.rules anpassen.
+
+/* ===================================================================== */
+const DAY = 864e5;
+const START = new Date(CONFIG.start.y, CONFIG.start.m - 1, CONFIG.start.d);
+const COLORS = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
+const DEMO = !CONFIG.firebase;
+
+/* ---------- Zeit ---------- */
+let NOW_OVERRIDE = null;
+const now = () => NOW_OVERRIDE ? new Date(NOW_OVERRIDE) : new Date();
+const dayDate = d => new Date(START.getFullYear(), START.getMonth(), START.getDate() + d);
+const dayIdx = (t = now()) => Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - START) / DAY);
+const slotStart = k => dayDate(7 * k);
+const slotDeadline = k => { const x = dayDate(7 * k); x.setHours(CONFIG.deadlineHour); return x; };
+const weekOfDay = d => d < 0 ? 0 : Math.floor(d / 7) + 1;
+const curWeek = () => Math.min(weekOfDay(dayIdx()), CONFIG.weeks + 1); // 0 = vor Start, weeks+1 = vorbei
+const etappeOf = w => Math.max(1, Math.ceil(w / CONFIG.etappeWeeks));
+const NUM_ETAPPEN = Math.ceil(CONFIG.weeks / CONFIG.etappeWeeks);
+function lastClosedSlot() { const t = now(); let k = -1; for (let i = 0; i <= CONFIG.weeks; i++) { if (slotDeadline(i) <= t) k = i; else break; } return k; }
+function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotStart(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
+function nextJoinSlot() { const t = now(); for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
+const seasonOver = () => lastClosedSlot() >= CONFIG.weeks;
+
+/* ---------- Helfer ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const fmt1 = x => x.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
+const eur = x => x.toLocaleString('de-DE') + ' €';
+function countdown(to) {
+  let s = Math.max(0, Math.floor((to - now()) / 1000));
+  const d = Math.floor(s / 86400); s -= d * 86400; const h = Math.floor(s / 3600); s -= h * 3600; const m = Math.floor(s / 60);
+  return d > 0 ? `${d} T ${h} Std` : h > 0 ? `${h} Std ${m} Min` : `${m} Min`;
+}
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 3200); }
+function safeLS() { try { const k = '__t'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return localStorage; } catch { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => m[k] = String(v), removeItem: k => delete m[k] }; } }
+const LS = safeLS();
+
+/* =====================================================================
+   PUNKTE-LOGIK
+   ===================================================================== */
+function compute(S) {
+  const C = {};
+  const lc = lastClosedSlot();
+  const ordered = Object.entries(S.players).sort((a, b) => (tsNum(a[1].joinedAt) - tsNum(b[1].joinedAt)) || a[0].localeCompare(b[0]));
+  const hlBy = {};
+  for (const h of Object.values(S.habitlogs)) (hlBy[h.uid] ||= {})[h.day] = h.done || [];
+  ordered.forEach(([uid, p], idx) => {
+    const js = p.joinedSlot || 0;
+    const wb = {};
+    for (const w of Object.values(S.weighins)) if (w.uid === uid && typeof w.lossPct === 'number') wb[w.slot] = w.lossPct;
+    const active = wb[js] !== undefined;
+    const hl = hlBy[uid] || {};
+    const weeks = {};
+    let best = 0;
+    for (let w = js + 1; w <= CONFIG.weeks; w++) {
+      const has = wb[w] !== undefined;
+      const weigh = has ? clamp(Math.floor((wb[w] - best) * 10 + 1e-6), 0, CONFIG.weighCap) : 0;
+      if (has) best = Math.max(best, wb[w]);
+      let habits = 0;
+      for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) habits += hl[d].filter(Boolean).length;
+      const weekly = S.weeklyDone[uid + '_' + w] ? CONFIG.weeklyPts : 0;
+      weeks[w] = { weigh, habits, weekly, total: weigh + habits + weekly, weighed: has };
+    }
+    const taskPts = {};
+    for (const td of Object.values(S.taskDone)) {
+      const t = S.tasks[td.taskId];
+      if (td.uid === uid && td.confirmedBy && t) taskPts[t.etappe] = (taskPts[t.etappe] || 0) + CONFIG.taskPts;
+    }
+    let missed = 0;
+    if (active) for (let k = js + 1; k <= Math.min(lc, CONFIG.weeks); k++) if (wb[k] === undefined) missed++;
+    const slots = Object.keys(wb).map(Number).sort((a, b) => a - b);
+    const latest = slots.length ? wb[slots[slots.length - 1]] : 0;
+    C[uid] = { uid, name: p.name, habitsList: p.habits || [], js, wb, hl, active, weeks, taskPts, missed, latest, color: COLORS[idx % COLORS.length] };
+  });
+  return C;
+}
+function tsNum(t) { if (!t) return 0; if (typeof t === 'number') return t; if (t.toMillis) return t.toMillis(); if (t.seconds) return t.seconds * 1000; return 0; }
+function sortRank(arr) { return arr.sort((a, b) => b.total - a.total || b.latest - a.latest || a.name.localeCompare(b.name)); }
+function rankWeek(C, w) {
+  return sortRank(Object.values(C).filter(p => p.active && p.js < w && p.weeks[w]).map(p => ({ ...p.weeks[w], uid: p.uid, name: p.name, color: p.color, latest: p.latest, tasks: 0 })));
+}
+function rankRange(C, wFrom, wTo, etappen) {
+  return sortRank(Object.values(C).filter(p => p.active && p.js < wTo).map(p => {
+    const r = { uid: p.uid, name: p.name, color: p.color, latest: p.latest, weigh: 0, habits: 0, weekly: 0, tasks: 0, missed: p.missed };
+    for (let w = wFrom; w <= wTo; w++) if (p.weeks[w]) { r.weigh += p.weeks[w].weigh; r.habits += p.weeks[w].habits; r.weekly += p.weeks[w].weekly; }
+    for (const e of etappen) r.tasks += p.taskPts[e] || 0;
+    r.total = r.weigh + r.habits + r.weekly + r.tasks;
+    return r;
+  }));
+}
+const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
+const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
+function pot(C) { let a = 0, m = 0; for (const p of Object.values(C)) if (p.active) { a++; m += p.missed; } return { total: a * CONFIG.einsatz + m * CONFIG.strafe, players: a, missed: m }; }
+function weeklySetters(C, w) { // null = jeder, [] = noch offen
+  if (w <= 1) return null;
+  if (lastClosedSlot() < w - 1) return [];
+  const r = rankWeek(C, w - 1); if (!r.length) return null;
+  const min = Math.min(...r.map(x => x.total)); return r.filter(x => x.total === min).map(x => x.uid);
+}
+function canSetWeekly(S, C, w) {
+  if (S.weekly[w] || w < 1 || w > CONFIG.weeks) return false;
+  const cw = curWeek();
+  if (w === 1) return cw <= 1;
+  if (cw !== w) return false;
+  if (dayIdx() >= 7 * (w - 1) + 1) return true; // ab Dienstag darf jeder
+  const s = weeklySetters(C, w); return s === null || s.includes(S.me);
+}
+const weeklyEditable = w => { const cw = curWeek(); return cw === w || (cw === w + 1 && now() < slotDeadline(w)); };
+const habitsEditable = () => { const cw = curWeek(); return cw === 0 || (cw <= CONFIG.weeks && (cw - 1) % CONFIG.etappeWeeks === 0); };
+function taskEditable(e) { const cw = curWeek(); if (cw === 0) return e === 1; const end = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks); return (etappeOf(cw) === e && cw <= CONFIG.weeks) || (now() < slotDeadline(end)); }
+
+/* =====================================================================
+   DATENSCHICHT: Demo (lokal) und Firebase
+   ===================================================================== */
+const emptyState = () => ({ ready: false, authed: false, member: false, me: null, players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, myWeights: {} });
+
+function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
+
+function makeDemoDB(emit) {
+  const KEY = 'cdf-demo-v1';
+  const ME = 'demo-me';
+  let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
+  mine ||= { player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, myWeights: {} };
+  const save = () => LS.setItem(KEY, JSON.stringify(mine));
+  const BOTS = [
+    { uid: 'bot-siggi', name: 'Siggi', start: 104.6, trend: 0.75, disc: 0.75, habits: ['10.000 Schritte', 'Kein Fast Food', 'Kein Zucker nach 18 Uhr'], joined: 1 },
+    { uid: 'bot-julian', name: 'Julian', start: 91.2, trend: 0.55, disc: 0.6, habits: ['Training (min. 45 Min)', 'Kein Alkohol', '2 L Wasser'], joined: 2 },
+  ];
+  const WEEKLY_TXT = ['Jeden Tag Treppe statt Aufzug', '3× Training diese Woche', 'Kein Lieferdienst', 'Jeden Abend 20 Min spazieren', 'Gemüse zu jeder Mahlzeit'];
+  function seed() {
+    const S = { players: {}, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {} };
+    const t = now(), today = dayIdx(t), lc = lastClosedSlot(), os = openSlot();
+    for (const b of BOTS) {
+      S.players[b.uid] = { name: b.name, habits: b.habits, joinedSlot: 0, joinedAt: b.joined };
+      const r = rng(b.uid); let kg = b.start;
+      for (let k = 0; k <= CONFIG.weeks; k++) {
+        const due = k <= lc || (os === k && b.uid === 'bot-siggi');
+        if (!due) break;
+        if (k > 0) kg += -b.start * b.trend / 100 + (r() - 0.45) * 0.9;
+        if (k > 0 && r() < 0.07) continue; // verpasst
+        S.weighins[b.uid + '_' + k] = { uid: b.uid, slot: k, lossPct: Math.round((b.start - kg) / b.start * 10000) / 100 };
+      }
+      for (let d = 0; d < today && d < CONFIG.weeks * 7; d++) {
+        const rr = rng(b.uid + d);
+        S.habitlogs[b.uid + '_' + d] = { uid: b.uid, day: d, done: [rr() < b.disc, rr() < b.disc - .1, rr() < b.disc + .1] };
+      }
+    }
+    for (let w = 1; w <= Math.min(curWeek(), CONFIG.weeks); w++) {
+      if (mine.weekly[w]) continue;
+      if (w === curWeek() && w > 1 && dayIdx() === 7 * (w - 1)) continue; // Montag: der Wochenletzte ist dran
+      S.weekly[w] = { text: WEEKLY_TXT[(w - 1) % WEEKLY_TXT.length], setBy: w % 2 ? 'bot-julian' : 'bot-siggi', setByName: w % 2 ? 'Julian' : 'Siggi' };
+      for (const b of BOTS) if ((w < curWeek() || b.uid === 'bot-siggi') && rng(b.uid + 'w' + w)() < 0.7) S.weeklyDone[b.uid + '_' + w] = { uid: b.uid, week: w };
+    }
+    const ce = curWeek() >= 1 ? etappeOf(Math.min(curWeek(), CONFIG.weeks)) : 0;
+    for (let e = 1; e <= ce; e++) {
+      S.tasks['bt' + e + 'a'] = { etappe: e, text: '2× 5 km laufen', createdBy: 'bot-siggi', createdByName: 'Siggi', ts: 1 };
+      S.taskDone['bt' + e + 'a_bot-siggi'] = { uid: 'bot-siggi', taskId: 'bt' + e + 'a', confirmedBy: 'bot-julian', confirmedByName: 'Julian' };
+      if (e < ce || dayIdx() % 28 > 10) {
+        S.tasks['bt' + e + 'b'] = { etappe: e, text: '1 Stunde schwimmen', createdBy: 'bot-julian', createdByName: 'Julian', ts: 2 };
+        S.taskDone['bt' + e + 'b_bot-julian'] = { uid: 'bot-julian', taskId: 'bt' + e + 'b', confirmedBy: null };
+      }
+    }
+    return S;
+  }
+  function state() {
+    const s = seed();
+    const S = { ...emptyState(), ready: true, authed: true, me: ME };
+    S.member = !!mine.player;
+    for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k]) };
+    if (mine.player) S.players[ME] = mine.player;
+    S.myWeights = { ...mine.myWeights };
+    return S;
+  }
+  const commit = () => { save(); emit(state()); };
+  setTimeout(() => emit(state()));
+  return {
+    demo: true, refresh: () => emit(state()),
+    signIn() { }, signOut() { },
+    reset() { LS.removeItem(KEY); mine = { player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, myWeights: {} }; commit(); },
+    async register(d) { mine.player = { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: Date.now(), invite: 'DEMO' }; commit(); },
+    async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
+    async saveWeigh(slot, kg, lossPct) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct }; mine.myWeights[slot] = kg; commit(); },
+    async setHabit(day, done) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done }; commit(); },
+    async setWeekly(w, text) { mine.weekly[w] = { text, setBy: ME, setByName: mine.player.name }; commit(); },
+    async setWeeklyDone(w, on) { if (on) mine.weeklyDone[ME + '_' + w] = { uid: ME, week: w }; else delete mine.weeklyDone[ME + '_' + w]; commit(); },
+    async addTask(e, text) { const id = 'm' + Date.now(); mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: Date.now() }; commit(); },
+    async deleteTask(id) { delete mine.tasks[id]; for (const k of Object.keys(mine.taskDone)) if (k.startsWith(id + '_')) delete mine.taskDone[k]; commit(); },
+    async markTask(id, on) {
+      const k = id + '_' + ME;
+      if (on) { mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null }; setTimeout(() => { if (mine.taskDone[k]) { mine.taskDone[k].confirmedBy = 'bot-julian'; mine.taskDone[k].confirmedByName = 'Julian'; commit(); toast('Julian hat deine Aufgabe bestätigt 💪'); } }, 2500); }
+      else delete mine.taskDone[k];
+      commit();
+    },
+    async confirmTask(tdId) {
+      const td = mine.taskDone[tdId] || null;
+      if (td) { td.confirmedBy = ME; td.confirmedByName = mine.player.name; }
+      else { // Bot-Eintrag: als eigene Kopie übernehmen
+        const s = seed().taskDone[tdId]; if (s) mine.taskDone[tdId] = { ...s, confirmedBy: ME, confirmedByName: mine.player.name };
+      }
+      commit();
+    },
+  };
+}
+
+async function makeFirebaseDB(cfg, emit) {
+  const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+  const [A, Au, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  const app = A.initializeApp(cfg);
+  const auth = Au.getAuth(app);
+  const db = F.getFirestore(app);
+  let S = emptyState(); let unsubs = []; let allSubbed = false;
+  const fire = () => emit({ ...S });
+  const fail = e => { console.error(e); toast(e.code === 'permission-denied' ? 'Keine Berechtigung (Regeln/Zeitfenster).' : 'Fehler: ' + (e.message || e)); };
+  function subscribeAll() {
+    if (allSubbed) return; allSubbed = true;
+    const col = (name) => unsubs.push(F.onSnapshot(F.collection(db, name), qs => { const o = {}; qs.forEach(d => o[d.id] = d.data()); S[name] = o; if (name === 'players' && !o[S.me] && S.players[S.me]) o[S.me] = S.players[S.me]; fire(); }, fail));
+    ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone'].forEach(col);
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', S.me, 'private', 'weights'), s => { S.myWeights = s.exists() ? (s.data().slots || {}) : {}; fire(); }, fail));
+  }
+  Au.onAuthStateChanged(auth, user => {
+    unsubs.forEach(u => u()); unsubs = []; allSubbed = false; S = emptyState();
+    if (!user) { S.ready = true; fire(); return; }
+    S.authed = true; S.me = user.uid; S.displayName = user.displayName || '';
+    unsubs.push(F.onSnapshot(F.doc(db, 'players', user.uid), snap => {
+      if (snap.exists()) { S.players = { ...S.players, [user.uid]: snap.data() }; S.member = true; subscribeAll(); }
+      else S.member = false;
+      S.ready = true; fire();
+    }, e => { S.ready = true; fail(e); fire(); }));
+  });
+  const me = () => S.me;
+  const wrap = p => p.catch(e => { fail(e); throw e; });
+  return {
+    demo: false,
+    refresh: fire,
+    async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else fail(e); } },
+    signOut: () => Au.signOut(auth),
+    register: d => F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; }),
+    updatePlayer: d => wrap(F.updateDoc(F.doc(db, 'players', me()), d)),
+    saveWeigh(slot, kg, lossPct) {
+      const b = F.writeBatch(db);
+      b.set(F.doc(db, 'weighins', me() + '_' + slot), { uid: me(), slot, lossPct, ts: F.serverTimestamp() });
+      b.set(F.doc(db, 'players', me(), 'private', 'weights'), { slots: { [slot]: kg } }, { merge: true });
+      return wrap(b.commit());
+    },
+    setHabit: (day, done) => wrap(F.setDoc(F.doc(db, 'habitlogs', me() + '_' + day), { uid: me(), day, done })),
+    setWeekly: (w, text) => wrap(F.setDoc(F.doc(db, 'weekly', String(w)), { text, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
+    setWeeklyDone: (w, on) => wrap(on ? F.setDoc(F.doc(db, 'weeklyDone', me() + '_' + w), { uid: me(), week: w }) : F.deleteDoc(F.doc(db, 'weeklyDone', me() + '_' + w))),
+    addTask: (e, text) => wrap(F.addDoc(F.collection(db, 'tasks'), { etappe: e, text, createdBy: me(), createdByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
+    deleteTask: id => wrap(F.deleteDoc(F.doc(db, 'tasks', id))),
+    markTask: (id, on) => wrap(on ? F.setDoc(F.doc(db, 'taskDone', id + '_' + me()), { uid: me(), taskId: id, confirmedBy: null, confirmedByName: null }) : F.deleteDoc(F.doc(db, 'taskDone', id + '_' + me()))),
+    confirmTask: tdId => wrap(F.updateDoc(F.doc(db, 'taskDone', tdId), { confirmedBy: me(), confirmedByName: S.players[me()]?.name || '' })),
+  };
+}
+
+/* =====================================================================
+   UI
+   ===================================================================== */
+let S = emptyState(), C = {}, DB = null;
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, chartTable: false, modal: null };
+let pendingRender = false, bumping = false;
+
+function onState(ns) {
+  S = ns; C = compute(S);
+  // Startgewicht verpasst? -> automatisch nächsten Montag starten
+  const p = S.players[S.me];
+  if (S.member && p && !C[S.me]?.active && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
+    const k = nextJoinSlot();
+    if (k !== null && k > (p.joinedSlot || 0)) { bumping = true; DB.updatePlayer({ joinedSlot: k }).finally(() => bumping = false); }
+  }
+  render();
+}
+function render() {
+  const a = document.activeElement;
+  if (a && a.matches && a.matches('#app input') && a.value) { pendingRender = true; return; }
+  pendingRender = false;
+  const app = document.getElementById('app');
+  app.innerHTML = header() + banner() + body();
+  const tabs = document.getElementById('tabs');
+  if (S.member) {
+    tabs.style.display = '';
+    const T = [['heute', '🔥', 'Heute'], ['ranking', '🏆', 'Ranking'], ['challenges', '⚡', 'Challenges'], ['verlauf', '📉', 'Verlauf'], ['regeln', '📜', 'Regeln']];
+    tabs.innerHTML = `<div class="in">${T.map(([k, i, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-tab="${k}"><span class="i">${i}</span>${l}</button>`).join('')}</div>`;
+  } else tabs.style.display = 'none';
+  if (UI.tab === 'verlauf' && S.member) wireChart();
+  renderModal();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) render(); }, 0));
+
+function header() {
+  const cw = curWeek(); const po = pot(C);
+  let sub;
+  if (cw === 0) sub = `Start: ${fmtD(START)} · ${CONFIG.weeks} Wochen`;
+  else if (seasonOver()) sub = `Saison beendet · Topf ${eur(po.total)}`;
+  else sub = `Woche ${Math.min(cw, CONFIG.weeks)}/${CONFIG.weeks} · Etappe ${etappeOf(Math.min(cw, CONFIG.weeks))}/${NUM_ETAPPEN} · Topf ${eur(po.total)}`;
+  const me = S.players[S.me];
+  return `<header><div><div class="logo">Club der <span>Fettsäcke</span></div><div class="sub">${sub}</div></div>
+    ${me ? `<button class="avatar" data-act="profile" title="Profil">${esc(me.name.slice(0, 1).toUpperCase())}</button>` : ''}</header>`;
+}
+function banner() {
+  if (!DEMO) return '';
+  const v = NOW_OVERRIDE ? toLocalInput(new Date(NOW_OVERRIDE)) : '';
+  return `<div class="banner"><b>Demo-Modus</b> Daten nur in diesem Browser, Siggi &amp; Julian sind simuliert.
+    <span class="row" style="gap:6px">Zeit: <input type="datetime-local" id="demoTime" value="${v}"></span>
+    <button class="btn ghost sm" data-act="demoMon">Nächster Mo 9:00</button>
+    <button class="btn ghost sm" data-act="demoReset">Zurücksetzen</button></div>`;
+}
+const toLocalInput = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+function body() {
+  if (!S.ready) return `<div class="hero"><p class="muted">Lade…</p></div>`;
+  if (!S.authed) return viewLogin();
+  if (!S.member) return viewRegister();
+  return ({ heute: viewHeute, ranking: viewRanking, challenges: viewChallenges, verlauf: viewVerlauf, regeln: viewRegeln })[UI.tab]();
+}
+
+function viewLogin() {
+  return `<div class="card hero"><div class="big">🔥</div><h2 style="margin-top:12px">Willkommen im Club</h2>
+  <p class="t2">Abnehmen als Wettkampf, fair für jede Größe. Jede Woche zählen Prozent, Gewohnheiten und Challenges.</p>
+  <button class="btn" data-act="signin">Mit Google anmelden</button></div>` + viewRegeln(true);
+}
+function viewRegister() {
+  const k = nextJoinSlot();
+  if (k === null) return `<div class="card"><h2>Saison vorbei</h2><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></div>`;
+  return `<div class="card"><h2>Einsteigen</h2>
+    <p class="t2 small">Du startest am <b>${fmtD(slotStart(k))}</b> mit deinem Startgewicht (00–${CONFIG.deadlineHour} Uhr). Einsatz: ${eur(CONFIG.einsatz)}.</p>
+    <label class="f">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
+    <label class="f">Deine 3 Gewohnheiten <span class="muted">(je 1 Punkt pro Tag)</span></label>
+    <input class="inp" id="rH0" maxlength="40" placeholder="z. B. 8.000 Schritte" style="margin-bottom:6px">
+    <input class="inp" id="rH1" maxlength="40" placeholder="z. B. Kein Fast Food" style="margin-bottom:6px">
+    <input class="inp" id="rH2" maxlength="40" placeholder="z. B. Training oder 30 Min Bewegung">
+    <p class="muted small">Wähl etwas, das dich wirklich Überwindung kostet. Die Gruppe darf zu leichte Gewohnheiten ablehnen.</p>
+    ${DEMO ? '' : `<label class="f">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
+    <div class="row" style="margin-top:14px"><button class="btn grow" data-act="register">Ich bin dabei</button>${DEMO ? '' : `<button class="btn ghost" data-act="signout">Abmelden</button>`}</div></div>`;
+}
+
+/* ---------- HEUTE ---------- */
+function viewHeute() {
+  const me = C[S.me]; const p = S.players[S.me];
+  let h = '';
+  if (seasonOver()) {
+    const r = rankTotal(C); const w = r[0];
+    h += `<div class="card hero"><div class="big">🏆</div><h2 style="margin-top:10px">${w ? esc(w.name) + ' gewinnt die Saison!' : 'Saison vorbei'}</h2>
+      <p class="t2">${w ? `${w.total} Punkte · ${lossStr(w.latest)} · kassiert ${eur(pot(C).total)}` : ''}</p></div>`;
+    return h + viewRanking();
+  }
+  h += weighCard(me, p);
+  h += habitsCard(me, p);
+  h += weeklyCard(me);
+  return h;
+}
+function weighCard(me, p) {
+  const js = p.joinedSlot || 0; const t = now(); const os = openSlot();
+  const input = (slot, label, val) => `<div class="row" style="margin-top:12px"><input class="inp grow" id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="kg" value="${val ?? ''}"><button class="btn" data-act="weigh" data-slot="${slot}">${label}</button></div>
+     <p class="muted small" style="margin-bottom:0">Morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe! Andere sehen nur deine Prozente.</p>`;
+  if (!me.active) {
+    if (os === js) return `<div class="card"><h2>⚖️ Startgewicht</h2><p class="t2 small">Fenster offen bis ${CONFIG.deadlineHour}:00 Uhr, noch ${countdown(slotDeadline(js))}.</p>${input(js, 'Start!')}</div>`;
+    return `<div class="card"><h2>⚖️ Startgewicht</h2><p class="t2">Am <b>${fmtD(slotStart(js))}</b> zwischen 0 und ${CONFIG.deadlineHour} Uhr trägst du dein Startgewicht ein.</p>
+      <p class="muted small cd">Noch ${countdown(slotStart(js))}. Bis dahin: Gewohnheiten festlegen, die Waage bereitstellen.</p></div>`;
+  }
+  const last = Math.max(...Object.keys(me.wb).map(Number));
+  const head = `<div class="row"><div class="grow"><h2>⚖️ Waage</h2><div class="muted small">Gesamt seit Start</div></div><div class="big">${lossStr(me.latest)}</div></div>`;
+  if (os !== null && os === js) {
+    return `<div class="card">${head}<p><span class="pill ok">✓ Startgewicht gespeichert</span> <span class="muted small">Korrigieren bis ${CONFIG.deadlineHour}:00 Uhr.</span></p>${input(js, 'Korrigieren', S.myWeights[js])}</div>`;
+  }
+  if (os !== null && os > js) {
+    const done = me.wb[os] !== undefined;
+    const pts = me.weeks[os]?.weigh ?? 0;
+    return `<div class="card">${head}<h3>Wiegen Woche ${os} · offen bis ${CONFIG.deadlineHour}:00 (noch ${countdown(slotDeadline(os))})</h3>
+      ${done ? `<p><span class="pill ok">✓ gewogen</span> <span class="pill acc">+${pts} Punkte</span> <span class="muted small">Du kannst bis ${CONFIG.deadlineHour} Uhr korrigieren.</span></p>` : `<p class="t2 small">Noch nicht eingetragen. Verpasst = 0 Waage-Punkte + ${eur(CONFIG.strafe)} in den Topf.</p>`}
+      ${input(os, done ? 'Korrigieren' : 'Eintragen', done ? S.myWeights[os] : '')}</div>`;
+  }
+  let nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (dayIdx() < 0) nk = 0;
+  const nextTxt = nk <= CONFIG.weeks ? `Nächstes Wiegen: <b>${fmtD(slotStart(nk))}</b> 0–${CONFIG.deadlineHour} Uhr · <span class="cd">in ${countdown(slotStart(nk))}</span>` : 'Kein Wiegen mehr.';
+  const lastPts = last > js ? me.weeks[last]?.weigh : null;
+  return `<div class="card">${head}<p class="t2 small" style="margin:10px 0 0">${nextTxt}</p>
+    ${lastPts !== null ? `<p class="small muted" style="margin:6px 0 0">Letztes Wiegen (Woche ${last}): +${lastPts} Punkte</p>` : ''}
+    ${me.missed ? `<p class="small" style="margin:6px 0 0"><span class="pill warn">${me.missed}× verpasst · ${eur(me.missed * CONFIG.strafe)}</span></p>` : ''}</div>`;
+}
+function habitsCard(me, p) {
+  const today = dayIdx(); const cw = curWeek();
+  const habits = p.habits || [];
+  if (cw === 0) return `<div class="card"><h2>✅ Deine Gewohnheiten</h2>${habits.map(x => `<div class="pill" style="margin:4px 4px 0 0">${esc(x)}</div>`).join('')}<p class="muted small">Abhaken geht ab ${fmtD(START)}. Ändern kannst du sie über dein Profil (oben rechts).</p></div>`;
+  const w = Math.min(cw, CONFIG.weeks); const d0 = 7 * (w - 1);
+  const minDay = 7 * (p.joinedSlot || 0);
+  const wk = me.weeks[w];
+  let g = `<div class="hgrid"><div></div>${[0, 1, 2, 3, 4, 5, 6].map(i => `<div class="dh ${d0 + i === today ? 'today' : ''}">${WD[(i + 1) % 7]}<br>${dayDate(d0 + i).getDate()}.</div>`).join('')}`;
+  habits.forEach((hn, hi) => {
+    g += `<div class="hname" title="${esc(hn)}">${esc(hn)}</div>`;
+    for (let i = 0; i < 7; i++) {
+      const d = d0 + i; const on = !!me.hl[d]?.[hi];
+      const edit = d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
+      const cls = d > today || d < minDay ? 'off' : edit ? 'edit' : 'lock';
+      g += `<button class="hc ${on ? 'on' : ''} ${cls}" ${edit ? `data-act="habit" data-day="${d}" data-h="${hi}"` : 'disabled'} aria-label="${esc(hn)} ${fmtD(dayDate(d))}">${on ? '✓' : ''}</button>`;
+    }
+  });
+  g += '</div>';
+  return `<div class="card"><div class="row"><h2 class="grow">✅ Gewohnheiten</h2><span class="pill acc">${wk ? wk.habits : 0}/21 diese Woche</span></div>
+    <p class="muted small" style="margin:2px 0 12px">Antippen zum Abhaken, bis zu ${CONFIG.backfillDays} Tage nachtragen.</p>${g}</div>`;
+}
+function weeklyCard(me) {
+  const cw = curWeek(); const w = cw === 0 ? 1 : Math.min(cw, CONFIG.weeks);
+  const ch = S.weekly[w];
+  let inner;
+  if (ch) {
+    const done = !!S.weeklyDone[S.me + '_' + w]; const ed = weeklyEditable(w) && me.js < w;
+    const doneBy = Object.values(C).filter(p => S.weeklyDone[p.uid + '_' + w]).map(p => p.name);
+    inner = `<p style="font-size:18px;font-weight:800;margin:6px 0">${esc(ch.text)}</p><p class="muted small" style="margin:0 0 10px">festgelegt von ${esc(ch.setByName)} · +${CONFIG.weeklyPts} Punkte</p>
+      ${ed ? `<button class="btn ${done ? 'ghost' : ''}" data-act="weeklyDone" data-w="${w}" data-on="${done ? 0 : 1}">${done ? '✓ Geschafft (rückgängig)' : 'Geschafft!'}</button>` : cw === 0 ? '<p class="muted small">Startet am Montag.</p>' : ''}
+      ${doneBy.length ? `<p class="small t2" style="margin:10px 0 0">Geschafft: ${doneBy.map(esc).join(', ')}</p>` : ''}`;
+  } else if (canSetWeekly(S, C, w)) {
+    const setters = weeklySetters(C, w);
+    const why = w === 1 ? 'Die erste Challenge darf jeder festlegen.' : setters && setters.includes(S.me) && dayIdx() === 7 * (w - 1) ? 'Du warst letzte Woche Letzter. Du bestimmst die Challenge.' : 'Der Letzte hat nichts festgelegt, also darf jetzt jeder.';
+    inner = `<p class="t2 small">${why}</p><div class="row"><input class="inp grow" id="wText" maxlength="80" placeholder="z. B. Jeden Tag Treppe statt Aufzug"><button class="btn" data-act="setWeekly" data-w="${w}">Festlegen</button></div>`;
+  } else {
+    const s = weeklySetters(C, w);
+    const names = s && s.length ? s.map(u => C[u]?.name).filter(Boolean).map(esc).join(' / ') : null;
+    inner = `<p class="t2 small">${names ? `<b>${names}</b> war letzte Woche Letzter und legt die Challenge fest.` : `Nach dem Wiegen (${CONFIG.deadlineHour} Uhr) legt der Wochenletzte die Challenge fest.`} Ab Dienstag darf jeder.</p>`;
+  }
+  return `<div class="card"><h2>🎯 Wochen-Challenge</h2>${inner}</div>`;
+}
+
+/* ---------- RANKING ---------- */
+function viewRanking() {
+  const cw = curWeek(); const cwc = clamp(cw, 1, CONFIG.weeks);
+  if (UI.rankWeek === null) UI.rankWeek = cwc;
+  if (UI.rankEtappe === null) UI.rankEtappe = etappeOf(cwc);
+  let list, title, note = '';
+  if (UI.rankMode === 'woche') {
+    const w = UI.rankWeek; list = rankWeek(C, w);
+    title = `<div class="nav"><button class="btn ghost sm" data-act="rw" data-d="-1" ${w <= 1 ? 'disabled' : ''}>‹</button><b>Woche ${w} · ${fmtD(dayDate(7 * (w - 1)))}–${fmtD(dayDate(7 * w - 1))}</b><button class="btn ghost sm" data-act="rw" data-d="1" ${w >= cwc ? 'disabled' : ''}>›</button></div>`;
+    if (lastClosedSlot() < w) note = `<p class="muted small">Läuft noch. Die Waage-Punkte kommen am ${fmtD(slotStart(w))} um ${CONFIG.deadlineHour} Uhr dazu.</p>`;
+  } else if (UI.rankMode === 'etappe') {
+    const e = UI.rankEtappe; list = rankEtappe(C, e);
+    const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
+    title = `<div class="nav"><button class="btn ghost sm" data-act="re" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · Woche ${ws}–${we}</b><button class="btn ghost sm" data-act="re" data-d="1" ${e >= etappeOf(cwc) ? 'disabled' : ''}>›</button></div>`;
+  } else {
+    list = rankTotal(C);
+    const po = pot(C);
+    title = `<div class="nav"><b>Gesamtwertung</b><span class="pill acc">Topf ${eur(po.total)}</span></div><p class="muted small" style="margin:0">${po.players} × ${eur(CONFIG.einsatz)} Einsatz + ${po.missed} × ${eur(CONFIG.strafe)} Strafen. Der Gesamtsieger nach Woche ${CONFIG.weeks} kassiert.</p>`;
+  }
+  const lastW = UI.rankMode === 'woche' && lastClosedSlot() >= UI.rankWeek && list.length > 1 ? Math.min(...list.map(x => x.total)) : null;
+  const rows = list.length ? list.map((r, i) => {
+    const pos = i > 0 && list[i - 1].total === r.total ? '' : i + 1;
+    const chips = [`⚖️ ${r.weigh}`, `✅ ${r.habits}`, `🎯 ${r.weekly}`];
+    if (UI.rankMode !== 'woche') chips.push(`⚡ ${r.tasks}`);
+    if (UI.rankMode === 'gesamt' && r.missed) chips.push(`💸 ${r.missed}×`);
+    return `<div class="rk ${i === 0 ? 'first' : ''}"><div class="pos">${i === 0 ? '👑' : pos}</div>
+      <div><div class="nm"><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${lastW !== null && r.total === lastW ? ' <span class="pill warn">🎯 bestimmt Challenge</span>' : ''}</div>
+      <div class="br">${chips.map(c => `<span class="pill">${c}</span>`).join('')}</div></div>
+      <div class="pts">${r.total}<small>${lossStr(r.latest)}</small></div></div>`;
+  }).join('') : `<p class="muted">Noch keine Daten. Es geht los, sobald alle ihr Startgewicht eingetragen haben.</p>`;
+  return `<div class="seg">${[['woche', 'Woche'], ['etappe', 'Etappe'], ['gesamt', 'Gesamt']].map(([k, l]) => `<button class="${UI.rankMode === k ? 'on' : ''}" data-act="rmode" data-m="${k}">${l}</button>`).join('')}</div>
+    <div class="card">${title}${note}<div style="margin-top:6px">${rows}</div></div>
+    <p class="muted small center">⚖️ Waage · ✅ Gewohnheiten · 🎯 Wochen-Challenge · ⚡ Extra-Aufgaben · 💸 verpasstes Wiegen<br>Die Zahl unter den Punkten ist die Abnahme seit Start.</p>`;
+}
+
+/* ---------- CHALLENGES ---------- */
+function viewChallenges() {
+  const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
+  if (UI.etView === null) UI.etView = ce;
+  const e = UI.etView;
+  const tasks = Object.entries(S.tasks).filter(([, t]) => t.etappe === e).sort((a, b) => tsNum(a[1].ts) - tsNum(b[1].ts));
+  const ed = taskEditable(e) && S.member;
+  const ws = (e - 1) * CONFIG.etappeWeeks + 1, we = Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks);
+  let h = `<div class="nav"><button class="btn ghost sm" data-act="ev" data-d="-1" ${e <= 1 ? 'disabled' : ''}>‹</button><b>Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}</b><button class="btn ghost sm" data-act="ev" data-d="1" ${e >= ce ? 'disabled' : ''}>›</button></div>`;
+  h += `<div class="card"><h2>⚡ Extra-Aufgaben</h2><p class="muted small" style="margin:0 0 6px">Raus aus der Komfortzone: je +${CONFIG.taskPts} Punkte. Zählt erst, wenn jemand anderes bestätigt (Beweis in die Gruppe).</p>`;
+  if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
+  for (const [id, t] of tasks) {
+    const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
+    const mine = S.taskDone[id + '_' + S.me];
+    let my;
+    if (!mine) my = ed && cw > 0 ? `<button class="btn sm" data-act="mark" data-id="${id}" data-on="1">Hab ich geschafft</button>` : '';
+    else if (!mine.confirmedBy) my = `<span class="pill warn">⏳ wartet auf Bestätigung</span> ${ed ? `<button class="btn ghost sm" data-act="mark" data-id="${id}" data-on="0">zurückziehen</button>` : ''}`;
+    else my = `<span class="pill ok">✓ +${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
+    const others = tds.filter(([, d]) => d.uid !== S.me).map(([tid, d]) => {
+      const n = esc(C[d.uid]?.name || '?');
+      return d.confirmedBy ? `<span class="pill ok">✓ ${n}</span>` : `<span class="pill warn">⏳ ${n}</span> <button class="btn ghost sm" data-act="confirm" data-id="${tid}">${n} bestätigen</button>`;
+    }).join(' ');
+    const canDel = t.createdBy === S.me && !tds.length;
+    h += `<div class="task"><div class="row"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="muted small">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="btn ghost sm" data-act="delTask" data-id="${id}">✕</button>` : ''}</div>
+      <div class="who">${my} ${others}</div></div>`;
+  }
+  if (ed && tasks.length < CONFIG.tasksPerEtappe) h += `<h3>Neue Aufgabe (${tasks.length}/${CONFIG.tasksPerEtappe})</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen"><button class="btn" data-act="addTask" data-e="${e}">+</button></div>`;
+  h += `</div>`;
+  // Wochen-Challenges der Etappe
+  let wl = '';
+  for (let w = ws; w <= we; w++) {
+    const ch = S.weekly[w]; if (!ch) continue;
+    const who = Object.values(C).filter(p => S.weeklyDone[p.uid + '_' + w]).map(p => esc(p.name)).join(', ');
+    wl += `<div class="task"><div class="row"><span class="pill">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="muted small">von ${esc(ch.setByName)}${who ? ' · geschafft: ' + who : ''}</div></div></div></div>`;
+  }
+  h += `<div class="card"><h2>🎯 Wochen-Challenges</h2>${wl || '<p class="t2">Noch keine.</p>'}</div>`;
+  return h;
+}
+
+/* ---------- VERLAUF ---------- */
+function viewVerlauf() {
+  const players = Object.values(C).filter(p => p.active);
+  const me = C[S.me];
+  let h = `<div class="card"><div class="row"><h2 class="grow">📉 Abnahme seit Start</h2><button class="btn ghost sm" data-act="ctab">${UI.chartTable ? 'Diagramm' : 'Tabelle'}</button></div>
+    <p class="muted small" style="margin:0 0 8px">In Prozent vom Startgewicht. So ist es für jede Größe vergleichbar.</p>`;
+  if (!players.length) h += `<p class="t2">Noch keine Daten.</p>`;
+  else if (UI.chartTable) {
+    const maxS = Math.max(...players.flatMap(p => Object.keys(p.wb).map(Number)));
+    h += `<div style="overflow-x:auto"><table class="t"><tr><th>Woche</th>${players.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr>`;
+    for (let k = 0; k <= maxS; k++) h += `<tr><td>${k === 0 ? 'Start' : k}</td>${players.map(p => `<td>${p.wb[k] !== undefined ? lossStr(p.wb[k]) : '–'}</td>`).join('')}</tr>`;
+    h += `</table></div>`;
+  } else {
+    h += `<div class="chart" id="chart">${chartSVG(players)}<div class="tip" id="tip"></div></div>`;
+    if (players.length >= 2) h += `<div class="legend">${players.map(p => `<span><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span>`).join('')}</div>`;
+  }
+  h += `</div>`;
+  if (me?.active) {
+    const ks = Object.keys(S.myWeights).map(Number).sort((a, b) => a - b);
+    h += `<div class="card"><h2>🔒 Deine Gewichte</h2><p class="muted small" style="margin:0">Nur für dich sichtbar.</p><table class="t"><tr><th>Woche</th><th>kg</th><th>seit Start</th><th>Punkte</th></tr>
+      ${ks.map(k => `<tr><td>${k === me.js ? 'Start' : k}</td><td>${fmt1(S.myWeights[k])}</td><td>${me.wb[k] !== undefined ? lossStr(me.wb[k]) : '–'}</td><td>${k > me.js && me.weeks[k] ? '+' + me.weeks[k].weigh : ''}</td></tr>`).join('')}</table></div>`;
+  }
+  return h;
+}
+const CH = { W: 600, H: 340, L: 62, R: 90, T: 18, B: 40 };
+function chartSVG(players) {
+  const maxS = Math.max(4, ...players.flatMap(p => Object.keys(p.wb).map(Number)));
+  const vals = players.flatMap(p => Object.values(p.wb));
+  let lo = Math.min(0, ...vals), hi = Math.max(2, ...vals);
+  const step = hi - lo > 8 ? 2 : hi - lo > 4 ? 1 : 0.5;
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const x = k => CH.L + (CH.W - CH.L - CH.R) * k / maxS;
+  const y = v => CH.T + (CH.H - CH.T - CH.B) * (hi - v) / (hi - lo);
+  CH.x = x; CH.y = y; CH.maxS = maxS; CH.players = players;
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${CH.L}" x2="${CH.W - CH.R}" y1="${y(v)}" y2="${y(v)}" stroke="${Math.abs(v) < 1e-9 ? '#55554f' : '#2a2a27'}" stroke-width="1"/><text x="${CH.L - 8}" y="${y(v) + 4}" text-anchor="end" font-size="18" fill="#8c8b83">${Math.abs(v) < 1e-9 ? '0' : (v > 0 ? '−' : '+') + fmt1(Math.abs(v)).replace(',0', '')}</text>`;
+  const xstep = maxS > 12 ? 4 : maxS > 6 ? 2 : 1;
+  for (let k = 0; k <= maxS; k += xstep) g += `<text x="${x(k)}" y="${CH.H - 10}" text-anchor="middle" font-size="18" fill="#8c8b83">${k === 0 ? 'Start' : 'W' + k}</text>`;
+  let lines = '', labels = [];
+  for (const p of players) {
+    const pts = Object.keys(p.wb).map(Number).sort((a, b) => a - b);
+    lines += `<polyline fill="none" stroke="${p.color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(k => `${x(k)},${y(p.wb[k])}`).join(' ')}"/>`;
+    lines += pts.map(k => `<circle cx="${x(k)}" cy="${y(p.wb[k])}" r="5" fill="${p.color}" stroke="#1a1a19" stroke-width="2"/>`).join('');
+    const lk = pts[pts.length - 1]; labels.push({ y: y(p.wb[lk]), x: x(lk), name: p.name, color: p.color });
+  }
+  let dl = '';
+  if (players.length <= 4) {
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 22) labels[i].y = labels[i - 1].y + 22;
+    dl = labels.map(l => `<text x="${l.x + 10}" y="${l.y + 6}" font-size="19" font-weight="700" fill="#c3c2b7">${esc(l.name)}</text>`).join('');
+  }
+  return `<svg viewBox="0 0 ${CH.W} ${CH.H}" role="img" aria-label="Abnahme in Prozent pro Woche">${g}<line id="xh" y1="${CH.T}" y2="${CH.H - CH.B}" stroke="#8c8b83" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>${lines}${dl}<rect id="hit" x="${CH.L}" y="0" width="${CH.W - CH.L - CH.R + 20}" height="${CH.H}" fill="transparent"/></svg>`;
+}
+function wireChart() {
+  const box = document.getElementById('chart'); if (!box) return;
+  const svg = box.querySelector('svg'), tip = document.getElementById('tip'), xh = svg.querySelector('#xh');
+  const move = ev => {
+    const r = svg.getBoundingClientRect(); const sx = (ev.clientX - r.left) * CH.W / r.width;
+    const k = clamp(Math.round((sx - CH.L) / ((CH.W - CH.L - CH.R) / CH.maxS)), 0, CH.maxS);
+    const rows = CH.players.filter(p => p.wb[k] !== undefined).sort((a, b) => b.wb[k] - a.wb[k]);
+    if (!rows.length) { tip.style.display = 'none'; xh.style.display = 'none'; return; }
+    xh.setAttribute('x1', CH.x(k)); xh.setAttribute('x2', CH.x(k)); xh.style.display = '';
+    tip.innerHTML = `<div class="muted" style="margin-bottom:4px">${k === 0 ? 'Start' : 'Woche ' + k} · ${fmtD(slotStart(k))}</div>` + rows.map(p => `<div class="tr"><span class="row" style="gap:6px"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span><b>${lossStr(p.wb[k])}</b></div>`).join('');
+    tip.style.display = 'block';
+    const px = CH.x(k) * r.width / CH.W; const tw = tip.offsetWidth;
+    tip.style.left = (px + 12 + tw > r.width ? px - tw - 12 : px + 12) + 'px'; tip.style.top = '8px';
+  };
+  svg.addEventListener('pointermove', move); svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; xh.style.display = 'none'; });
+}
+
+/* ---------- REGELN ---------- */
+function viewRegeln(compact) {
+  const end = dayDate(CONFIG.weeks * 7 - 1);
+  return `<div class="card rules"><h2>📜 Regeln</h2>
+  <p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist.</p>
+  <h3>⚖️ Wiegen (max. ${CONFIG.weighCap} P./Woche)</h3><ul>
+   <li>Jeden <b>Montag 0–${CONFIG.deadlineHour} Uhr</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe.</li>
+   <li><b>1 Punkt pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${CONFIG.weighCap} Punkte (= 1 %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.</li>
+   <li>Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.</li>
+   <li>Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.</li></ul>
+  <h3>✅ Gewohnheiten (max. 21 P./Woche)</h3><ul>
+   <li>Jeder wählt <b>3 eigene</b>. 1 Punkt pro Gewohnheit und Tag, bis zu ${CONFIG.backfillDays} Tage nachtragen.</li>
+   <li>Ändern nur vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Gewohnheiten darf die Gruppe ablehnen.</li></ul>
+  <h3>🎯 Wochen-Challenge (+${CONFIG.weeklyPts} P.)</h3><ul>
+   <li>Der <b>Letzte der Vorwoche</b> legt sie Montag nach dem Wiegen fest. Ab Dienstag darf jeder.</li></ul>
+  <h3>⚡ Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)</h3><ul>
+   <li>Bis zu ${CONFIG.tasksPerEtappe} Komfortzonen-Aufgaben pro Etappe (z. B. 2× 5 km laufen, 1 h schwimmen). Jeder darf welche vorschlagen.</li>
+   <li>Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.</li></ul>
+  <h3>💸 Topf</h3><ul>
+   <li>${eur(CONFIG.einsatz)} Einsatz pro Person + Strafen. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.</li>
+   <li>Etappensieger: Ruhm und Ehre. Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.</li></ul>
+  ${compact ? '' : `<p class="muted small">Wer eine Woche nichts meldet, zahlt trotzdem. Kein „hab's vergessen“.</p>`}</div>`;
+}
+
+/* ---------- PROFIL-MODAL ---------- */
+function renderModal() {
+  const m = document.getElementById('modal');
+  if (UI.modal !== 'profile' || !S.member) { m.innerHTML = ''; return; }
+  const p = S.players[S.me]; const he = habitsEditable();
+  const code = p.invite && !DEMO ? `<p class="small t2">Einladungscode für neue Leute: <b>${esc(p.invite)}</b>. Schick ihnen einfach den Link plus den Code.</p>` : '';
+  m.innerHTML = `<div class="modal" data-act="closeModal"><div class="sheet" data-stop>
+    <div class="row"><h2 class="grow" style="margin:0">Profil</h2><button class="btn ghost sm" data-act="closeModal">✕</button></div>
+    <label class="f">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
+    <label class="f">Gewohnheiten ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'}</label>
+    ${[0, 1, 2].map(i => `<input class="inp" id="pH${i}" maxlength="40" value="${esc(p.habits?.[i] || '')}" ${he ? '' : 'disabled'} style="margin-bottom:6px">`).join('')}
+    ${code}
+    <div class="row" style="margin-top:12px"><button class="btn grow" data-act="saveProfile">Speichern</button>${DEMO ? '' : `<button class="btn ghost" data-act="signout">Abmelden</button>`}</div></div></div>`;
+}
+
+/* ---------- EVENTS ---------- */
+const val = id => (document.getElementById(id)?.value || '').trim();
+document.addEventListener('click', async ev => {
+  const tab = ev.target.closest('[data-tab]');
+  if (tab) { UI.tab = tab.dataset.tab; window.scrollTo(0, 0); render(); return; }
+  const el = ev.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'closeModal' && ev.target.closest('[data-stop]') && el.classList.contains('modal')) return;
+  const a = el.dataset.act;
+  try {
+    switch (a) {
+      case 'signin': await DB.signIn(); break;
+      case 'signout': UI.modal = null; await DB.signOut(); break;
+      case 'register': {
+        const name = val('rName'), habits = [val('rH0'), val('rH1'), val('rH2')];
+        if (!name) return toast('Name fehlt.');
+        if (habits.some(h => !h)) return toast('Bitte alle 3 Gewohnheiten eintragen.');
+        const k = nextJoinSlot(); if (k === null) return;
+        await DB.register({ name, habits, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
+        toast('Willkommen im Club! 🔥'); break;
+      }
+      case 'weigh': {
+        const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
+        if (!(kg >= 30 && kg <= 300)) return toast('Bitte ein gültiges Gewicht eingeben.');
+        const p = S.players[S.me]; const js = p.joinedSlot || 0;
+        let loss = 0;
+        if (slot !== js) { const st = S.myWeights[js]; if (!st) return toast('Startgewicht fehlt.'); loss = Math.round((st - kg) / st * 10000) / 100; }
+        document.activeElement?.blur();
+        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss);
+        toast(slot === js ? 'Startgewicht gespeichert. Los geht\'s!' : `Gespeichert: ${lossStr(loss)} seit Start`); break;
+      }
+      case 'habit': {
+        const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || [false, false, false]).slice(0, 3);
+        while (cur.length < 3) cur.push(false); cur[i] = !cur[i]; await DB.setHabit(d, cur); break;
+      }
+      case 'setWeekly': { const t = val('wText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.setWeekly(+el.dataset.w, t); break; }
+      case 'weeklyDone': await DB.setWeeklyDone(+el.dataset.w, el.dataset.on === '1'); break;
+      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
+      case 'delTask': await DB.deleteTask(el.dataset.id); break;
+      case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
+      case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt ✓'); break;
+      case 'rmode': UI.rankMode = el.dataset.m; render(); break;
+      case 'rw': UI.rankWeek = clamp(UI.rankWeek + +el.dataset.d, 1, CONFIG.weeks); render(); break;
+      case 're': UI.rankEtappe = clamp(UI.rankEtappe + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
+      case 'ev': UI.etView = clamp(UI.etView + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
+      case 'ctab': UI.chartTable = !UI.chartTable; render(); break;
+      case 'profile': UI.modal = 'profile'; renderModal(); break;
+      case 'closeModal': UI.modal = null; renderModal(); break;
+      case 'saveProfile': {
+        const name = val('pName'); if (!name) return toast('Name fehlt.');
+        const d = { name }; if (habitsEditable()) { const hs = [val('pH0'), val('pH1'), val('pH2')]; if (hs.some(h => !h)) return toast('3 Gewohnheiten nötig.'); d.habits = hs; }
+        document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; renderModal(); toast('Gespeichert'); break;
+      }
+      case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = null; break;
+      case 'demoMon': { const d = dayIdx(); const k = Math.max(0, Math.floor(d / 7) + 1); const t = slotStart(Math.min(k, CONFIG.weeks)); t.setHours(9); setNow(t); break; }
+    }
+  } catch (e) { /* Fehler wurde schon angezeigt */ }
+});
+document.addEventListener('change', ev => { if (ev.target.id === 'demoTime' && ev.target.value) setNow(new Date(ev.target.value)); });
+function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = null; DB.refresh(); }
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.matches('#app input') && ev.target.parentElement.classList.contains('row')) { const b = ev.target.parentElement.querySelector('.btn') || null; if (b) b.click(); } });
+
+/* ---------- START ---------- */
+(async function init() {
+  if (DEMO) {
+    const q = new URLSearchParams(location.search).get('now');
+    const stored = +LS.getItem('cdf-demo-now');
+    if (q) NOW_OVERRIDE = new Date(q).getTime();
+    else if (stored) NOW_OVERRIDE = stored;
+    else { const t = dayDate(14); t.setHours(9); NOW_OVERRIDE = Math.max(Date.now(), t.getTime()); }
+    DB = makeDemoDB(onState);
+  } else {
+    try { DB = await makeFirebaseDB(CONFIG.firebase, onState); }
+    catch (e) { console.error(e); document.getElementById('app').innerHTML = `<div class="card"><h2>Verbindung fehlgeschlagen</h2><p class="t2">Firebase konnte nicht geladen werden. Prüf die Config in der index.html.</p></div>`; }
+  }
+  setInterval(() => { if (S.ready && !UI.modal) render(); }, 60000);
+})();
+</script>
+</body>
+</html>
