@@ -53,7 +53,7 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 | Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat |
 | täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher | nur wer ein Wochenziel noch nicht erreicht und diese Habit heute noch nicht abgehakt hat |
 
-Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg; in der Haltephase nur noch das Wiegen.
+Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg. In der Haltephase gibt es weiter beide Erinnerungen.
 
 GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- und Winterzeit). Das Skript prüft die Uhrzeit in Berlin und merkt sich in `reminderRuns/{art}_{datum}`, dass schon verschickt wurde. Geräte, die sich abgemeldet haben, werden automatisch aus `players/{uid}/private/tokens` entfernt.
 

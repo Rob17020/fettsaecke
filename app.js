@@ -163,9 +163,8 @@ function compute(S) {
     const hl = hlBy[uid] || {};
     const weeks = {};
     let best = 0;
-    /* Haltephase: ab der Woche nach dem Erreichen des Ziels. Nur das Wiegen ist Pflicht. Liegt es höchstens holdBand Prozentpunkte
-       neben dem Ziel: volle Waage-Punkte + Bonus (3 × habitMaxPts), dazu Habits/Challenge, alles zusammen höchstens das normale
-       Wochenmaximum. Daneben: 0 Waage-Punkte, kein Bonus. */
+    /* Haltephase: ab der Woche nach dem Erreichen des Ziels. Liegt das Wiegen
+       unter dem Ziel (holdBand Puffer): volle Waage-Punkte, sonst 0. Habits, Challenge und Strafen laufen normal weiter (kein Bonus). */
     const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, cap = wMax + habitMax() + CONFIG.challengePts;
     // Ausgestiegen (Ziel erreicht): nur Wochen bis finishedWeek zählen, danach keine Punkte und keine Strafen
     const finished = p.status === 'finished' && Number.isInteger(p.finishedWeek), lastW = finished ? Math.min(p.finishedWeek, CONFIG.weeks) : CONFIG.weeks;
@@ -180,12 +179,12 @@ function compute(S) {
       const habits = H.reduce((s, h, i) => s + habitPts(cnt[i], h.target), 0);
       const met = H.every((h, i) => cnt[i] >= h.target);
       const weekly = challengePoints(S.weekly[w], cnt[3]);
-      const bonus = inBand ? Math.max(0, Math.min(habitMax(), cap - weigh - habits - weekly)) : 0;
+      const bonus = 0; // kein Bonus mehr: in der Haltephase zählen Habits und Challenge ganz normal (Pflicht wie vorher)
       weeks[w] = { weigh, habits, bonus, weekly, chCnt: cnt[3], cnt, targets: H.map(h => h.target), met, hold, inBand, total: weigh + bonus + habits + weekly, weighed: has };
     }
-    // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee; in der Haltephase freiwillig)
+    // Wochen ohne alle 3 Wochenziele, die nicht mehr nachgetragen werden können (kosten CONFIG.habitFee, auch in der Haltephase)
     const missedHabitWeeks = [];
-    if (active) for (let w = js + 1; w <= lastW && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].hold && !weeks[w].paused) missedHabitWeeks.push(w);
+    if (active) for (let w = js + 1; w <= lastW && weekFinal(w); w++) if (!weeks[w].met && !weeks[w].paused) missedHabitWeeks.push(w);
     const taskPts = {};
     for (const td of Object.values(S.taskDone)) {
       const t = S.tasks[td.taskId];
@@ -339,7 +338,7 @@ function streakOf(x) {
   for (let w = x.js + 1; w <= last; w++) {
     const wk = x.weeks[w]; if (!wk) continue;
     if (wk.met) { best = Math.max(best, ++cur); continue; }
-    if (!weekFinal(w) || wk.hold || wk.paused) continue; // läuft noch, Haltephase (Habits freiwillig) oder Pause
+    if (!weekFinal(w) || wk.paused) continue; // läuft noch oder Pause
     const e = etappeOf(w);
     if (cur > 0 && used[e] === undefined) { used[e] = w; continue; }
     cur = 0;
@@ -1013,14 +1012,14 @@ function pauseOptions(me) {
   return out;
 }
 const pausedNow = p => !!p?.weeks?.[clamp(curWeek(), 1, CONFIG.weeks)]?.paused && curWeek() >= 1;
-const HOLD_LBL = 'Haltephase – nur Montag wiegen';
+const HOLD_LBL = 'Haltephase';
 const exitBtn = me => canExit(me) ? `<button class="btn ghost danger" data-act="exitAsk">Ziel erreicht – aussteigen</button>` : '';
 function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
   if (me.hold) {
     const inb = me.latest >= g - CONFIG.holdBand - 1e-9;
     return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))} %</b></div>
-      <p class="small t2">Bleib unter deinem Zielgewicht (mindestens −${tn(pct(g - CONFIG.holdBand))} %, also ${tn(pct(CONFIG.holdBand))} Prozentpunkt Puffer): jede Woche die vollen ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte + ${habitMax()} Bonus. Darüber 0. Habits sind freiwillig.</p>${exitBtn(me)}</div>`;
+      <p class="small t2">Bleib unter deinem Zielgewicht (mindestens −${tn(pct(g - CONFIG.holdBand))} %, also ${tn(pct(CONFIG.holdBand))} Prozentpunkt Puffer): jede Woche die vollen ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte. Darüber 0. Habits und Challenge laufen normal weiter, inklusive Strafe.</p>${exitBtn(me)}</div>`;
   }
   return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
     <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div>${exitBtn(me)}</div>`;
@@ -1275,7 +1274,7 @@ function goalChoiceCard(me) {
     <div class="gopts">
       <div class="gopt"><h3>Aussteigen</h3><p class="small t2"><b>${eur(CONFIG.einsatz)} Einsatz zurück</b>, danach musst du nichts mehr machen. Dein Ergebnis wird eingefroren. Frühere Strafen bleiben im Topf. Geht nicht rückgängig.</p>
         <button class="btn ghost danger full" data-act="exitAsk">Aussteigen</button></div>
-      <div class="gopt on"><h3>Weitermachen</h3><p class="small t2">Nur noch montags wiegen. Bleibst du unter deinem Zielgewicht, gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b> + ${habitMax()} Bonus. Habits sind freiwillig. Du spielst weiter um den Topf.</p>
+      <div class="gopt on"><h3>Weitermachen</h3><p class="small t2">Alles läuft weiter wie bisher, auch Habits und Strafen. Bleibst du unter deinem Zielgewicht, gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Du spielst weiter um den Topf.</p>
         <button class="btn full" data-act="goalStay" data-w="${me.goalWeek}">Weitermachen</button></div>
     </div></section>`;
 }
@@ -1381,14 +1380,14 @@ function habitsCard(me, p, focus) {
   }
   g += '</div>';
   const st = me.streak;
-  const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Habits sind freiwillig und bringen weiter Punkte, bis das Wochenmaximum voll ist.</p>` : '';
+  const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Habits laufen normal weiter, mit Punkten und Strafe.</p>` : '';
   const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span></p>` : '';
   const hv = wk ? Math.min(habitMax(), wk.habits + (wk.bonus || 0)) : 0;
   const score = `<span class="aside hscore">${ringSvg([{ p: hv / habitMax(), c: 'var(--lime)' }], 26, 5, 0, 'hb' + w)}<b${ringMoving('hb' + w + ':0') ? ' class="bump"' : ''}>${wk ? wk.habits : 0}</b>/${habitMax()}${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
   // Warnung: Vorwoche kann noch nachgetragen werden, aber nicht alle Wochenziele sind erreicht (sonst Strafe)
   const pw = cur - 1, pwk = me.weeks[pw];
   let warn = '';
-  if (me.active && CONFIG.habitFee && pwk && !pwk.met && !pwk.hold && !weekFinal(pw)) {
+  if (me.active && CONFIG.habitFee && pwk && !pwk.met && !weekFinal(pw)) {
     const Hp = habitsFor(p, pw), miss = Hp.map((h, i) => pwk.cnt[i] < h.target ? `${esc(h.name)} ${pwk.cnt[i]}/${h.target}` : null).filter(Boolean);
     warn = `<p class="small bad">Woche ${pw} nicht geschafft: ${miss.join(', ')}. Nachtragen geht bis ${fmtD(dayDate(7 * pw - 1 + CONFIG.backfillDays))}, sonst ${eur(CONFIG.habitFee)}.</p>`;
   }
@@ -2020,7 +2019,7 @@ function viewRegeln(compact) {
     `Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b>`])}
   ${sec('Dein Ziel, Haltephase und Ausstieg', [
     `Beim Beitreten stellst du dein <b>Zielgewicht</b> ein, die App rechnet daraus dein Ziel in Prozent (${GOAL_MIN}–${GOAL_MAX} %). Mit dem echten Startgewicht am ersten Montag wird es endgültig, <b>danach ist es fest</b>. Alle sehen den Prozentwert, die kg-Umrechnung nur du. Bis zum Ziel zählt alles wie oben.`,
-    `<b>Haltephase</b> (Ziel erreicht, du bleibst): ab der Woche danach ist nur noch das Montags-Wiegen Pflicht, Habits sind freiwillig. Bleibst du <b>unter deinem Zielgewicht</b> (${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'} Puffer nach oben), gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b> plus ${habitMax()} Bonus, dazu Habits und Challenge, zusammen höchstens ${wMax + habitMax() + CONFIG.challengePts} pro Woche. Darüber: 0 Waage-Punkte, kein Bonus.`,
+    `<b>Haltephase</b> (Ziel erreicht, du bleibst): alles läuft weiter wie vorher: montags wiegen, Habits mit Wochenzielen und Strafe, Challenge. Nur die Waage zählt anders: Bleibst du <b>unter deinem Zielgewicht</b> (${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'} Puffer nach oben), gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Darüber: 0 Waage-Punkte.`,
     `<b>Aussteigen</b> (Ziel erreicht, du gehst): Du bekommst deine <b>${eur(CONFIG.einsatz)} Einsatz zurück</b> und musst nichts mehr machen. Knopf „Ziel erreicht – aussteigen“. Dein Ergebnis wird eingefroren (z. B. „−15,2 % · Ziel nach 18 Wochen“) und steht in der Gesamtwertung unter „Ziel erreicht“. Du bekommst deinen <b>Einsatz zurück</b>, frühere Strafen bleiben im Topf. Danach keine Punkte, Strafen oder Erinnerungen mehr, nicht mehr im Wochen- und Etappenranking. Geht nicht rückgängig.`])}
   ${sec(`Pause (bis zu ${CONFIG.pauseWeeks} Wochen pro Saison)`, [
     `Krank oder im Urlaub? Im Profil eine ganze Woche (Mo–So) pausieren: die laufende bis <b>Mittwoch 23:59</b>, spätere jederzeit. Das Wiegen am Montag danach fällt mit weg.`,
@@ -2108,7 +2107,7 @@ function onboardingHtml(fresh) {
       <h3>Eine realistische Woche</h3>${exampleWeek()}`],
     ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<p class="t2">Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, gleiche Waage, Foto in die Gruppe. Die anderen sehen nur Prozente, nie deine kg.</p>
       <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf. Krank oder im Urlaub? Bis zu ${CONFIG.pauseWeeks} Wochen pro Saison pausieren, im Profil.</p>
-      <p class="t2">Dein Ziel${me?.goal ? ` (−${tn(pct(me.goal))} %)` : ''} ist ab dem Startgewicht fest: Erreichst du es, hast du die Wahl: <b>aussteigen</b> und ${eur(CONFIG.einsatz)} Einsatz zurück, dann musst du nichts mehr machen, oder <b>weitermachen</b>: nur noch montags wiegen, und solange du unter deinem Zielgewicht bleibst, gibt es jede Woche die vollen ${wMax} Waage-Punkte.</p>`],
+      <p class="t2">Dein Ziel${me?.goal ? ` (−${tn(pct(me.goal))} %)` : ''} ist ab dem Startgewicht fest: Erreichst du es, hast du die Wahl: <b>aussteigen</b> und ${eur(CONFIG.einsatz)} Einsatz zurück, dann musst du nichts mehr machen, oder <b>weitermachen</b>: alles läuft weiter wie bisher, und solange du unter deinem Zielgewicht bleibst, gibt es jede Woche die vollen ${wMax} Waage-Punkte.</p>`],
     ['Kasse', `<p class="t2"><b>${eur(CONFIG.einsatz)} Einsatz</b> zahlt jeder einmal. Dazu kommen:</p>
       <ul class="small t2 xlist"><li><b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen</li><li><b>${eur(CONFIG.habitFee)}</b> pro Woche, in der nicht alle 3 Wochenziele geschafft sind</li><li><b>${eur(CONFIG.loserFee)}</b> für den Wochenletzten</li></ul>
       <p class="t2">Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} bekommt den ganzen Topf. Wer was zahlt, steht unter <b>Ranking → Kasse</b>.</p>`],
@@ -2291,7 +2290,7 @@ document.addEventListener('click', async ev => {
       case 'toWeekRank': UI.rankMode = 'woche'; UI.rankWeek = +el.dataset.w; go('ranking'); break;
       case 'feedOpen': UI.modal = 'feed'; renderModal(); break;
       case 'toKasse': UI.rankMode = 'kasse'; go('ranking'); break;
-      case 'goalStay': LS.setItem('cdf-goalchoice-' + S.me, el.dataset.w); toast('Haltephase: nur noch montags wiegen.'); render(); break;
+      case 'goalStay': LS.setItem('cdf-goalchoice-' + S.me, el.dataset.w); toast('Haltephase: unter dem Zielgewicht bleiben, Habits weiter abhaken.'); render(); break;
       case 'dialStep': dialSet(el.dataset.id, DIAL[el.dataset.id]?.target + +el.dataset.d); break;
       case 'ctab': UI.chartTable = !UI.chartTable; render(); break;
       case 'kgtab': UI.kgTable = !UI.kgTable; render(); break;
