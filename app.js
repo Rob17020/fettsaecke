@@ -252,7 +252,8 @@ function rankRange(C, wFrom, wTo, etappen) {
     return r;
   }));
 }
-const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1));
+// Gesamt: Ausgestiegene nie (auch nicht mit Ausstieg am letzten Montag, finishedWeek = weeks), sie stehen unter "Ziel erreicht"
+const rankTotal = C => rankRange(C, 1, CONFIG.weeks, Array.from({ length: NUM_ETAPPEN }, (_, i) => i + 1)).filter(r => !C[r.uid]?.finished);
 const rankEtappe = (C, e) => rankRange(C, (e - 1) * CONFIG.etappeWeeks + 1, Math.min(e * CONFIG.etappeWeeks, CONFIG.weeks), [e]);
 function pot(C) { const r = { total: 0, players: 0, refunds: 0, missed: 0, losers: 0, habitWeeks: 0 }; for (const p of Object.values(C)) if (p.active) { const f = fees(p, null); r.total += f.total; r.players++; r.refunds += f.refund ? 1 : 0; r.missed += f.missed; r.losers += f.losers; r.habitWeeks += f.habitWeeks; } return r; }
 // eingefrorenes Ergebnis nach dem Ausstieg: "−15,2 % · Ziel nach 18 Wochen"
