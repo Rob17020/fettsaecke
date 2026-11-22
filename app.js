@@ -1373,7 +1373,8 @@ function habitsCard(me, p, focus) {
       const d = d0 + i, on = r.on(d), wait = on && r.need && !isOk(me.uid, d, r.key);
       const edit = canEdit(d) && !wk?.paused, fx = tapFx(`${r.key?.[0] === 'x' ? 'x' : 'h'}${d}_${r.key?.[0] === 'x' ? r.key.slice(1) : r.fxk}`);
       const cls = ['hc', on && 'on', wait && 'wait', d === today && 'td', d > today || d < minDay ? 'off' : edit ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
-      const who = on && r.need && !wait ? ` (bestätigt von ${S.habitok[`${me.uid}_${d}_${r.key}`]?.byName || 'der Gruppe'})` : wait ? ' (wartet auf Bestätigung)' : '';
+      // byName kommt von einem anderen Spieler (Regeln prüfen es nicht): escapen, steht in Attributen
+      const who = on && r.need && !wait ? ` (bestätigt von ${esc(S.habitok[`${me.uid}_${d}_${r.key}`]?.byName || 'der Gruppe')})` : wait ? ' (wartet auf Bestätigung)' : '';
       g += `<button class="${cls}"${fx.st} ${edit ? `${r.act} data-day="${d}"` : 'disabled'} aria-pressed="${on}" aria-label="${esc(r.plain)}, ${fmtD(dayDate(d))}${who}" title="${who.trim()}">${svg('check', 'ck')}</button>`;
     }
     g += '</div></div>';
