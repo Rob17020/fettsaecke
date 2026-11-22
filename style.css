@@ -436,6 +436,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 @container (min-width:540px){
   .rk{grid-template-columns:32px minmax(130px,1fr) repeat(var(--n),minmax(44px,76px)) 80px;grid-template-areas:none;align-items:center;column-gap:8px}
   .rk .pos,.rk .who,.rk .br,.rk .pts{grid-area:auto}
+  .rk .pts{grid-column:-2} /* immer letzte Spalte, auch ohne Aufschlüsselung (Abschnitt "Ziel erreicht") */
   .rk .br{display:contents}
   .rk .br span{text-align:right}
   .rk .br span::before{content:none}
