@@ -63,7 +63,7 @@ const etappeOf = w => Math.max(1, Math.ceil(w / CONFIG.etappeWeeks));
 const NUM_ETAPPEN = Math.ceil(CONFIG.weeks / CONFIG.etappeWeeks);
 function lastClosedSlot() { const t = now(); let k = -1; for (let i = 0; i <= CONFIG.weeks; i++) { if (slotDeadline(i) <= t) k = i; else break; } return k; }
 function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotOpen(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
-function nextJoinSlot() { const t = now(); for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
+function nextJoinSlot(t = now()) { for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
 const seasonOver = () => lastClosedSlot() >= CONFIG.weeks;
 
 /* ---------- Helfer ---------- */
@@ -693,10 +693,12 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 function onState(ns) {
   S = ns;
   C = compute(S);
-  // Startgewicht verpasst? -> automatisch nächsten Montag starten
-  const p = S.players[S.me];
-  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= now() && !bumping) {
-    const k = nextJoinSlot();
+  // Startgewicht verpasst? -> automatisch nächsten Montag starten.
+  // Mit Firebase nach der echten Uhrzeit: eine simulierte Zeit im Testmodus (?now=) würde joinedSlot sonst dauerhaft verschieben
+  // (die Regeln lassen es nur steigen).
+  const p = S.players[S.me], tj = DEMO ? now() : new Date();
+  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= tj && !bumping) {
+    const k = nextJoinSlot(tj);
     if (k !== null && k > (p.joinedSlot || 0)) { bumping = true; DB.updatePlayer({ joinedSlot: k }).finally(() => bumping = false); }
   }
   checkMilestones();
