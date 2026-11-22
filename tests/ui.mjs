@@ -6,10 +6,11 @@
 // Bilder und report.json landen in tests/shots/ (nicht committen). Die Prüfungen "span.sr"/"span.hn abgeschnitten" sind gewollt.
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { MODULES } from './fbmock.mjs';
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765/index.html';
-const OUT = process.env.OUT || new URL('./shots/', import.meta.url).pathname; mkdirSync(OUT, { recursive: true });
+const OUT = process.env.OUT || fileURLToPath(new URL('./shots/', import.meta.url)); // fileURLToPath: Pfad mit Leerzeichen/Umlauten mkdirSync(OUT, { recursive: true });
 const FILTER = process.argv[2] || '';
 const START = new Date(2026, 10, 23);
 const dayDate = d => new Date(START.getFullYear(), START.getMonth(), START.getDate() + d);
