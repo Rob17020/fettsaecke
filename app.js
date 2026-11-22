@@ -1149,8 +1149,8 @@ function viewHeute() {
   // Ist heute Wiegen fällig, steht die Wiege-Karte (Pane a) vor dem Liveticker
   return `<div class="view">${feedStrip()}<div class="board dash${wc.due ? ' wdue' : ''}">
     <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : statusCard(me) + potCard(me, 'p1') + loserCard()))}</div>
-    ${pane('c', (me.finished ? '' : potCard(me, 'pn')) + weeklyCard(me) + teamCard(me) + (me.active ? msCard(me) : ''))}</div>
-    ${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + confirmCard(me) + (me.active ? heatCard(me, p) : ''))}</div></div>`;
+    <div class="grp gR">${pane('c', (me.finished ? '' : potCard(me, 'pn')) + confirmCard(me) + weeklyCard(me))}${pane('d', teamCard(me) + (me.active ? msCard(me) : ''))}</div></div>
+    ${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}</div></div>`;
 }
 function finishedCard(me) {
   const f = fees(me, null);

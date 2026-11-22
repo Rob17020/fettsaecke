@@ -96,12 +96,12 @@ body.has-nav .view>.board{flex:1 0 auto}
 }
 
 /* Heute: 1 = f a b c · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c] */
-.dash .f{order:1}.dash .a{order:2}.dash .b{order:3}.dash .c{order:4}
-.dash .b .heat,.dash .c .msc{display:none}
+.dash .pane.f{order:1}.dash .pane.a{order:2}.dash .pane.b{order:3}.dash .pane.c{order:4}.dash .pane.d{order:5}
+.dash .b .heat,.dash .msc{display:none}
 @container page (min-width:44rem){
   .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)}
   .dash .gL{display:flex}
-  .dash .b .heat,.dash .c .msc{display:block}
+  .dash .b .heat,.dash .msc{display:block}
 }
 @container page (min-width:68rem){
   .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr)}
@@ -249,7 +249,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 
 /* ---------- Heute ---------- */
 /* Handy quer (1 Spalte): Gewohnheiten direkt nach dem Liveticker */
-@media (orientation:landscape) and (max-height:520px){@container page (max-width:43.99rem){.dash .b{order:2}.dash .a{order:3}}}
+@media (orientation:landscape) and (max-height:520px){@container page (max-width:43.99rem){.dash .pane.b{order:2}.dash .pane.a{order:3}}}
 /* Fokus (Grün): montags die Wiege-Karte */
 .card.due{border-color:rgba(182,255,60,.55);box-shadow:0 0 0 1px rgba(182,255,60,.2),0 0 40px -16px var(--lime-glow)}
 .when{font-size:14px;color:var(--text-2)}
@@ -658,7 +658,7 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 .obleg li.obsum::before{background:transparent}
 
 /* ---------- Montag: Wiege-Karte vor dem Liveticker ---------- */
-.dash.wdue .a{order:0}
+.dash.wdue .pane.a{order:0}
 
 /* ---------- Ringe: Wert ändert sich, Ring wird voll, alle voll ---------- */
 .rings .rf.chg{animation:ringChg 1s var(--spring) both}
@@ -794,12 +794,17 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
   .tsl .fe.new{animation:tsIn .7s var(--spring) both}
   @keyframes tsIn{from{opacity:0;transform:translateX(-24px) scale(.9)}}
   .tstrip .btn.sm{flex:none}
-  .dash .f{display:none}
-  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.45fr) minmax(0,1fr)}
+  .dash .pane.f{display:none} /* nur die Ticker-Spalte, nicht die .f-Zellen (Zukunft) der Heatmap */
+  /* 3 Spalten: [Wochenstand, Topf] [Habits, Heatmap] [Bestätigen, Challenge, Team, Meilensteine] */
+  .dash .gR{display:flex;flex-direction:column;gap:var(--gap);order:4;min-width:0}
 }
 @container page (min-width:92rem){
-  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr) minmax(0,1.05fr)}
+  /* 4 Spalten: [Wochenstand] [Habits, Heatmap] [Topf, Bestätigen, Challenge] [Team, Meilensteine] */
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
+  .dash .gR{display:contents}
+  .dash .pot.p1{display:none}.dash .pot.pn{display:block}
 }
+
 .feedsheet .feed{padding:0;background:none;border:0}
 .feedsheet>.hd{margin-bottom:-8px}
 
