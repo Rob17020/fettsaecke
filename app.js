@@ -263,8 +263,17 @@ function pot(C) { const r = { total: 0, players: 0, refunds: 0, missed: 0, loser
 // eingefrorenes Ergebnis nach dem Ausstieg: "−15,2 % · Ziel nach 18 Wochen"
 const frozenLine = p => `${tn(lossStr(p.wb[p.fw] ?? p.latest))} · Ziel nach ${wochen(p.goalWeek - p.js)}`;
 const frozenPts = p => Object.values(p.weeks).reduce((s, w) => s + w.total, 0) + Object.values(p.taskPts).reduce((a, b) => a + b, 0) + Object.values(p.teamPts).reduce((a, b) => a + b, 0);
-// Aussteigen geht, sobald das Ziel bei einem Wiegen erreicht war und das letzte Wiegen im Ziel-Band liegt
-const canExit = me => !!me?.active && me.goalWeek !== null && !me.finished && !seasonOver() && me.latest >= me.goal - CONFIG.holdBand - 1e-9;
+// Aussteigen nur mit dem aktuellen Wiegen: Montag vor 14 Uhr das heutige, sonst das vom letzten Montag (pausierte Montage
+// werden übersprungen). Sonst fielen mit finishedWeek = altes Wiegen die Strafen der Wochen danach weg.
+function exitSlot(me) {
+  const d = dayIdx(); let r = d >= 0 && d % 7 === 0 && now() < slotDeadline(d / 7) ? d / 7 : lastClosedSlot();
+  while (r > me.js && me.paused.includes(r)) r--;
+  return me.wb[r] !== undefined && Math.max(...Object.keys(me.wb).map(Number)) === r ? r : null;
+}
+// Aussteigen geht, sobald das Ziel bei einem Wiegen erreicht war und das aktuelle Wiegen im Ziel-Band liegt
+const canExit = me => !!me?.active && me.goalWeek !== null && !me.finished && !seasonOver() && exitSlot(me) !== null && me.latest >= me.goal - CONFIG.holdBand - 1e-9;
+// Ziel erreicht, Aussteigen gerade nicht möglich, weil das aktuelle Wiegen fehlt
+const exitWait = me => !!me?.active && me.goalWeek !== null && !me.finished && !seasonOver() && exitSlot(me) === null;
 function weeklySetters(C, w) { // null = jeder, [] = noch offen
   if (w <= 1) return null;
   if (lastClosedSlot() < w - 1) return [];
@@ -1020,7 +1029,8 @@ function pauseOptions(me) {
 }
 const pausedNow = p => !!p?.weeks?.[clamp(curWeek(), 1, CONFIG.weeks)]?.paused && curWeek() >= 1;
 const HOLD_LBL = 'Haltephase';
-const exitBtn = me => canExit(me) ? `<button class="btn ghost danger" data-act="exitAsk">Ziel erreicht – aussteigen</button>` : '';
+const exitBtn = me => canExit(me) ? `<button class="btn ghost danger" data-act="exitAsk">Ziel erreicht – aussteigen</button>`
+  : exitWait(me) ? `<p class="small muted">Aussteigen geht nur mit dem aktuellen Wiegen${openSlot() !== null ? ': erst heute wiegen' : ', also wieder ab dem nächsten Montag'}.</p>` : '';
 function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
   if (me.hold) {
@@ -2138,7 +2148,7 @@ function onboardingHtml(fresh) {
 }
 function exitHtml(fresh) {
   const me = C[S.me]; if (!canExit(me)) return '';
-  const f = fees(me, null), fw = Math.max(...Object.keys(me.wb).map(Number));
+  const f = fees(me, null), fw = exitSlot(me);
   return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet confirm" data-stop role="alertdialog" aria-modal="true" aria-labelledby="xTitle" tabindex="-1">
     <div class="hd"><h2 id="xTitle">Wirklich aussteigen?</h2><button class="iconbtn" data-act="closeModal" aria-label="Abbrechen">${svg('close')}</button></div>
     <p class="t2">Ziel −${tn(pct(me.goal))} % erreicht nach ${wochen(me.goalWeek - me.js)}, aktuell <b>${tn(lossStr(me.latest))}</b>.</p>
@@ -2337,7 +2347,7 @@ document.addEventListener('click', async ev => {
       }
       case 'exitDo': {
         if (!canExit(C[S.me])) { UI.modal = null; renderModal(); return toast('Aussteigen geht gerade nicht.'); }
-        UI.modal = null; renderModal(); await DB.finish(+el.dataset.w);
+        UI.modal = null; renderModal(); await DB.finish(exitSlot(C[S.me]));
         toast('Ausgestiegen. Ziel erreicht, Einsatz kommt zurück. Glückwunsch!'); celebrate(); break;
       }
       case 'closeModal': closeModal(); break;
