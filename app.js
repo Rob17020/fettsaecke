@@ -1147,7 +1147,7 @@ function viewHeute() {
   // Spalten: 1 = f a b c untereinander · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c]
   // Heatmap und Meilensteine nur ab 2 Spalten (style.css), damit die Startseite auf großen Schirmen nicht leer wirkt.
   // Ist heute Wiegen fällig, steht die Wiege-Karte (Pane a) vor dem Liveticker
-  return `<div class="view">${feedStrip()}<div class="board dash${wc.due ? ' wdue' : ''}">
+  return `<div class="view">${feedStrip()}<div class="board dash${wc.due ? ' wdue' : ''}${me.active ? '' : ' pre'}">
     <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : statusCard(me) + potCard(me, 'p1') + loserCard()))}</div>
     <div class="grp gR">${pane('c', (me.finished ? '' : potCard(me, 'pn')) + confirmCard(me) + weeklyCard(me))}${pane('d', teamCard(me) + (me.active ? msCard(me) : ''))}</div></div>
     ${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}</div></div>`;
@@ -1202,8 +1202,22 @@ function windowed(list, uid, max = 7) {
   for (const i of [...keep].sort((a, b) => a - b)) { if (i - prev > 1) out.push(null); out.push(list[i]); prev = i; }
   return out;
 }
+// Vor dem eigenen Start: Countdown + leere Ringe, damit Heute nicht leer aussieht
+function preStartCard(me) {
+  const st = slotStart(me.js), ms = st.getTime() - now().getTime();
+  const d = Math.max(0, Math.ceil(ms / DAY)), soon = ms <= 0;
+  const defs = [['var(--lime)', 'Habits', `0/${habitMax()}`], ['var(--cyan)', 'Challenge', `0/${CONFIG.challengePts}`], ['var(--pink)', 'Waage', `–/${CONFIG.weighMaxTenths * CONFIG.weighPerTenth}`]];
+  const others = Object.values(S.players).length - 1;
+  return `<section class="card status" data-k="weigh"><div class="hd"><h2>${soon ? 'Los geht\'s' : 'Countdown'}</h2><span class="aside">Start ${fmtD(st)}</span></div>
+    <div class="sthero"><div class="stleft"><div class="rankbig num">${soon ? 'Heute' : d}${soon ? '' : `<small class="unit">${d === 1 ? 'Tag' : 'Tage'}</small>`}</div>
+      <p class="small t2">${soon ? 'Startgewicht eintragen, dann zählt alles.' : `bis zu deinem Startgewicht${others > 0 ? ` · ${others} ${others === 1 ? 'Mitspieler' : 'Mitspieler'} dabei` : ''}`}</p></div>
+      ${ringSvg(defs.map(x => ({ p: 0, c: x[0] })), 96, 11, 3)}</div>
+    <ul class="rlegend">${defs.map(([c, l, v]) => `<li style="--c:${c}"><b>${v.split('/')[0]}<small>/${v.split('/')[1]}</small></b>${l}</li>`).join('')}</ul>
+    <p class="small t2">Ab dem Startgewicht füllen sich die Ringe jede Woche neu. Bis dahin: Habits prüfen, Challenge festlegen, Team-Ziel vorschlagen.</p></section>`;
+}
 function statusCard(me) {
-  const cw = curWeek(); if (!me.active || cw < 1 || cw > CONFIG.weeks) return '';
+  const cw = curWeek(); if (!me.active && !me.finished) return preStartCard(me);
+  if (!me.active || cw < 1 || cw > CONFIG.weeks) return '';
   let w = cw;
   if (dayIdx() === 7 * (cw - 1) && cw - 1 > me.js) w = cw - 1; // Montag: Ergebnis der Vorwoche
   const r = rankWeek(C, w); const mine = r.find(x => x.uid === S.me);

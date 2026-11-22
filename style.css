@@ -803,7 +803,11 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
   .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
   .dash .gR{display:contents}
   .dash .pot.p1{display:none}.dash .pot.pn{display:block}
+  /* fehlt die 4. Spalte (z. B. vor dem Start: kein Team, keine Meilensteine), keine leere Spalte stehen lassen */
+  .dash:not(:has(.pane.d)){grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
 }
+/* Heute: Karten nicht künstlich auf Spaltenhöhe strecken (sonst riesige leere Karten), nur die Habits-Karte darf wachsen */
+.dash .pane>.card:last-child:not(.loser){flex-grow:0}
 
 .feedsheet .feed{padding:0;background:none;border:0}
 .feedsheet>.hd{margin-bottom:-8px}
@@ -857,3 +861,4 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
   .sheet.ob .obdots i{width:30px;height:5px}
   .sheet.ob .btn{min-height:54px;padding:0 30px;font-size:17px}
 }
+.rankbig small.unit{margin:0 0 0 8px;vertical-align:.9em}
