@@ -6,7 +6,7 @@ name: Erinnerungen
 on:
   schedule:
     - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 14 Uhr
-    - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Gewohnheiten noch offen
+    - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Habits noch offen
     - cron: '30 22 * * 0'    # Sonntag 23:30 (Winter) bzw. Montag 00:30 (Sommer) Berlin: Backup
   workflow_dispatch:
     inputs:

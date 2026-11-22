@@ -8,7 +8,7 @@
   --card:#111111;--card-2:#1c1c1e;--card-3:#2c2c2e;
   --line:rgba(255,255,255,.08);--line-2:rgba(255,255,255,.14);--line-3:rgba(255,255,255,.24);
   --text:#fff;--text-2:#a1a1a6;--muted:#8e8e93;
-  /* Neon: Fortschritt und positive Daten. Grün = Gewohnheiten/erledigt/Hauptaktion, Pink = Waage, Cyan = Gruppe (Challenge, Team, Aufgaben) */
+  /* Neon: Fortschritt und positive Daten. Grün = Habits/erledigt/Hauptaktion, Pink = Waage, Cyan = Gruppe (Challenge, Team, Aufgaben) */
   --lime:#b6ff3c;--lime-ink:#0a1200;--lime-tint:rgba(182,255,60,.13);--lime-glow:rgba(182,255,60,.5);
   --pink:#ff2d78;--pink-ink:#1f0010;--pink-tint:rgba(255,45,120,.14);--pink-glow:rgba(255,45,120,.5);
   --cyan:#2de2ff;--cyan-ink:#001a1f;--cyan-tint:rgba(45,226,255,.12);--cyan-glow:rgba(45,226,255,.45);
@@ -248,7 +248,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .dot{display:inline-block;width:10px;height:10px;flex:none;border-radius:50%}
 
 /* ---------- Heute ---------- */
-/* Handy quer (1 Spalte): Gewohnheiten direkt nach dem Liveticker */
+/* Handy quer (1 Spalte): Habits direkt nach dem Liveticker */
 @media (orientation:landscape) and (max-height:520px){@container page (max-width:43.99rem){.dash .pane.b{order:2}.dash .pane.a{order:3}}}
 /* Fokus (Grün): montags die Wiege-Karte */
 .card.due{border-color:rgba(182,255,60,.55);box-shadow:0 0 0 1px rgba(182,255,60,.2),0 0 40px -16px var(--lime-glow)}
@@ -310,14 +310,14 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .xlist b{color:var(--text)}
 .lname{font-size:clamp(40px,11vw,56px);font-weight:900;letter-spacing:-.05em;line-height:.9;color:var(--blood);text-shadow:0 0 28px rgba(255,74,28,.35);overflow-wrap:anywhere}
 
-/* Gewohnheiten-Raster: auf schmalen Karten Name über der Zeile, ab 460px daneben */
+/* Habit-Raster: auf schmalen Karten Name über der Zeile, ab 460px daneben */
 .hgrid{container-type:inline-size}
 .hrow{display:grid;gap:6px}
 .hrow+.hrow{margin-top:10px}
 .hhead .hname{display:none}
 .hname{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:clamp(13px,2.6cqi,16px);font-weight:600;line-height:1.3;color:var(--text)}
 .hname .hn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Wochenfortschritt pro Gewohnheit: 2/4 */
+/* Wochenfortschritt pro Habit: 2/4 */
 .hp{flex:none;margin-left:auto;font-size:12px;font-weight:800;color:var(--text-2);font-variant-numeric:tabular-nums}
 .hp.ok{color:var(--lime)}.hp.bad{color:var(--blood)}
 .hlist{display:grid;gap:6px;padding:0;list-style:none}

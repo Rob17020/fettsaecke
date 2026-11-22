@@ -1619,7 +1619,7 @@ function rankCards(mode) { // Liste (Woche/Etappe/Gesamt) und Diagramm "Punkte, 
     list = rankTotal(C);
     title = `<div class="hd"><h2>Gesamtwertung</h2><span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
   }
-  const cols = [['Waage', 'weigh'], ['Gewohn&shy;heiten', 'habits'], ['Chal&shy;lenge', 'weekly']];
+  const cols = [['Waage', 'weigh'], ['Habits', 'habits'], ['Chal&shy;lenge', 'weekly']];
   if (mode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks'], ['Team', 'team']);
   if (mode === 'gesamt') cols.push(['Strafen', 'fee']);
   const top = list.length ? list[0].total : 0;
@@ -1919,7 +1919,7 @@ function heatCard(me, p) {
     <div class="row" style="justify-content:space-between;flex-wrap:wrap"><p class="hm-sum"><span><b>${met}</b>${wks.length ? ` von ${wks.length}` : ''} Wochen alle Ziele</span><span><b>${ticks}</b> Haken</span></p>${leg}</div></section>`;
 }
 function msCard(me) {
-  const cats = [['g', 'Dein Ziel'], ['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Pause'], ['s', 'Streak']];
+  const cats = [['g', 'Dein Ziel'], ['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Verpassen'], ['s', 'Streak']];
   const prog = m => m.cat === 'g' ? (me.goal ? `bisher ${pct(Math.max(0, me.latest))} von ${pct(me.goal)} %` : 'noch kein Ziel') : m.cat === 'l' ? `bisher ${pct(Math.max(0, me.bestLoss))} %` : m.cat === 'w' ? `bisher ${me.weighRun}` : `Rekord ${wochen(me.streak.best)}`;
   const groups = cats.map(([c, t]) => `<div><h4>${t}</h4><div class="chips">${MILESTONES.filter(m => m.cat === c).map(m => { const got = me.ms.includes(m.id); return `<span class="msi${got ? ' got' : ''}" title="${esc(m.label + (got ? ': erreicht' : ': ' + prog(m)))}">${got ? svg('check') : ''}${m.short || m.label}</span>`; }).join('')}</div></div>`).join('');
   const next = me.active ? ['g', 'l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
@@ -2024,7 +2024,7 @@ function viewRegeln(compact) {
   ${sec('Dein Ziel, Haltephase und Ausstieg', [
     `Beim Beitreten stellst du dein <b>Zielgewicht</b> ein, die App rechnet daraus dein Ziel in Prozent (${GOAL_MIN}–${GOAL_MAX} %). Mit dem echten Startgewicht am ersten Montag wird es endgültig, <b>danach ist es fest</b>. Alle sehen den Prozentwert, die kg-Umrechnung nur du. Bis zum Ziel zählt alles wie oben.`,
     `<b>Haltephase</b> (Ziel erreicht, du bleibst): alles läuft weiter wie vorher: montags wiegen, Habits mit Wochenzielen und Strafe, Challenge. Nur die Waage zählt anders: Bleibst du <b>unter deinem Zielgewicht</b> (${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'} Puffer nach oben), gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Darüber: 0 Waage-Punkte.`,
-    `<b>Aussteigen</b> (Ziel erreicht, du gehst): Du bekommst deine <b>${eur(CONFIG.einsatz)} Einsatz zurück</b> und musst nichts mehr machen. Knopf „Ziel erreicht – aussteigen“. Dein Ergebnis wird eingefroren (z. B. „−15,2 % · Ziel nach 18 Wochen“) und steht in der Gesamtwertung unter „Ziel erreicht“. Du bekommst deinen <b>Einsatz zurück</b>, frühere Strafen bleiben im Topf. Danach keine Punkte, Strafen oder Erinnerungen mehr, nicht mehr im Wochen- und Etappenranking. Geht nicht rückgängig.`])}
+    `<b>Aussteigen</b> (Ziel erreicht, du gehst): Du bekommst deine <b>${eur(CONFIG.einsatz)} Einsatz zurück</b> und musst nichts mehr machen. Knopf „Ziel erreicht – aussteigen“. Dein Ergebnis wird eingefroren (z. B. „−15,2 % · Ziel nach 18 Wochen“) und steht in der Gesamtwertung unter „Ziel erreicht“. Frühere Strafen bleiben im Topf. Danach keine Punkte, Strafen oder Erinnerungen mehr, nicht mehr im Wochen- und Etappenranking. Geht nicht rückgängig.`])}
   ${sec(`Pause (bis zu ${CONFIG.pauseWeeks} Wochen pro Saison)`, [
     `Krank oder im Urlaub? Im Profil eine ganze Woche (Mo–So) pausieren: die laufende bis <b>Mittwoch 23:59</b>, spätere jederzeit. Das Wiegen am Montag danach fällt mit weg.`,
     `In der Pausenwoche: keine Punkte, kein verpasstes Wiegen, keine Habit-Strafe, nicht im Wochenranking und nicht Wochenletzter, keine Erinnerungen. Die Streak bleibt stehen. Das nächste Wiegen vergleicht wie immer mit deinem Tiefstwert.`])}
@@ -2038,7 +2038,7 @@ function viewRegeln(compact) {
     `Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.`,
     `Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.`])}
   ${sec('Erinnerungen', [
-    `Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn ein Wochenziel noch offen ist und du das Habit heute noch nicht abgehakt hast. Nicht in Pausenwochen, in der Haltephase (Habits) und nach dem Ausstieg.`,
+    `Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn ein Wochenziel noch offen ist und du das Habit heute noch nicht abgehakt hast. Auch in der Haltephase, aber nicht in Pausenwochen und nicht nach dem Ausstieg.`,
     `Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).`])}
   </div></section>`;
 }
@@ -2133,7 +2133,7 @@ function exitHtml(fresh) {
       <li>Dein Ergebnis wird nach Woche ${fw} eingefroren und steht in der Gesamtwertung unter „Ziel erreicht“.</li>
       <li>Du bekommst deinen Einsatz zurück (${eur(CONFIG.einsatz)}).${f.strafen ? ` Deine Strafen bis jetzt (${eur(f.strafen)}) bleiben im Topf.` : ''}</li>
       <li>Ab dann keine Punkte, keine Strafen, keine Erinnerungen und kein Wochen- oder Etappenranking mehr. Den Topf kannst du nicht mehr gewinnen.</li>
-      <li><b>Das lässt sich nicht rückgängig machen.</b> Wer bleibt, ist in der Haltephase und muss nur montags wiegen.</li></ul>
+      <li><b>Das lässt sich nicht rückgängig machen.</b> Wer bleibt, ist in der Haltephase: Alles läuft weiter wie bisher, auch Habits und Strafen.</li></ul>
     <div class="row wrapr"><button class="btn danger" data-act="exitDo" data-w="${fw}">Aussteigen</button><button class="btn ghost" data-act="closeModal">Doch bleiben</button></div></div></div>`;
 }
 function renderModal() {
