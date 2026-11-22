@@ -35,7 +35,7 @@ const CONFIG = {
   teamPts: 5,         // Team-Monat: Punkte für jeden, der etwas eingetragen hat, wenn ALLE gezogenen Ziele erreicht sind
   teamDraw: 3,        // so viele Vorschläge werden pro Etappe für den Team-Monat gezogen
   activeEveryMin: 10, // "zuletzt aktiv" höchstens alle 10 Min. speichern
-  vapidKey: '',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
+  vapidKey: 'BBoHd4s2c9OpkUMNpDAjTpqWl4R4Up5Zu8oMqKpo8zgY2nuYrY9TUuclbUINZmOdh_hPS2hHq2qT3Nx8OTyt1KI',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
 };
 // Wenn du start/weeks änderst: auch START_MS in firestore.rules und SEASON in reminders/send.mjs anpassen.
 // Zum Ausprobieren ohne Firebase: ?demo an die URL hängen (lokale Daten), ?demo&bots=18 simuliert bis zu 20 Spieler.
