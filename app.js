@@ -1630,7 +1630,7 @@ function rankCards(mode) { // Liste (Woche/Etappe/Gesamt) und Diagramm "Punkte, 
     const cls = ['rk', r.total === top && top > 0 && 'lead', r.uid === S.me && 'me', losers.includes(r.uid) && 'lo'].filter(Boolean).join(' ');
     return `<div class="${cls}"><span class="pos">${pos}</span>
       <span class="who"><span class="nm"><span class="dot" style="background:${r.color}"></span><span>${esc(r.name)}</span>${r.uid === S.me ? ' <span class="muted small">(du)</span>' : ''}${losers.includes(r.uid) ? ` <span class="tag bad">Letzter · zahlt ${eur(CONFIG.loserFee)}</span>` : ''}</span>${metaLine(C[r.uid])}</span>
-      <span class="br">${cols.map(([l, k]) => `<span data-l="${l.replace(/&shy;/g, '')}">${k === 'fee' ? (fee ? eur(fee) : '–') : r[k]}</span>`).join('')}</span>
+      <span class="br">${cols.map(([l, k]) => `<span data-l="${l.replace(/&shy;/g, '')}">${k === 'fee' ? (fee ? tn(eur(fee)) : '–') : r[k]}</span>`).join('')}</span>
       <span class="pts"><b>${nf(r.total)}</b><small>${tn(lossStr(r.latest))}</small></span></div>`;
   }).join('');
   // Gesamt: Ausgestiegene mit eingefrorenem Ergebnis in einem eigenen Abschnitt
@@ -1661,13 +1661,13 @@ function viewKasse() {
   const e = UI.rankEtappe;
   const ps = Object.values(C).filter(p => p.active).map(p => ({ p, f: fees(p, e), g: fees(p, null) })).sort((a, b) => b.f.total - a.f.total || a.p.name.localeCompare(b.p.name));
   const po = pot(C);
-  const cell = (n, price) => n ? `${n}× <span class="muted">${eur(n * price)}</span>` : '–';
+  const cell = (n, price) => n ? `${n}× <span class="muted">${tn(eur(n * price))}</span>` : '–';
   let sumE = 0, sumG = 0;
   const ref = po.refunds > 0; // Spalte "Einsatz zurück" nur, wenn jemand ausgestiegen ist
-  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? eur(f.einsatz) : '–'}</td>${ref ? `<td>${f.refund ? `<span class="ok">−${eur(f.refund)}</span>` : '–'}</td>` : ''}<td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.habitWeeks, CONFIG.habitFee)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${eur(f.total)}</b></td><td>${eur(g.total)}</td></tr>`; }).join('');
+  const rows = ps.map(({ p, f, g }) => { sumE += f.total; sumG += g.total; return `<tr><td><span class="row"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span></td><td>${f.einsatz ? tn(eur(f.einsatz)) : '–'}</td>${ref ? `<td>${f.refund ? `<span class="ok">−${tn(eur(f.refund))}</span>` : '–'}</td>` : ''}<td>${cell(f.missed, CONFIG.strafe)}</td><td>${cell(f.habitWeeks, CONFIG.habitFee)}</td><td>${cell(f.losers, CONFIG.loserFee)}</td><td><b>${tn(eur(f.total))}</b></td><td>${tn(eur(g.total))}</td></tr>`; }).join('');
   return `<section class="card">${etNav(e)}
     ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th>${ref ? '<th>Einsatz zurück</th>' : ''}<th>Wiegen verpasst</th><th>Wochenziele verfehlt</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
-    <tr class="sum"><td>Summe</td><td></td>${ref ? '<td></td>' : ''}<td></td><td></td><td></td><td>${eur(sumE)}</td><td>${eur(sumG)}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
+    <tr class="sum"><td>Summe</td><td></td>${ref ? '<td></td>' : ''}<td></td><td></td><td></td><td>${tn(eur(sumE))}</td><td>${tn(eur(sumG))}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
     <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz${ref ? `, ${po.refunds}× Einsatz zurück (Ziel erreicht, ausgestiegen)` : ''}, ${po.missed}× Wiegen verpasst, ${po.habitWeeks}× Wochenziele verfehlt, ${po.losers}× Letzter).</p></section>`;
 }
 
