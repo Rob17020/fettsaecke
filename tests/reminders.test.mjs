@@ -59,6 +59,9 @@ r = run('2026-12-02T21:05:00+01:00', '--dry-run');
 eq('Empfänger (Bob fertig, Paula pausiert, Carol ausgestiegen, Fritz nie gestartet; Gina in der Haltephase bekommt sie)', Object.keys(r.to).sort(), ['alice', 'dave', 'erin', 'gina', 'harald']);
 eq('Alice: offene Ziele, heute Abgehaktes fehlt', [r.to.alice.includes('Kochen 2/4'), r.to.alice.includes('Laufen 0/1'), r.to.alice.includes('Softdrinks')], [true, true, false]);
 eq('Erin: Extra-Habit wird ignoriert', r.to.erin.includes('Lesen'), false);
+eq('Harald: unbestätigter Haken zählt nicht (Kochen 0/1)', r.to.harald.includes('Kochen 0/1'), true);
+await db.doc('habitok/harald_7_0').set({ uid: 'harald', day: 7, h: '0', by: 'bob', byName: 'Bob' });
+eq('Harald: nach Bestätigung ist Kochen erledigt', run('2026-12-02T21:05:00+01:00', '--dry-run').to.harald?.includes('Kochen'), false);
 
 console.log('\nSonntag 6.12., 21:05 Uhr: letzter Tag der Woche');
 r = run('2026-12-06T21:05:00+01:00', '--dry-run');

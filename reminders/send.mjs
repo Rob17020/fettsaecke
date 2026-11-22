@@ -30,7 +30,7 @@ export function berlin(d = new Date()) {
 }
 
 // Habits wie in app.js: 3 Stück mit Wochenziel (alte Einträge ohne Ziel = 7×), pro Etappe gespeichert
-const normHabits = hs => [0, 1, 2].map(i => { const h = hs?.[i]; return typeof h === 'string' ? { name: h, target: 7 } : { name: String(h?.name || ''), target: Math.min(7, Math.max(1, Math.round(+h?.target) || 7)) }; });
+const normHabits = hs => [0, 1, 2].map(i => { const h = hs?.[i]; return typeof h === 'string' ? { name: h, target: 7 } : { name: String(h?.name || ''), target: Math.min(7, Math.max(1, Math.round(+h?.target) || 7)), confirm: h?.confirm === true }; });
 export function habitsFor(p, w) {
   const sets = p.habitSets || {}, ks = Object.keys(sets).map(Number).filter(k => k > 0).sort((a, b) => a - b);
   if (!ks.length) return normHabits(p.habits);
@@ -141,8 +141,11 @@ async function main() {
       // Haken dieser Woche zählen (Mo bis heute): offen = Wochenziel noch nicht erreicht und heute noch nicht abgehakt
       const w = Math.floor(t.day / 7) + 1, d0 = 7 * (w - 1), H = habitsFor(p, w);
       const logs = await db.getAll(...Array.from({ length: t.day - d0 + 1 }, (_, i) => db.doc(`habitlogs/${p.uid}_${d0 + i}`)));
+      // Habits mit "Gruppe bestätigt" zählen wie in der App erst mit habitok/<uid>_<Tag>_<i>
+      const need = logs.filter(s => s.exists).flatMap(s => { const x = s.data(); return [0, 1, 2].filter(i => H[i]?.confirm && x.done?.[i]).map(i => `${p.uid}_${x.day}_${i}`); });
+      const ok = new Set(need.length ? (await db.getAll(...need.map(id => db.doc('habitok/' + id)))).filter(s => s.exists).map(s => s.id) : []);
       const cnt = [0, 0, 0]; let today = [];
-      for (const s of logs) if (s.exists) { const x = s.data(); (x.done || []).slice(0, 3).forEach((v, i) => { if (v) cnt[i]++; }); if (x.day === t.day) today = x.done || []; }
+      for (const s of logs) if (s.exists) { const x = s.data(); (x.done || []).slice(0, 3).forEach((v, i) => { if (v && (!H[i]?.confirm || ok.has(`${p.uid}_${x.day}_${i}`))) cnt[i]++; }); if (x.day === t.day) today = x.done || []; }
       const open = H.map((h, i) => ({ h, i })).filter(({ h, i }) => h.name && cnt[i] < h.target && !today[i]);
       if (!open.length) continue;
       out.push({ p, ...habitsMsg({ name: first(p), open: open.map(({ h, i }) => `${h.name} ${cnt[i]}/${h.target}`), left: d0 + 6 - t.day, fee: eur(SEASON.habitFee), back: SEASON.backfillDays, dl: `${SEASON.deadlineHour}:00 Uhr` }, `${p.uid}|habits|${t.date}`) });
