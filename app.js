@@ -13,7 +13,7 @@ const CONFIG = {
     messagingSenderId: "121079785562",
     appId: "1:121079785562:web:a808ec1074af013dd49063"
   },
-  testMode: true,   // true = Zeit per URL ?now=2026-11-30T09:00 simulierbar (nur zum Testen, in der Saison immer false)
+  testMode: false,  // true = Zeit per URL ?now=2026-11-30T09:00 simulierbar (nur zum Testen, in der Saison immer false)
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
