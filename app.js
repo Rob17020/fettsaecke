@@ -790,7 +790,15 @@ function header() {
     <button class="avatar" data-act="profile" aria-label="Profil und Erinnerungen" style="--pc:${C[S.me]?.color || 'var(--lime)'}">${initial(me.name)}</button>` : ''}</header>`;
 }
 function banner() {
-  if (!DEMO && CONFIG.testMode) return `<div class="banner"><b>Testmodus</b> Simulierte Zeit: ${NOW_OVERRIDE ? fmtDT(new Date(NOW_OVERRIDE)) : 'echt'}. Ändern per URL, z. B. ?now=2026-11-30T09:00</div>`;
+  if (!DEMO && CONFIG.testMode) {
+    // Zeit-Knöpfe nur im Testmodus: schreiben ?now= in die URL (bleibt beim Neuladen), "Echt" entfernt es
+    const v = toLocalInput(now()), b = (u, n, l) => `<button class="tbtn" data-act="testShift" data-u="${u}" data-n="${n}">${l}</button>`;
+    return `<div class="banner test"><b>Testmodus</b><span>${NOW_OVERRIDE ? 'Simulierte Zeit' : 'Echte Zeit'}</span>
+      <div class="tgrp">${b('m', -1, '−1 Monat')}${b('d', -7, '−1 Woche')}${b('d', -1, '−1 Tag')}${b('d', 1, '+1 Tag')}${b('d', 7, '+1 Woche')}${b('m', 1, '+1 Monat')}</div>
+      <label class="row">Zeit <input type="datetime-local" id="testTime" value="${v}"></label>
+      <button class="link" data-act="demoMon">Nächster Mo 9:00</button>
+      ${NOW_OVERRIDE ? '<button class="link" data-act="testReal">Echte Zeit</button>' : ''}</div>`;
+  }
   if (!DEMO) return '';
   const v = NOW_OVERRIDE ? toLocalInput(new Date(NOW_OVERRIDE)) : '';
   return `<div class="banner"><b>Demo-Modus</b><span>Daten nur in diesem Browser, die anderen sind simuliert.</span>
@@ -2175,15 +2183,22 @@ document.addEventListener('click', async ev => {
         document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; renderModal(); toast('Gespeichert'); break;
       }
       case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; break;
+      case 'testShift': { const t = now(); if (el.dataset.u === 'm') t.setMonth(t.getMonth() + +el.dataset.n); else t.setDate(t.getDate() + +el.dataset.n); setNow(t); break; }
+      case 'testReal': setNow(null); break;
       case 'demoMon': { const d = dayIdx(); const k = Math.max(0, Math.floor(d / 7) + 1); const t = slotStart(Math.min(k, CONFIG.weeks)); t.setHours(9); setNow(t); break; }
     }
   } catch (e) { console.warn(e); /* Fehler wurde schon angezeigt */ }
 });
 document.addEventListener('change', ev => {
-  if (ev.target.id === 'demoTime' && ev.target.value) setNow(new Date(ev.target.value));
+  if ((ev.target.id === 'demoTime' || ev.target.id === 'testTime') && ev.target.value) setNow(new Date(ev.target.value));
   if (ev.target.id === 'tmDay') { UI.tmDay = +ev.target.value; ev.target.blur(); render(); }
 });
-function setNow(t) { NOW_OVERRIDE = t.getTime(); LS.setItem('cdf-demo-now', String(NOW_OVERRIDE)); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh(); }
+function setNow(t) {
+  NOW_OVERRIDE = t ? t.getTime() : null;
+  if (DEMO) LS.setItem('cdf-demo-now', String(NOW_OVERRIDE));
+  else { const u = new URL(location.href); if (t) u.searchParams.set('now', toLocalInput(t)); else u.searchParams.delete('now'); history.replaceState(null, '', u); }
+  UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh();
+}
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && UI.modal) { closeModal(); return; }
   if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row, .tmentry, .idea')?.querySelector('.btn'); if (b) b.click(); }

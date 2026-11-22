@@ -731,3 +731,9 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 .hscore{display:inline-flex;align-items:center;gap:6px}
 .hscore .rings{width:22px;height:22px}
 .hp.pop{animation:bump .6s var(--spring) both;--c:var(--lime);text-shadow:0 0 12px var(--lime-glow)}
+
+/* Testmodus: Zeit-Knöpfe */
+.banner.test .tgrp{display:flex;flex-wrap:wrap;gap:4px}
+.tbtn{min-height:30px;padding:0 9px;border:1px solid var(--line-2);border-radius:var(--r-xs);background:var(--card-2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;transition:transform .3s var(--spring),background-color .12s}
+.tbtn:hover{background:var(--card-3)}
+.tbtn:active{transform:scale(.94)}
