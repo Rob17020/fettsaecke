@@ -1160,13 +1160,14 @@ function viewHeute() {
   if (seasonOver()) return seasonEnd(me);
   // Fokus (Grün): montags das Wiegen, sonst die heutige Spalte im Habit-Raster
   const wc = me.finished ? { html: finishedCard(me), due: false } : weighCard(me, p);
-  // Spalten: 1 = f a b c untereinander · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c]
+  // Spalten: 1 = f a b c d untereinander · 2 = [f a] [b c d] · 3 = [f a] [b] [c d] · 4 = [f] [a] [b] [c d] (f ab 3 Spalten als Kopfzeile)
+  // Gruppen: gL[gF[f a]] und gB[b gR[c d]]; je nach Breite eigene Spalte oder aufgelöst (style.css).
   // Heatmap und Meilensteine nur ab 2 Spalten (style.css), damit die Startseite auf großen Schirmen nicht leer wirkt.
   // Ist heute Wiegen fällig, steht die Wiege-Karte (Pane a) vor dem Liveticker
   return `<div class="view">${feedStrip()}<div class="board dash${wc.due ? ' wdue' : ''}${me.active ? '' : ' pre'}">
-    <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : statusCard(me) + potCard(me, 'p1') + loserCard()))}</div>
-    <div class="grp gR">${pane('c', (me.finished ? '' : potCard(me, 'pn')) + confirmCard(me) + weeklyCard(me))}${pane('d', teamCard(me) + (me.active ? msCard(me) : ''))}</div></div>
-    ${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}</div></div>`;
+    <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : statusCard(me) + potCard(me, 'p1') + loserCard()))}</div></div>
+    <div class="grp gB">${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}
+    <div class="grp gR">${pane('c', (me.finished ? '' : potCard(me, 'pn')) + confirmCard(me) + weeklyCard(me))}${pane('d', teamCard(me) + (me.active ? msCard(me) : ''))}</div></div></div></div>`;
 }
 function finishedCard(me) {
   const f = fees(me, null);

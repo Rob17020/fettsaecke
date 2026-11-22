@@ -95,17 +95,17 @@ body.has-nav .view>.board{flex:1 0 auto}
   body.has-nav .fillc>.chart.fill>svg{position:absolute;inset:0}
 }
 
-/* Heute: 1 = f a b c · 2 = [f a c] [b] · 3 = [f a] [b] [c] · 4 = [f] [a] [b] [c] */
+/* Heute: 1 = f a b c d · 2 = [f a] [b c d] · 3 = [f a] [b] [c d] · 4 = [f] [a] [b] [c d] (Gruppen gL[gF[f a]], gB[b gR[c d]]) */
 .dash .pane.f{order:1}.dash .pane.a{order:2}.dash .pane.b{order:3}.dash .pane.c{order:4}.dash .pane.d{order:5}
 .dash .b .heat,.dash .msc{display:none}
 @container page (min-width:44rem){
   .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)}
-  .dash .gL{display:flex}
+  .dash .gL,.dash .gB{display:flex}
   .dash .b .heat,.dash .msc{display:block}
 }
 @container page (min-width:68rem){
   .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr)}
-  .dash .gL{display:contents}
+  .dash .gL,.dash .gB{display:contents}
   .dash .gF{display:flex;order:1}
 }
 @container page (min-width:92rem){
