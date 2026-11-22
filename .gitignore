@@ -8,3 +8,7 @@ serviceAccount*.json
 backup/
 *.fsbak
 firestore-*.json
+# Tests (tests/README.md): Screenshots, Emulator-Log, erzeugte Hilfsdatei
+tests/shots/
+firestore-debug.log
+tests/.logic.gen.mjs

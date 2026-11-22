@@ -5,6 +5,7 @@
 //   node send.mjs --kind=test     -> Testnachricht an alle registrierten Geräte
 //   --dry-run   nur zählen, nichts senden      --force   Zeitfenster und Doppel-Schutz ignorieren
 // Zugang: Umgebungsvariable FIREBASE_SERVICE_ACCOUNT = komplettes Service-Account-JSON (GitHub-Secret, nie committen).
+// Lokal mit FIRESTORE_EMULATOR_HOST läuft es ohne Zugang gegen den Emulator und listet die Empfänger (tests/reminders.test.mjs).
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -103,9 +104,10 @@ async function main() {
   if (KIND === 'weigh' && !FORCE && !(t.day >= 0 && t.day % 7 === 0 && slot <= SEASON.weeks)) return console.log('Heute ist kein Wiege-Montag der Saison.');
   if (KIND === 'habits' && !FORCE && !(t.day >= 0 && t.day < SEASON.weeks * 7)) return console.log('Außerhalb der Saison.');
 
+  const EMU = !!process.env.FIRESTORE_EMULATOR_HOST;
   const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!sa) throw new Error('FIREBASE_SERVICE_ACCOUNT fehlt.');
-  initializeApp({ credential: cert(JSON.parse(sa)) });
+  if (!sa && !EMU) throw new Error('FIREBASE_SERVICE_ACCOUNT fehlt.');
+  initializeApp(EMU ? { projectId: process.env.GCLOUD_PROJECT || 'demo-fettsaecke' } : { credential: cert(JSON.parse(sa)) });
   const db = getFirestore();
   const players = (await db.collection('players').get()).docs.map(d => ({ uid: d.id, ...d.data() }));
 
@@ -171,7 +173,8 @@ async function main() {
     const dead = tokens.filter((_, i) => ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(res.responses[i].error?.code));
     for (const tk of dead) { await ref.update(new FieldPath('tokens', tk), FieldValue.delete()); removed++; }
   }
-  // Nur Zahlen loggen: Actions-Logs sind bei öffentlichen Repos öffentlich.
+  // Nur Zahlen loggen: Actions-Logs sind bei öffentlichen Repos öffentlich. Empfänger nur im Emulator (lokale Tests).
+  if (EMU) for (const o of out) console.log(`  -> ${o.p.uid} | ${o.title} | ${o.body}`);
   console.log(`${KIND} ${t.date}: ${out.length} Empfänger, ${devices} Geräte, ${DRY ? 'Testlauf, nichts gesendet' : `${sent} zugestellt, ${failed} Fehler, ${removed} alte Geräte entfernt`}.`);
 }
 
