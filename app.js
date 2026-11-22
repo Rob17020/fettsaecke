@@ -18,8 +18,8 @@ const CONFIG = {
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
   einsatz: 20,        // € Einsatz pro Person (einmalig)
-  strafe: 1.5,        // € pro verpasstem Wiegen
-  habitFee: 0.75,     // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
+  strafe: 5,          // € pro verpasstem Wiegen
+  habitFee: 1,        // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
   loserFee: 0.75,     // € für den Letzten im Wochenranking
   habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
   pauseWeeks: 2,      // so viele Wochen darf jeder pro Saison pausieren (krank, Urlaub)
@@ -76,7 +76,7 @@ const WDL = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag
 const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
 const fmtLong = d => `${WDL[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
 const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
-// 20 € / 0,75 € / 1,50 €: Cent nur, wenn es welche gibt
+// 20 € / 0,75 € / 5 €: Cent nur, wenn es welche gibt
 const eur = x => { const c = Math.round(x * 100); return (c / 100).toLocaleString('de-DE', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace('-', '−') + '\u00a0€'; };
 const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
 const tn = s => String(s).replace(/[,.]/g, m => `<span class="pp">${m}</span>`);
@@ -596,7 +596,7 @@ async function makeFirebaseDB(cfg, emit) {
     demo: false,
     refresh: fire,
     touch: () => { if (S.synced) touch(); },
-    async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else fail(e); } },
+    async signIn() { const prov = new Au.GoogleAuthProvider(); try { await Au.signInWithPopup(auth, prov); } catch (e) { if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await Au.signInWithRedirect(auth, prov); else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') fail(e); } },
     signOut: () => Au.signOut(auth),
     async register(d) {
       await F.setDoc(F.doc(db, 'players', me()), { name: d.name, habits: d.habits, habitSets: d.habitSets, maxLossPct: d.maxLossPct, joinedSlot: d.joinedSlot, joinedAt: F.serverTimestamp(), lastActive: F.serverTimestamp(), invite: d.invite }).catch(e => { if (e.code === 'permission-denied') toast('Einladungscode falsch.'); else fail(e); throw e; });
@@ -826,18 +826,31 @@ function body(enter, dir) {
   return `<div class="page${enter ? ' enter' : ''}" style="--dir:${dir}"><h1 class="ptitle">${title}</h1>${v}</div>`;
 }
 
+// Die vier Bausteine kurz (Anmeldung und Beitreten), Zahlen aus CONFIG
+function howTiles() {
+  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth;
+  const t = (k, ic, h, big, txt) => `<div class="how" data-k="${k}"><span class="howi">${svg(ic)}</span><div><b class="howb">${big}</b><h3>${h}</h3><p>${txt}</p></div></div>`;
+  return `<div class="hows">
+    ${t('weigh', 'scale', 'Montags wiegen', `${CONFIG.weighStartHour}–${CONFIG.deadlineHour} Uhr`, `In Prozent vom eigenen Startgewicht, bis ${wMax} Punkte pro Woche. Die anderen sehen nie deine kg.`)}
+    ${t('habits', 'check', '3 Gewohnheiten', `bis ${habitMax()} P.`, 'Selbst gewählt, jede mit eigenem Wochenziel von 1× bis 7×. Muss nicht Sport sein.')}
+    ${t('challenge', 'bolt', 'Challenges', `+${CONFIG.taskPts} P.`, 'Wochen-Challenge, Komfortzonen-Aufgaben und ein Team-Monat, den nur alle zusammen schaffen.')}
+    ${t('pot', 'ranking', 'Der Topf', tn(eur(CONFIG.einsatz)), `Einsatz pro Person, dazu Strafen fürs Schwänzen. Wer nach ${CONFIG.weeks} Wochen vorn liegt, kassiert alles.`)}
+  </div>`;
+}
 function viewLogin() {
   const end = dayDate(CONFIG.weeks * 7 - 1);
-  return `<div class="view"><div class="board two login"><section class="card hero">${logoImg('mark xl')}
+  return `<div class="view"><div class="lgrid"><section class="card hero">${logoImg('mark xl')}
     <p class="kicker">${CONFIG.weeks} Wochen · ${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}</p>
     <h1 class="herot">Zusammen <em>dranbleiben.</em></h1>
-    <p class="t2">Montags wiegen, 3 eigene Gewohnheiten mit Wochenziel, alles in Prozent vom eigenen Startgewicht. Mit Google anmelden, danach Name, Zielgewicht, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p>
-    <button class="btn" data-act="signin">Mit Google anmelden</button></section>${viewRegeln()}</div></div>`;
+    <p class="t2 lead">Ein Abnehm-Wettbewerb unter Freunden. Fair für jede Größe, weil alles in Prozent zählt.</p>
+    <button class="btn big" data-act="signin">Mit Google anmelden</button>
+    <p class="small muted">Danach Name, Zielgewicht, Gewohnheiten und den Einladungscode aus der Gruppe eintragen.</p></section>
+    ${howTiles()}${viewRegeln(true)}</div></div>`;
 }
 function viewRegister() {
   const k = nextJoinSlot();
   if (k === null) return `<section class="card narrow"><div class="hd"><h2>Saison vorbei</h2></div><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></section>`;
-  return `<div class="view"><div class="board two login"><section class="card narrow"><div class="hd"><h2>Beitreten</h2></div>
+  return `<div class="view"><div class="lgrid reg"><section class="card regf"><div class="hd"><h2>Beitreten</h2></div>
     <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
     ${goalPicker('r', { askStart: true })}
@@ -847,7 +860,7 @@ function viewRegister() {
     ${habitInputs('r', null, false)}
     ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
     <button class="btn full" data-act="register">Beitreten</button>
-    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>${viewRegeln()}</div></div>`;
+    ${DEMO ? '' : `<button class="link" data-act="signout">Mit anderem Google-Konto anmelden</button>`}</section>${howTiles()}${viewRegeln(true)}</div></div>`;
 }
 
 // Ziel (max. Abnahme in %): Eingabe, Erklärung, wer es noch ändern darf
@@ -1867,11 +1880,13 @@ function runCountUps(root) {
 }
 
 /* ---------- REGELN ---------- */
-function viewRegeln() {
+// compact (Anmeldung): Abschnitte als aufklappbare Liste statt Textwand
+function viewRegeln(compact) {
   const end = dayDate(CONFIG.weeks * 7 - 1);
   const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, hb = CONFIG.holdBand;
-  const sec = (h, items) => `<div class="rs"><h3>${h}</h3><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
-  return `<section class="card rules"><div class="hd"><h2>Regeln</h2>${S.member ? '<button class="link" data-act="obOpen">Einführung nochmal ansehen</button>' : ''}</div><div class="rcols">
+  const sec = (h, items) => compact ? `<details class="rs"><summary>${h}</summary><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></details>`
+    : `<div class="rs"><h3>${h}</h3><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+  return `<section class="card rules${compact ? ' compact' : ''}"><div class="hd"><h2>${compact ? 'Alle Regeln' : 'Regeln'}</h2>${S.member ? '<button class="link" data-act="obOpen">Einführung nochmal ansehen</button>' : ''}</div><div class="rcols">
   <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist. In einer normalen Woche kommt gut die Hälfte der Punkte von der Waage.</p></div>
   ${sec(`Wiegen (max. ${wMax} P./Woche)`, [
     `Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.`,

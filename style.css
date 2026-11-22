@@ -737,3 +737,44 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 .tbtn{min-height:30px;padding:0 9px;border:1px solid var(--line-2);border-radius:var(--r-xs);background:var(--card-2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;transition:transform .3s var(--spring),background-color .12s}
 .tbtn:hover{background:var(--card-3)}
 .tbtn:active{transform:scale(.94)}
+
+/* ---------- Anmelden / Beitreten: Hero + 4 Bausteine + Regeln zum Aufklappen ----------
+   Handy: alles untereinander. Breit: links Hero (bzw. Formular), rechts Bausteine, darunter die Regeln.
+   Auf sehr breiten Schirmen höchstens 1240 px, mittig. */
+.lgrid{display:grid;gap:var(--gap);width:100%;max-width:1240px;margin:0 auto}
+.lgrid .hero{display:flex;flex-direction:column;align-items:flex-start;gap:14px;padding:clamp(20px,4cqi,44px);background:radial-gradient(120% 80% at 0% 0%,rgba(182,255,60,.07),transparent 55%),radial-gradient(90% 70% at 100% 100%,rgba(255,74,28,.08),transparent 60%),var(--card)}
+.lgrid .hero>*+*{margin-top:0}
+.lgrid .herot{font-size:clamp(44px,7cqi,92px)}
+.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch}
+.btn.big{min-height:52px;padding:0 26px;font-size:16px}
+.hows{display:grid;gap:var(--gap)}
+.how{display:flex;gap:14px;align-items:flex-start;padding:var(--pad);background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.how .howi{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--k) 14%,transparent);color:var(--k)}
+.how .howi svg{width:22px;height:22px}
+.how h3{margin:2px 0 4px;font-size:14px;color:var(--text-2)}
+.how p{font-size:14px;color:var(--text-2)}
+.howb{display:block;font-size:26px;font-weight:900;letter-spacing:-.04em;line-height:1;color:var(--k)}
+[data-k=pot].how .howb{color:var(--text)}
+.rules.compact .rcols{columns:1}
+.rules.compact details.rs{padding:0;border-top:1px solid var(--line)}
+.rules.compact summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;cursor:pointer;list-style:none;font-weight:700;color:var(--text)}
+.rules.compact summary::-webkit-details-marker{display:none}
+.rules.compact summary::after{content:"";width:8px;height:8px;margin-right:4px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .25s var(--spring)}
+.rules.compact details[open] summary::after{transform:rotate(-135deg)}
+.rules.compact details ul{padding-bottom:16px}
+.rules.compact .rcols>.rs:first-child:not(details){padding-bottom:12px}
+.regf .stack,.regf{min-width:0}
+@container page (min-width:40rem){.hows{grid-template-columns:1fr 1fr}}
+@container page (min-width:60rem){
+  .lgrid{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:stretch}
+  .lgrid .hero{justify-content:center}
+  .lgrid .hows{grid-template-columns:1fr 1fr;align-content:stretch}
+  .lgrid .rules{grid-column:1/-1}
+  .rules.compact .rcols{columns:2;column-gap:40px}
+  .lgrid.reg{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .lgrid.reg .regf{grid-row:1/3}
+  .lgrid.reg .rules{grid-column:2}
+  .lgrid.reg .rules.compact .rcols{columns:1}
+}
+@media (min-width:1025px){body:not(.has-nav) .wrap{padding-top:28px}}
+@container page (min-width:60rem){.lgrid:not(.reg) .how{flex-direction:column;justify-content:space-between;gap:20px}.lgrid:not(.reg) .how .howb{font-size:clamp(30px,3cqi,44px)}}

@@ -50,8 +50,8 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 
 | Wann (Berlin) | Nachricht | An wen |
 |---|---|---|
-| Montag 8:00 | „Wiegen bis 14 Uhr“ (bzw. „Startgewicht bis 14 Uhr“) | nur wer für diese Woche noch nicht gewogen hat |
-| täglich 21:00 | „Gewohnheiten noch offen“ mit Stand der Woche, z. B. „Kochen 2/4“ | nur wer ein Wochenziel noch nicht erreicht und diese Gewohnheit heute noch nicht abgehakt hat |
+| Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat |
+| täglich 21:00 | offene Gewohnheiten mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher | nur wer ein Wochenziel noch nicht erreicht und diese Gewohnheit heute noch nicht abgehakt hat |
 
 Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg; in der Haltephase nur noch das Wiegen.
 
