@@ -562,7 +562,8 @@ table.t.chron th,table.t.chron td{text-align:left}
 .wl{display:block;font-size:12px;font-weight:800;opacity:.8}
 .ws{display:block;margin-top:4px;font-size:12px;font-weight:700;opacity:.85}
 .wbig{display:block;font-size:clamp(64px,21vw,104px);font-weight:900;letter-spacing:-.065em;line-height:.85;font-variant-numeric:tabular-nums}
-.wnum{display:block;margin-top:4px;font-size:clamp(38px,11vw,48px);font-weight:900;letter-spacing:-.055em;line-height:.95;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.wnum{display:block;margin-top:4px;font-size:clamp(38px,11vw,48px);font-weight:900;letter-spacing:-.055em;line-height:.95;font-variant-numeric:tabular-nums}
+.w-nem .wnum{overflow-wrap:anywhere} /* nur der Name darf überall umbrechen, Zahlen und € nicht */
 .w-loss{background:var(--lime);color:var(--lime-ink)}
 .w-loss.gain{background:var(--card-2);color:var(--text)}
 .wgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
