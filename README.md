@@ -113,8 +113,8 @@ Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1�
 
 ## Vor dem Saisonstart
 
-- `CONFIG.testMode` in `app.js` auf `false`
-- `TESTMODE()` in `firestore.rules` auf `false`, Regeln veröffentlichen
+- `CONFIG.testMode` in `app.js` und `TESTMODE()` in `firestore.rules` stehen auf `false` (für Tests auf `true`, nie so committen)
+- Regeln veröffentlichen und dabei in der Konsole den Platzhalter in `INVITE()` durch den echten Einladungscode ersetzen (nie ins Repo)
 - Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`). Wer schon als Tester angemeldet war, meldet sich danach neu an (dann mit Ziel in % und Wochenzielen).
 - `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen, ebenso die festen Zahlen in den Regeln (24 Wochen, 4 Wochen pro Etappe, 2 Pausenwochen, Ziel-Band 1 Prozentpunkt) und `SEASON` im Erinnerungs-Skript (Strafen, `holdBand`)
 - GitHub-Secret `BACKUP_PASSPHRASE` anlegen und das Backup einmal per Hand starten (siehe oben)

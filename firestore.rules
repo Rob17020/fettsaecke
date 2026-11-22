@@ -1,6 +1,6 @@
 rules_version = '2';
 // Club der Fettsäcke – Firestore-Sicherheitsregeln
-// 1) EINLADUNGSCODE unten ändern (Zeile mit 'FETTSACK2026')
+// 1) EINLADUNGSCODE: den echten Code NUR in der Firebase-Konsole eintragen, nie hier committen (das Repo ist öffentlich)
 // 2) START_MS muss zum Start in app.js (CONFIG.start) passen (Mo 23.11.2026 00:00 Uhr deutscher Zeit)
 // 3) Feste Zahlen hier müssen zu CONFIG in app.js passen: 24 Wochen, 4 Wochen/Etappe (28 Tage), pauseWeeks 2, holdBand 1,
 //    Ziel 1–40 %, Wochenziel 1–7×, Wiegefenster 3–14 Uhr (2–15 Std. nach Mitternacht MEZ wegen Sommerzeit).
@@ -12,8 +12,8 @@ service cloud.firestore {
     function WEEK()     { return 604800000; }
     function DAY()      { return 86400000; }
     function HOUR()     { return 3600000; }
-    function TESTMODE() { return true; }   // TEST: true = Zeitfenster aus. VOR DEM START WIEDER AUF false!
-    function INVITE()   { return 'FETTSACK2026'; }  // <- euren Code hier eintragen
+    function TESTMODE() { return false; }  // true = Zeitfenster aus (nur zum Testen)
+    function INVITE()   { return 'CODE-NUR-IN-DER-KONSOLE'; }  // <- in der Konsole durch den echten Code ersetzen
 
     function signedIn() { return request.auth != null; }
     function me()       { return request.auth.uid; }

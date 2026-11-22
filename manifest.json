@@ -1,7 +1,7 @@
 {
   "name": "Club der Fettsäcke",
   "short_name": "Fettsäcke",
-  "description": "Abnehm-Wettbewerb: montags wiegen, täglich Gewohnheiten abhaken, Ranking und Kasse.",
+  "description": "Abnehm-Wettbewerb: montags wiegen, Gewohnheiten mit Wochenziel, Ranking und Kasse.",
   "lang": "de",
   "start_url": "./",
   "scope": "./",
