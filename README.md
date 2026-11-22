@@ -50,8 +50,8 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 
 | Wann (Berlin) | Nachricht | An wen |
 |---|---|---|
-| Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat |
-| täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher | nur wer ein Wochenziel noch nicht erreicht und diese Habit heute noch nicht abgehakt hat |
+| Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat; wer sein Startgewicht verpasst hat, bekommt eine neue Start-Erinnerung |
+| täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher (sonntags: nachtragen nur bis Montag 14 Uhr) | nur wer ein Wochenziel noch nicht erreicht und diese Habit heute noch nicht abgehakt hat |
 
 Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg. In der Haltephase gibt es weiter beide Erinnerungen.
 
@@ -109,6 +109,8 @@ Dann `http://localhost:8000/index.html?demo` öffnen. Nützliche Zusätze:
 - `&now=2027-01-18T09:00`: Zeit setzen (z. B. Montag im Wiegefenster), `&now=2027-05-10T14:00` zeigt den Saisonrückblick
 - `#ich`, `#ranking`, `#verlauf`: direkt einen Tab öffnen
 
+Automatische Tests (Punkte-Logik, Firestore-Regeln im Emulator, Erinnerungen, Screenshots) liegen in `tests/`, siehe `tests/README.md`.
+
 Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1–4 Spalten je nach Fensterbreite, auf dem Desktop scrollt jede Spalte für sich. Zum Prüfen das Fenster von schmal (320 px) bis sehr breit ziehen, auch mit wenig Höhe.
 
 ## Vor dem Saisonstart
@@ -121,3 +123,5 @@ Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1�
 
 
 > **Update Nov 2026:** Die Regeln haben eine neue Sammlung `habitok` (Habits bestätigen) und Felder `extraHabits`/`extra`. Nach dem Einspielen `firestore.rules` neu in der Konsole veröffentlichen (Einladungscode dort wieder eintragen).
+>
+> **Update 22.11.2026 (Prüfung):** `firestore.rules` geschärft (Einstieg nur zum nächsten Montag, Vorwoche nur bis Montag 14 Uhr abhaken/bestätigen, Bestätigen 2 Tage, Ausstieg nur mit aktuellem Wiegen, Challenges/Aufgaben nur in ihrer Woche/Etappe, `byName` geprüft). Wieder komplett in die Konsole kopieren, dort `INVITE()` durch den echten Code und `TESTMODE()` nach Bedarf setzen, dann veröffentlichen.
