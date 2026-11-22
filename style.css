@@ -681,7 +681,7 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 /* ---------- Topf ---------- */
 [data-k=pot]{--k:var(--text)}
 .dash .pot.pn{display:none}
-@container page (min-width:68rem){.dash .pot.p1{display:none}.dash .pot.pn{display:block}}
+/* seit der Ticker-Kopfzeile: Topf immer links unter dem Wochenstand (p1), pn bleibt aus */
 .potrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .potbig{font-size:clamp(52px,16cqi,76px);font-weight:900;letter-spacing:-.055em;line-height:.9;font-variant-numeric:tabular-nums}
 .potbig.hit{animation:potHit .8s var(--spring) both}
@@ -778,3 +778,77 @@ body:not(.has-nav) .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
 @media (min-width:1025px){body:not(.has-nav) .wrap{padding-top:28px}}
 @container page (min-width:60rem){.lgrid:not(.reg) .how{flex-direction:column;justify-content:space-between;gap:20px}.lgrid:not(.reg) .how .howb{font-size:clamp(30px,3cqi,44px)}}
+
+/* ---------- Liveticker als Kopfzeile (ab 3 Spalten): Ticker-Karte weg, Dashboard 3 Spalten mit breiter Mitte ---------- */
+.tstrip{display:none}
+@container page (min-width:68rem){
+  .tstrip{display:flex;align-items:center;gap:14px;flex:none;min-height:56px;padding:8px 10px 8px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+  .tstrip h2{display:flex;align-items:center;gap:8px;flex:none;font-size:13px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;color:var(--text-2)}
+  .tsl{display:flex;gap:8px;flex:1;min-width:0;margin:0;padding:0;list-style:none;overflow-x:auto;scrollbar-width:none;mask-image:linear-gradient(90deg,#000 88%,transparent);-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .tsl::-webkit-scrollbar{display:none}
+  .tsl .fe{display:flex;align-items:center;gap:8px;flex:none;max-width:42ch;padding:4px 12px 4px 4px;background:var(--card-2);border-radius:999px}
+  .tsl .fe .fi{width:26px;height:26px;flex:none}
+  .tsl .fe p{overflow:hidden;font-size:13px;white-space:nowrap;text-overflow:ellipsis;color:var(--text-2)}
+  .tsl .fe p b{color:var(--text)}
+  .tsl .fe time{flex:none;padding:0;font-size:11px}
+  .tsl .fe.new{animation:tsIn .7s var(--spring) both}
+  @keyframes tsIn{from{opacity:0;transform:translateX(-24px) scale(.9)}}
+  .tstrip .btn.sm{flex:none}
+  .dash .f{display:none}
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.45fr) minmax(0,1fr)}
+}
+@container page (min-width:92rem){
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr) minmax(0,1.05fr)}
+}
+.feedsheet .feed{padding:0;background:none;border:0}
+.feedsheet>.hd{margin-bottom:-8px}
+
+/* ---------- Bestätigen / Extra-Habits ---------- */
+.hconf{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;color:var(--text-2);cursor:pointer;user-select:none}
+.hconf input{width:16px;height:16px;accent-color:var(--lime)}
+.hconf span{display:inline-flex;align-items:center;gap:5px}
+.hconf .ico{width:14px;height:14px}
+.hconf .sr,.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.hin{display:grid}
+.btn.sm{min-height:34px;padding:0 12px;font-size:13px}
+.hname .cf{display:inline-flex;margin-left:5px;vertical-align:-2px;color:var(--cyan)}
+.hname .cf .ico{width:13px;height:13px}
+.hsep{display:flex;align-items:center;gap:8px;margin:8px 0 2px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.hsep::after{content:"";flex:1;height:1px;background:var(--line)}
+.hrow.xr .hc.on{background:color-mix(in srgb,var(--lime) 55%,var(--card-2));border-color:transparent}
+.hc.on.wait{background:transparent!important;border:1.5px dashed var(--lime)!important;color:var(--lime);box-shadow:none}
+.hc.on.wait .ck{opacity:.55}
+.okc .oklist{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.okc .oklist li{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 6px 6px 12px;background:var(--card-2);border-radius:var(--r-sm)}
+.okc .oklist li>i{width:8px;height:8px;flex:none;border-radius:50%}
+.okc .oklist li>span{flex:1;min-width:0;font-size:14px;color:var(--text-2)}
+.okc .oklist li>span b{color:var(--text)}
+
+/* ---------- Ziel erreicht: zwei Wege ---------- */
+.gopts{display:grid;gap:10px}
+.gchoice{container-type:inline-size}
+@container (min-width:34rem){.gopts{grid-template-columns:1fr 1fr}}
+.gopt{display:flex;flex-direction:column;gap:8px;padding:14px;background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-sm)}
+.gopt.on{border-color:color-mix(in srgb,var(--lime) 45%,transparent)}
+.gopt h3{font-size:16px;font-weight:900;color:var(--text)}
+.gopt .btn{margin-top:auto}
+
+/* ---------- Einführung auf großen Bildschirmen größer ---------- */
+@media (min-width:1025px){
+  .modal.mid .sheet.ob{max-width:min(820px,90vw);padding:40px 48px}
+  .sheet.ob .obt{font-size:48px}
+  .sheet.ob .t2,.sheet.ob .xlist{font-size:17px}
+  .sheet.ob .obex{padding:18px;gap:14px}
+  .sheet.ob .obleg{font-size:15px}
+  .sheet.ob .btn{min-height:48px;padding:0 24px;font-size:16px}
+  .modal .sheet.feedsheet{max-width:520px}
+}
+@media (min-width:1700px){
+  .modal.mid .sheet.ob{max-width:980px;padding:56px 64px}
+  .sheet.ob .obt{font-size:64px}
+  .sheet.ob .t2,.sheet.ob .xlist{font-size:19px}
+  .sheet.ob .obleg{font-size:17px}
+  .sheet.ob .obbar{height:18px}
+  .sheet.ob .obdots i{width:30px;height:5px}
+  .sheet.ob .btn{min-height:54px;padding:0 30px;font-size:17px}
+}

@@ -1,7 +1,7 @@
 // Push-Erinnerungen für den Club der Fettsäcke (läuft per GitHub Actions, siehe .github/workflows/reminders.yml)
 //   node send.mjs                 -> "auto": entscheidet anhand der Uhrzeit in Berlin
 //   node send.mjs --kind=weigh    -> Montag: "Wiegen bis 14 Uhr" an alle, die noch nicht gewogen haben
-//   node send.mjs --kind=habits   -> täglich: "Gewohnheiten noch offen" an alle, deren Wochenziele noch offen sind
+//   node send.mjs --kind=habits   -> täglich: "Habits noch offen" an alle, deren Wochenziele noch offen sind
 //   node send.mjs --kind=test     -> Testnachricht an alle registrierten Geräte
 //   --dry-run   nur zählen, nichts senden      --force   Zeitfenster und Doppel-Schutz ignorieren
 // Zugang: Umgebungsvariable FIREBASE_SERVICE_ACCOUNT = komplettes Service-Account-JSON (GitHub-Secret, nie committen).
@@ -28,7 +28,7 @@ export function berlin(d = new Date()) {
   return { y, m, d: dd, hour: +p.hour, minute: +p.minute, weekday: p.weekday, date: `${p.year}-${p.month}-${p.day}`, day: Math.round((Date.UTC(y, m - 1, dd) - Date.UTC(sy, sm - 1, sd)) / 864e5) };
 }
 
-// Gewohnheiten wie in app.js: 3 Stück mit Wochenziel (alte Einträge ohne Ziel = 7×), pro Etappe gespeichert
+// Habits wie in app.js: 3 Stück mit Wochenziel (alte Einträge ohne Ziel = 7×), pro Etappe gespeichert
 const normHabits = hs => [0, 1, 2].map(i => { const h = hs?.[i]; return typeof h === 'string' ? { name: h, target: 7 } : { name: String(h?.name || ''), target: Math.min(7, Math.max(1, Math.round(+h?.target) || 7)) }; });
 export function habitsFor(p, w) {
   const sets = p.habitSets || {}, ks = Object.keys(sets).map(Number).filter(k => k > 0).sort((a, b) => a - b);
@@ -59,7 +59,7 @@ export function weighMsg(v, seed) {
   ], seed);
 }
 
-// Abends: Gewohnheiten. v = { name, open: ['Kochen 1/4', ...], left: Tage bis Sonntag inkl. morgen, fee, back }
+// Abends: Habits. v = { name, open: ['Kochen 1/4', ...], left: Tage bis Sonntag inkl. morgen, fee, back }
 export function habitsMsg(v, seed) {
   const list = v.open.join(', ');
   if (v.left === 0) return pick([
@@ -73,7 +73,7 @@ export function habitsMsg(v, seed) {
     { title: `${v.fee} sind ${v.fee}`, body: `Noch offen: ${list}. ${v.left === 1 ? 'Morgen' : 'In zwei Tagen'} ist die Woche rum.` },
   ], seed);
   return pick([
-    { title: 'Gewohnheiten noch offen', body: `Diese Woche fehlt noch: ${list}.` },
+    { title: 'Habits noch offen', body: `Diese Woche fehlt noch: ${list}.` },
     { title: 'Kurzer Check', body: `${list}. Heute schon was davon gemacht? Dann abhaken.` },
     { title: `Na, ${v.name}?`, body: `${list} warten noch. Die Woche hat noch ${v.left} Tage.` },
     { title: 'Kleine Schritte zählen', body: `Ein Haken heute ist einer weniger am Sonntag. Offen: ${list}.` },
@@ -125,7 +125,7 @@ async function main() {
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
       if ((p.pausedWeeks || []).includes(Math.floor(t.day / 7) + 1)) continue;          // diese Woche pausiert
-      // Haltephase (Ziel bei einem früheren Wiegen erreicht): Gewohnheiten sind freiwillig, keine Erinnerung
+      // Haltephase (Ziel bei einem früheren Wiegen erreicht): Habits sind freiwillig, keine Erinnerung
       if (typeof p.maxLossPct === 'number') {
         const ws = await db.collection('weighins').where('uid', '==', p.uid).get();
         if (ws.docs.some(d => { const x = d.data(); return x.slot > js && x.slot <= Math.floor(t.day / 7) && x.lossPct >= p.maxLossPct - 1e-9; })) continue;

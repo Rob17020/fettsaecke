@@ -1,6 +1,6 @@
 # Club der Fettsäcke
 
-Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), 3 Gewohnheiten mit eigenem Wochenziel abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit/Urlaub, Kasse.
+Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), 3 Habits mit eigenem Wochenziel abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit/Urlaub, Kasse.
 
 - App: `index.html` + `style.css` + `app.js` (kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
 - Daten: Firebase (Spark-Plan, kostenlos): Google-Login + Firestore
@@ -30,7 +30,7 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
    Den öffentlichen Schlüssel in `app.js` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
 
 2. **Regeln veröffentlichen**
-   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen. Neu in dieser Version: Gewohnheiten mit Wochenziel (`habits: [{name, target}]`, `habitSets`), festes Ziel `maxLossPct`, Pause (`pausedWeeks`), Ausstieg (`status`, `finishedWeek`, `finishedAt`), Einführung (`onboardingDone`). Ohne die neuen Regeln schlagen Beitreten, Pause und Ausstieg fehl.
+   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen. Neu in dieser Version: Habits mit Wochenziel (`habits: [{name, target}]`, `habitSets`), festes Ziel `maxLossPct`, Pause (`pausedWeeks`), Ausstieg (`status`, `finishedWeek`, `finishedAt`), Einführung (`onboardingDone`). Ohne die neuen Regeln schlagen Beitreten, Pause und Ausstieg fehl.
 
 3. **Service-Account als GitHub-Secret**
    Firebase-Konsole → Projekteinstellungen → Dienstkonten → *Neuen privaten Schlüssel generieren* (lädt eine JSON-Datei herunter).
@@ -51,7 +51,7 @@ Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kos
 | Wann (Berlin) | Nachricht | An wen |
 |---|---|---|
 | Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat |
-| täglich 21:00 | offene Gewohnheiten mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher | nur wer ein Wochenziel noch nicht erreicht und diese Gewohnheit heute noch nicht abgehakt hat |
+| täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher | nur wer ein Wochenziel noch nicht erreicht und diese Habit heute noch nicht abgehakt hat |
 
 Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg; in der Haltephase nur noch das Wiegen.
 
@@ -118,3 +118,6 @@ Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1�
 - Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`). Wer schon als Tester angemeldet war, meldet sich danach neu an (dann mit Ziel in % und Wochenzielen).
 - `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen, ebenso die festen Zahlen in den Regeln (24 Wochen, 4 Wochen pro Etappe, 2 Pausenwochen, Ziel-Band 1 Prozentpunkt) und `SEASON` im Erinnerungs-Skript (Strafen, `holdBand`)
 - GitHub-Secret `BACKUP_PASSPHRASE` anlegen und das Backup einmal per Hand starten (siehe oben)
+
+
+> **Update Nov 2026:** Die Regeln haben eine neue Sammlung `habitok` (Habits bestätigen) und Felder `extraHabits`/`extra`. Nach dem Einspielen `firestore.rules` neu in der Konsole veröffentlichen (Einladungscode dort wieder eintragen).

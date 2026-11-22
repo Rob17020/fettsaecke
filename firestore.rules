@@ -25,10 +25,12 @@ service cloud.firestore {
     function notFinished() { return !('status' in player()); }   // mit erreichtem Ziel ausgestiegen = nur noch lesen
     function changed(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
 
-    // Gewohnheiten: 3 Stück, je { name, target 1–7× pro Woche }
+    // Habits: 3 Stück, je { name, target 1–7× pro Woche }
     function habitOk(h)   { return h is map && h.name is string && h.name.size() >= 1 && h.name.size() <= 40 && h.target is int && h.target >= 1 && h.target <= 7; }
     function habitsOk(hs) { return hs is list && hs.size() == 3 && habitOk(hs[0]) && habitOk(hs[1]) && habitOk(hs[2]); }
-    // Gewohnheiten ändern: vor dem Start, in der 1. Woche jeder Etappe (Sommerzeit: 1 Std. Toleranz) oder vor dem eigenen Start
+    // Extra-Habits (ohne Punkte): höchstens 5, jederzeit änderbar
+    function extrasOk(d)  { return d.get('extraHabits', []) is list && d.get('extraHabits', []).size() <= 5; }
+    // Habits ändern: vor dem Start, in der 1. Woche jeder Etappe (Sommerzeit: 1 Std. Toleranz) oder vor dem eigenen Start
     function weekIdx(ms)  { return math.floor((ms - START_MS()) / WEEK()); }
     function habitWindow() {
       return TESTMODE() || request.time < at(START_MS() + HOUR())
@@ -74,7 +76,7 @@ service cloud.firestore {
       allow create: if signedIn() && uid == me()
         && request.resource.data.invite == INVITE()
         && request.resource.data.name is string && request.resource.data.name.size() <= 20
-        && habitsOk(request.resource.data.habits)
+        && habitsOk(request.resource.data.habits) && extrasOk(request.resource.data)
         && request.resource.data.get('habitSets', {}) is map && request.resource.data.get('habitSets', {}).size() <= 7
         && goalOk()
         && request.resource.data.joinedSlot is int
@@ -84,7 +86,7 @@ service cloud.firestore {
         && request.resource.data.joinedAt == resource.data.joinedAt
         && request.resource.data.joinedSlot >= resource.data.joinedSlot
         && request.resource.data.name.size() <= 20
-        && request.resource.data.habits.size() == 3
+        && request.resource.data.habits.size() == 3 && extrasOk(request.resource.data)
         && (!changed(['habits', 'habitSets']) || (habitsOk(request.resource.data.habits) && request.resource.data.habitSets is map
           && request.resource.data.habitSets.size() <= 7 && habitWindow()))
         && (!changed(['maxLossPct']) || goalChangeOk(uid))
@@ -115,15 +117,30 @@ service cloud.firestore {
         && request.time <= at(START_MS() + request.resource.data.slot * WEEK() + 15 * HOUR())));
     }
 
-    // ---------- Gewohnheiten (max. 2 Tage nachtragen) ----------
+    // ---------- Habits (max. 2 Tage nachtragen) ----------
     match /habitlogs/{id} {
       allow read: if member();
       allow create, update: if member() && ownNew() && notFinished()
         && request.resource.data.day is int
         && id == me() + '_' + string(request.resource.data.day)
         && request.resource.data.done is list && request.resource.data.done.size() >= 3 && request.resource.data.done.size() <= 4
+        && request.resource.data.get('extra', []) is list && request.resource.data.get('extra', []).size() <= 5
         && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
         && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())));
+    }
+
+    // ---------- Habit bestätigen (Gruppenzwang): nur JEMAND ANDERES, bis 4 Tage nach dem Tag ----------
+    // ID = <uid>_<Tag>_<Schlüssel>, Schlüssel '0'–'2' (Punkte-Habits) oder 'x0'–'x4' (Extras)
+    match /habitok/{id} {
+      allow read: if member();
+      allow create: if member() && request.resource.data.by == me()
+        && request.resource.data.uid is string && request.resource.data.uid != me()
+        && exists(/databases/$(database)/documents/players/$(request.resource.data.uid))
+        && request.resource.data.day is int && request.resource.data.h in ['0', '1', '2', 'x0', 'x1', 'x2', 'x3', 'x4']
+        && id == request.resource.data.uid + '_' + string(request.resource.data.day) + '_' + request.resource.data.h
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
+        && request.time <= at(START_MS() + (request.resource.data.day + 4) * DAY() + 2 * HOUR())));
+      allow delete: if member() && resource.data.by == me();
     }
 
     // ---------- Wochen-Challenge (einmal festlegen, wer zuerst kommt – nicht überschreibbar) ----------
@@ -198,7 +215,7 @@ service cloud.firestore {
 
     // Hinweise:
     // - players/{uid}: lastActive, onboardingDone, Ziel (maxLossPct), Pause (pausedWeeks), Ausstieg (status, finishedWeek,
-    //   finishedAt) und Gewohnheiten (habits, habitSets pro Etappe) prüft die Update-Regel oben.
+    //   finishedAt) und Habits (habits, habitSets pro Etappe) prüft die Update-Regel oben.
     // - Dass das Ziel bei einem früheren Wiegen wirklich erreicht war, prüfen die Regeln beim Ausstieg nicht (nur das Band).
     // - habitlogs.ts und taskDone.ts (Zeitpunkt für den Liveticker) sind zusätzliche Felder, die Regeln oben lassen sie zu.
     // - Das private Ziel (goal, in %) liegt im Dokument players/{uid}/private/weights (Regel "private").
