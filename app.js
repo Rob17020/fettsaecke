@@ -1035,8 +1035,8 @@ function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
   if (me.hold) {
     const inb = me.latest >= g - CONFIG.holdBand - 1e-9;
-    return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))} %</b></div>
-      <p class="small t2">Bleib unter deinem Zielgewicht (mindestens −${tn(pct(g - CONFIG.holdBand))} %, also ${tn(pct(CONFIG.holdBand))} Prozentpunkt Puffer): jede Woche die vollen ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte. Darüber 0. Habits und Challenge laufen normal weiter, inklusive Strafe.</p>${exitBtn(me)}</div>`;
+    return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))}&nbsp;%</b></div>
+      <p class="small t2">Bleib unter deinem Zielgewicht (mindestens −${tn(pct(g - CONFIG.holdBand))}&nbsp;%, also ${tn(pct(CONFIG.holdBand))}&nbsp;Prozentpunkt Puffer): jede Woche die vollen ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte. Darüber 0. Habits und Challenge laufen normal weiter, inklusive Strafe.</p>${exitBtn(me)}</div>`;
   }
   return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
     <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div>${exitBtn(me)}</div>`;
@@ -1222,11 +1222,12 @@ function windowed(list, uid, max = 7) {
 // Vor dem eigenen Start: Countdown + leere Ringe, damit Heute nicht leer aussieht
 function preStartCard(me) {
   const st = slotStart(me.js), ms = st.getTime() - now().getTime();
-  const d = Math.max(0, Math.ceil(ms / DAY)), soon = ms <= 0;
+  const day0 = t => { const x = new Date(t); x.setHours(0, 0, 0, 0); return x; };
+  const d = Math.max(0, Math.round((day0(st) - day0(now())) / DAY)), soon = ms <= 0; // Kalendertage, nicht 24-Std-Blöcke
   const defs = [['var(--lime)', 'Habits', `0/${habitMax()}`], ['var(--cyan)', 'Challenge', `0/${CONFIG.challengePts}`], ['var(--pink)', 'Waage', `–/${CONFIG.weighMaxTenths * CONFIG.weighPerTenth}`]];
   const others = Object.values(S.players).length - 1;
   return `<section class="card status" data-k="weigh"><div class="hd"><h2>${soon ? 'Los geht\'s' : 'Countdown'}</h2><span class="aside">Start ${fmtD(st)}</span></div>
-    <div class="sthero"><div class="stleft"><div class="rankbig num">${soon ? 'Heute' : d}${soon ? '' : `<small class="unit">${d === 1 ? 'Tag' : 'Tage'}</small>`}</div>
+    <div class="sthero"><div class="stleft"><div class="rankbig num">${soon || d === 0 ? 'Heute' : d === 1 ? 'Morgen' : `${d}<small class="unit">Tage</small>`}</div>
       <p class="small t2">${soon ? 'Startgewicht eintragen, dann zählt alles.' : `bis zu deinem Startgewicht${others > 0 ? ` · ${others} ${others === 1 ? 'Mitspieler' : 'Mitspieler'} dabei` : ''}`}</p></div>
       ${ringSvg(defs.map(x => ({ p: 0, c: x[0] })), 96, 11, 3)}</div>
     <ul class="rlegend">${defs.map(([c, l, v]) => `<li style="--c:${c}"><b>${v.split('/')[0]}<small>/${v.split('/')[1]}</small></b>${l}</li>`).join('')}</ul>
@@ -1945,8 +1946,9 @@ function msCard(me) {
   const cats = [['g', 'Dein Ziel'], ['l', 'Abnahme (bester Wert)'], ['w', 'Wiegen ohne Verpassen'], ['s', 'Streak']];
   const prog = m => m.cat === 'g' ? (me.goal ? `bisher ${pct(Math.max(0, me.latest))} von ${pct(me.goal)} %` : 'noch kein Ziel') : m.cat === 'l' ? `bisher ${pct(Math.max(0, me.bestLoss))} %` : m.cat === 'w' ? `bisher ${me.weighRun}` : `Rekord ${wochen(me.streak.best)}`;
   const groups = cats.map(([c, t]) => `<div><h4>${t}</h4><div class="chips">${MILESTONES.filter(m => m.cat === c).map(m => { const got = me.ms.includes(m.id); return `<span class="msi${got ? ' got' : ''}" title="${esc(m.label + (got ? ': erreicht' : ': ' + prog(m)))}">${got ? svg('check') : ''}${m.short || m.label}</span>`; }).join('')}</div></div>`).join('');
+  const rest = r => tn(fmt1(Math.max(.1, Math.ceil(r * 10 - 1e-6) / 10))) + '&nbsp;%'; // aufrunden: nie "noch 0,0 %"
   const next = me.active ? ['g', 'l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
-    x.cat === 'g' ? (me.goal ? `${x.label} (noch ${fmt1(Math.max(0, me.goal - me.latest))} %)` : null) : x.cat === 'l' ? `${x.label} (noch ${fmt1(x.n - me.bestLoss)} %)` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${wochen(me.streak.best)})`) : [];
+    x.cat === 'g' ? (me.goal ? `${x.label} (noch ${rest(me.goal - me.latest)})` : null) : x.cat === 'l' ? `${x.label} (noch ${rest(x.n - me.bestLoss)})` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${wochen(me.streak.best)})`) : [];
   const nx = next.filter(Boolean);
   return `<section class="card msc" data-k="rank"><div class="hd"><h2>Meilensteine</h2><span class="aside"><b>${me.ms.length}</b>/${MILESTONES.length}</span></div><div class="msg">${groups}</div>
     ${nx.length ? `<p class="small muted">Als Nächstes: ${nx.join(' · ')}</p>` : ''}</section>`;
