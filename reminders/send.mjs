@@ -41,8 +41,14 @@ export function pick(list, seed) { let h = 2166136261; for (const c of seed) h =
 const andJoin = xs => xs.length <= 1 ? xs.join('') : xs.slice(0, -1).join(', ') + ' und ' + xs[xs.length - 1];
 const first = p => String(p.name || '').trim().split(/\s+/)[0] || 'du';
 
-// Montag: Wiegen. v = { name, k, dl, fee, done: [Namen, die schon gewogen haben] }
+// Montag: Wiegen. v = { name, k, dl, fee, done: [Namen, die schon gewogen haben], start, late }
 export function weighMsg(v, seed) {
+  // Startgewicht letzten Montag verpasst: die App verschiebt den Start beim Öffnen auf heute
+  if (v.late) return pick([
+    { title: `Neuer Start bis ${v.dl}`, body: `Letzten Montag hat's nicht geklappt, ${v.name}. Trag heute bis ${v.dl} dein Startgewicht ein, dann bist du dabei.` },
+    { title: 'Zweite Chance', body: `Startgewicht verpasst? Heute geht's neu los. App öffnen und bis ${v.dl} eintragen.` },
+    { title: 'Heute ist dein Start', body: `Nüchtern, nach dem Klo, gleiche Waage. Startgewicht bis ${v.dl}, dann zählt alles.` },
+  ], seed);
   if (v.start) return pick([
     { title: `Startgewicht bis ${v.dl}`, body: `Heute geht's los, ${v.name}. Trag bis ${v.dl} dein Startgewicht ein.` },
     { title: 'Tag 1. Ab auf die Waage', body: `Nüchtern, nach dem Klo, gleiche Waage. Startgewicht bis ${v.dl}.` },
@@ -59,13 +65,14 @@ export function weighMsg(v, seed) {
   ], seed);
 }
 
-// Abends: Habits. v = { name, open: ['Kochen 1/4', ...], left: Tage bis Sonntag inkl. morgen, fee, back }
+// Abends: Habits. v = { name, open: ['Kochen 1/4', ...], left: Tage bis Sonntag inkl. morgen, fee, back, dl }
+// Nachtragen geht bis zu back Tage, die Vorwoche aber nur bis Montag dl (Wiegeschluss, wie in app.js)
 export function habitsMsg(v, seed) {
   const list = v.open.join(', ');
   if (v.left === 0) return pick([
-    { title: 'Letzter Tag der Woche', body: `Noch offen: ${list}. Heute zählt, sonst ${v.fee}. Nachtragen geht noch ${v.back} Tage.` },
-    { title: 'Sonntag. Abrechnung.', body: `${list}. Was heute fehlt, kostet ${v.fee}, außer du trägst es bis Dienstag nach.` },
-    { title: 'Jetzt oder nie (oder bis Dienstag)', body: `${list} sind noch offen. Eine Woche ohne alle Ziele kostet ${v.fee}.` },
+    { title: 'Letzter Tag der Woche', body: `Noch offen: ${list}. Heute zählt, sonst ${v.fee}. Nachtragen geht nur noch bis morgen ${v.dl}.` },
+    { title: 'Sonntag. Abrechnung.', body: `${list}. Was heute fehlt, kostet ${v.fee}, außer du trägst es bis morgen ${v.dl} nach.` },
+    { title: `Jetzt oder nie (oder bis morgen ${v.dl})`, body: `${list} sind noch offen. Eine Woche ohne alle Ziele kostet ${v.fee}.` },
   ], seed);
   if (v.left <= 2) return pick([
     { title: 'Die Woche wird knapp', body: `Noch ${v.left === 1 ? 'morgen' : `${v.left} Tage`}: ${list}.` },
@@ -116,11 +123,14 @@ async function main() {
       const k = FORCE && !Number.isInteger(slot) ? Math.ceil(slot) : slot;
       if (k < js) continue;
       if ((p.pausedWeeks || []).includes(k)) continue;                     // Woche pausiert: kein Wiegen nötig
-      if (k > js && !(await exists(`weighins/${p.uid}_${js}`))) continue; // nie gestartet
+      // Startgewicht verpasst: die App verschiebt den Start beim nächsten Öffnen auf heute -> neue Start-Erinnerung
+      // (nicht am letzten Montag der Saison, da kann niemand mehr einsteigen)
+      const late = k > js && !(await exists(`weighins/${p.uid}_${js}`));
+      if (late && k >= SEASON.weeks) continue;
       if (await exists(`weighins/${p.uid}_${k}`)) continue;               // schon gewogen
       const dl = `${SEASON.deadlineHour}:00 Uhr`;
       const done = players.filter(x => x.uid !== p.uid && weighedNow.has(x.uid)).map(first);
-      out.push({ p, ...weighMsg({ start: k === js, name: first(p), k, dl, fee: eur(SEASON.strafe), done }, `${p.uid}|weigh|${t.date}`) });
+      out.push({ p, ...weighMsg({ start: k === js || late, late, name: first(p), k, dl, fee: eur(SEASON.strafe), done }, `${p.uid}|weigh|${t.date}`) });
     }
     if (KIND === 'habits') {
       if (t.day < 7 * js || !(await exists(`weighins/${p.uid}_${js}`))) continue; // noch nicht gestartet
@@ -133,7 +143,7 @@ async function main() {
       for (const s of logs) if (s.exists) { const x = s.data(); (x.done || []).slice(0, 3).forEach((v, i) => { if (v) cnt[i]++; }); if (x.day === t.day) today = x.done || []; }
       const open = H.map((h, i) => ({ h, i })).filter(({ h, i }) => h.name && cnt[i] < h.target && !today[i]);
       if (!open.length) continue;
-      out.push({ p, ...habitsMsg({ name: first(p), open: open.map(({ h, i }) => `${h.name} ${cnt[i]}/${h.target}`), left: d0 + 6 - t.day, fee: eur(SEASON.habitFee), back: SEASON.backfillDays }, `${p.uid}|habits|${t.date}`) });
+      out.push({ p, ...habitsMsg({ name: first(p), open: open.map(({ h, i }) => `${h.name} ${cnt[i]}/${h.target}`), left: d0 + 6 - t.day, fee: eur(SEASON.habitFee), back: SEASON.backfillDays, dl: `${SEASON.deadlineHour}:00 Uhr` }, `${p.uid}|habits|${t.date}`) });
     }
   }
 
