@@ -27,7 +27,7 @@ const CONFIG = {
   weighStartHour: 3,  // Wiegen montags ab 3:00 Uhr …
   deadlineHour: 14,   // … bis 14:00 Uhr
   chooseHours: 12,    // so lange darf NUR der Wochenletzte die Challenge wählen, danach jeder
-  backfillDays: 2,    // Habits bis zu 2 Tage nachtragen
+  backfillDays: 2,    // Habits bis zu 2 Tage nachtragen und bestätigen, Tage der Vorwoche aber nur bis Montag 14 Uhr (Wiegeschluss)
   weighPerTenth: 3,   // Waage-Punkte pro 0,1 % unter dem bisherigen Tiefstwert
   weighMaxTenths: 10, // max. 1 % pro Woche zählt (= 30 Punkte, ca. 60 % einer realistischen Woche)
   challengePts: 4,    // max. Punkte Wochen-Challenge (täglich: 1 pro Tag bis 4; 1×: 4; 2×: je 2)
@@ -138,7 +138,11 @@ const habitPts = (done, t) => Math.round(CONFIG.habitMaxPts * Math.min(done, t) 
 // Haken pro Woche; bei Habits mit Bestätigung zählen nur bestätigte Tage (H + uid nötig, sonst alle Haken)
 const tickCounts = (hl, w, H, uid) => { const c = [0, 0, 0, 0]; for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) for (let i = 0; i < 4; i++) if (hl[d][i] && (i === 3 || !H?.[i]?.confirm || isOk(uid, d, String(i)))) c[i]++; return c; };
 const extraCounts = (xl, w, X, uid) => X.map((h, i) => { let n = 0; for (let d = 7 * (w - 1); d < 7 * w; d++) if (xl[d]?.[i] && (!h.confirm || isOk(uid, d, 'x' + i))) n++; return n; });
-const weekFinal = w => 7 * w - 1 + CONFIG.backfillDays < dayIdx(); // letzter Tag der Woche kann nicht mehr nachgetragen werden
+// Woche w ist ab dem Wiegeschluss am Montag danach (14 Uhr) abgeschlossen: kein Nachtragen, kein Bestätigen mehr.
+// Damit stehen Wochenletzter, Habit-Strafe und Punkte ab da fest (auch Woche 24 mit dem Saisonende).
+const weekFinal = w => slotDeadline(w) <= now();
+// Tag d darf noch abgehakt bzw. bestätigt werden: höchstens backfillDays zurück und nur, solange seine Woche offen ist
+const dayOpen = d => d >= 0 && d < CONFIG.weeks * 7 && d <= dayIdx() && d >= dayIdx() - CONFIG.backfillDays && !weekFinal(weekOfDay(d));
 
 let TEAM = {}; // Etappe -> Stand des Team-Monats (wird in compute() gesetzt)
 function compute(S) {
@@ -1353,7 +1357,7 @@ function habitsCard(me, p, focus) {
   const minDay = 7 * (p.joinedSlot || 0);
   const wk = me.weeks[w];
   const ch = S.weekly[w];
-  const canEdit = d => d <= today && d >= today - CONFIG.backfillDays && d >= minDay && d < CONFIG.weeks * 7;
+  const canEdit = d => d >= minDay && dayOpen(d);
   const prevEditable = w === cur && w > minW && [1, 2, 3].some(i => canEdit(d0 - i));
   const H = habitsFor(p, w), cnt = tickCounts(me.hl, w, H, me.uid);
   // Fortschritt pro Habit: "2/4", grün wenn geschafft, orange wenn nicht mehr erreichbar
@@ -1394,16 +1398,22 @@ function habitsCard(me, p, focus) {
   let warn = '';
   if (me.active && CONFIG.habitFee && pwk && !pwk.met && !weekFinal(pw)) {
     const Hp = habitsFor(p, pw), miss = Hp.map((h, i) => pwk.cnt[i] < h.target ? `${esc(h.name)} ${pwk.cnt[i]}/${h.target}` : null).filter(Boolean);
-    warn = `<p class="small bad">Woche ${pw} nicht geschafft: ${miss.join(', ')}. Nachtragen geht bis ${fmtD(dayDate(7 * pw - 1 + CONFIG.backfillDays))}, sonst ${eur(CONFIG.habitFee)}.</p>`;
+    warn = `<p class="small bad">Woche ${pw} nicht geschafft: ${miss.join(', ')}. Nachtragen geht nur noch bis heute ${CONFIG.deadlineHour}:00 Uhr, sonst ${eur(CONFIG.habitFee)}.</p>`;
   }
+  // Hinweis auf den Schluss: Wochenende/Montagmorgen für die laufende bzw. Vorwoche, danach "abgeschlossen"
+  let lockNote = '';
+  if (w < cur) lockNote = weekFinal(w) ? `Woche ${w} ist abgeschlossen (seit ${fmtDT(slotDeadline(w))}), Haken lassen sich nicht mehr ändern.`
+    : `Woche ${w} nachtragen geht nur noch bis heute ${CONFIG.deadlineHour}:00 Uhr. Danach ist die Woche abgeschlossen.`;
+  else if (today - d0 >= 5 && !wk?.paused) lockNote = `Nachtragen für diese Woche geht nur bis ${fmtD(slotStart(w))} ${CONFIG.deadlineHour}:00 Uhr, dann ist sie abgeschlossen.`;
+  const lockP = lockNote && !warn ? `<p class="small muted">${lockNote}</p>` : '';
   let waitN = 0; for (const r of rows) if (r.need) for (let d = d0; d < d0 + 7; d++) if (r.on(d) && !isOk(me.uid, d, r.key)) waitN++;
   const waitP = waitN ? `<p class="small t2">${waitN === 1 ? '1 Haken wartet' : `${waitN} Haken warten`} auf Bestätigung aus der Gruppe (gestrichelt). Zählt erst danach.</p>` : '';
   return `<section class="card" data-k="habits"><div class="hd"><h2>Habits</h2>${score}</div>${streak}${hold}
-    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${waitP}${warn}
-    ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen</button>` : ''}</section>`;
+    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${waitP}${warn}${lockP}
+    ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen (bis ${CONFIG.deadlineHour}:00 Uhr)</button>` : ''}</section>`;
 }
-// Bestätigen: Haken anderer mit "Gruppe bestätigt" aus den letzten Tagen (so lange lassen es die Regeln zu)
-const OK_DAYS = 3;
+// Bestätigen: Haken anderer mit "Gruppe bestätigt" aus den letzten Tagen, wie beim Nachtragen (dayOpen: 2 Tage, Vorwoche bis Mo 14 Uhr)
+const OK_DAYS = CONFIG.backfillDays;
 function confirmCard(me) {
   if (!me.active || me.finished) return '';
   const today = dayIdx(), items = [];
@@ -1411,6 +1421,7 @@ function confirmCard(me) {
     if (o.uid === S.me || !o.active || o.finished) continue;
     const pl = S.players[o.uid];
     for (let d = Math.max(0, today - OK_DAYS); d <= today; d++) {
+      if (!dayOpen(d)) continue;
       const H = habitsFor(pl, weekOfDay(d));
       H.forEach((h, i) => { if (h.confirm && o.hl[d]?.[i]) items.push({ o, d, k: String(i), name: h.name }); });
       extrasOf(pl).forEach((h, i) => { if (h.confirm && o.xl[d]?.[i]) items.push({ o, d, k: 'x' + i, name: h.name }); });
@@ -2009,8 +2020,9 @@ function viewRegeln(compact) {
     `Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.`])}
   ${sec(`Habits (max. ${habitMax()} P./Woche)`, [
     `Jeder wählt <b>3 eigene</b>, jede mit einem <b>Wochenziel von 1× bis 7×</b>. Muss nicht Sport sein: „Kochen statt Lieferdienst“, „Keine Softdrinks“, „Vor 0 Uhr ins Bett“ oder „1× 10 km laufen“.`,
-    `Jedes Habit bringt bis zu <b>${CONFIG.habitMaxPts} Punkte</b> pro Woche, egal wie hoch das Ziel ist: Punkte = ${CONFIG.habitMaxPts} × geschafft ÷ Ziel (gerundet, mehr als das Ziel zählt nicht). Abgehakt wird pro Tag, bis zu ${CONFIG.backfillDays} Tage rückwirkend (auch in die Vorwoche).`,
-    `Eine Woche, in der nicht alle 3 Wochenziele geschafft sind, kostet <b>${eur(CONFIG.habitFee)}</b>, sobald sie nicht mehr nachgetragen werden kann. Die Challenge zählt dabei nicht mit.`,
+    `Jedes Habit bringt bis zu <b>${CONFIG.habitMaxPts} Punkte</b> pro Woche, egal wie hoch das Ziel ist: Punkte = ${CONFIG.habitMaxPts} × geschafft ÷ Ziel (gerundet, mehr als das Ziel zählt nicht). Abgehakt wird pro Tag, bis zu ${CONFIG.backfillDays} Tage rückwirkend. Die Vorwoche aber <b>nur bis Montag ${CONFIG.deadlineHour} Uhr</b>: Mit dem Wiegeschluss ist sie abgeschlossen.`,
+    `Habits mit „Gruppe bestätigt“ zählen erst, wenn jemand anderes den Haken bestätigt, ebenfalls bis zu ${CONFIG.backfillDays} Tage danach und für die Vorwoche nur bis Montag ${CONFIG.deadlineHour} Uhr.`,
+    `Eine Woche, in der nicht alle 3 Wochenziele geschafft sind, kostet <b>${eur(CONFIG.habitFee)}</b>, sobald sie abgeschlossen ist (Montag ${CONFIG.deadlineHour} Uhr). Die Challenge zählt dabei nicht mit.`,
     `Namen und Ziele ändern nur vor dem Start und in der 1. Woche jeder Etappe, die Änderung gilt ab dieser Etappe. <b>Zu leichte Habits darf die Gruppe per Veto ablehnen</b>, dann muss eine härtere her.`])}
   ${sec(`Wochen-Challenge (max. ${CONFIG.challengePts} P.)`, [
     `Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.`,
@@ -2209,6 +2221,7 @@ document.addEventListener('click', async ev => {
         toast(slot === js ? `Startgewicht gespeichert${extra?.maxLossPct ? `. Dein Ziel: −${pct(extra.maxLossPct)} %` : ''}.` : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
       case 'habit': {
+        if (!dayOpen(+el.dataset.day)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
         tapStart(el, `h${el.dataset.day}_${el.dataset.h}`);
         el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); // sofortiges Feedback
         const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
@@ -2219,6 +2232,7 @@ document.addEventListener('click', async ev => {
         break;
       }
       case 'habitx': { // Extra-Habit (ohne Punkte)
+        if (!dayOpen(+el.dataset.day)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
         tapStart(el, `x${el.dataset.day}_${el.dataset.x}`);
         el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on'));
         const d = +el.dataset.day, i = +el.dataset.x, X = extrasOf(S.players[S.me]);
@@ -2229,6 +2243,7 @@ document.addEventListener('click', async ev => {
         break;
       }
       case 'hok': { // Haken eines anderen bestätigen / zurücknehmen
+        if (!dayOpen(+el.dataset.d)) { render(); return toast('Dieser Tag kann nicht mehr bestätigt werden.'); }
         const on = el.dataset.on !== '0';
         el.disabled = true; await DB.confirmHabit(el.dataset.u, +el.dataset.d, el.dataset.k, on);
         if (on) toast(`Bestätigt. ${S.players[el.dataset.u]?.name || ''} bekommt den Haken.`); // toast() setzt textContent, kein esc()
