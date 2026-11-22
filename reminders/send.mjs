@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pathToFileURL } from 'node:url';
 
 // Muss zu CONFIG in app.js passen.
-const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, holdBand: 1, deadlineHour: 14, backfillDays: 2, strafe: 1, habitFee: 0.5 };
+const SEASON = { start: [2026, 11, 23], weeks: 24, etappeWeeks: 4, holdBand: 1, deadlineHour: 14, backfillDays: 2, strafe: 1.5, habitFee: 0.75 };
 const APP_URL = process.env.APP_URL || 'https://rob17020.github.io/fettsaecke/';
 const TZ = 'Europe/Berlin';
 

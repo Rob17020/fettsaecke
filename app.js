@@ -17,10 +17,10 @@ const CONFIG = {
   start: { y: 2026, m: 11, d: 23 }, // Montag, 23.11.2026 (muss ein Montag sein!)
   weeks: 24,          // Saisonlänge in Wochen (24 = ca. 6 Monate)
   etappeWeeks: 4,     // Wochen pro Etappe ("Monat")
-  einsatz: 5,         // € Einsatz pro Person (einmalig)
-  strafe: 1,          // € pro verpasstem Wiegen
-  habitFee: 0.5,      // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
-  loserFee: 0.5,      // € für den Letzten im Wochenranking
+  einsatz: 20,        // € Einsatz pro Person (einmalig)
+  strafe: 1.5,        // € pro verpasstem Wiegen
+  habitFee: 0.75,     // € pro Woche, in der nicht alle 3 Wochenziele erreicht sind (zählt, sobald die Woche nicht mehr nachgetragen werden kann)
+  loserFee: 0.75,     // € für den Letzten im Wochenranking
   habitMaxPts: 4,     // Punkte pro Gewohnheit und Woche, wenn ihr Wochenziel erreicht ist (anteilig darunter)
   pauseWeeks: 2,      // so viele Wochen darf jeder pro Saison pausieren (krank, Urlaub)
   holdBand: 1,        // Haltephase (Ziel erreicht): Woche zählt, wenn das Wiegen höchstens so viele Prozentpunkte vom Ziel abweicht
@@ -76,7 +76,7 @@ const WDL = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag
 const fmtD = d => `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
 const fmtLong = d => `${WDL[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
 const lossStr = x => (x > 0.049 ? '−' : x < -0.049 ? '+' : '±') + fmt1(Math.abs(x)) + ' %';
-// 5 € / 0,50 € / 2,50 €: Cent nur, wenn es welche gibt
+// 20 € / 0,75 € / 1,50 €: Cent nur, wenn es welche gibt
 const eur = x => { const c = Math.round(x * 100); return (c / 100).toLocaleString('de-DE', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace('-', '−') + '\u00a0€'; };
 const ptsStr = n => n === 1 ? '1 Punkt' : n + ' Punkte';
 const tn = s => String(s).replace(/[,.]/g, m => `<span class="pp">${m}</span>`);
