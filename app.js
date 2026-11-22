@@ -1261,7 +1261,8 @@ function statusCard(me) {
   if (pz.length) rank += `<p class="small muted">Pause: ${andJoin(pz)}</p>`;
   const kv = me.goal ? [] : [['Seit Start', tn(lossStr(me.latest))]];
   const gb = me.goal ? goalBar(me) : goalEditable(me, S.players[S.me]) ? `<p class="small t2 sep">Noch kein Ziel gesetzt. <button class="link" data-tab="ich">Ziel festlegen</button></p>` : '';
-  if (openSlot() === null) { const nk = Math.floor(Math.max(0, dayIdx()) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
+  // Montag vor 3 Uhr: das Wiegen ist heute, nicht nächste Woche
+  if (openSlot() === null) { const d0 = dayIdx(), nk = d0 % 7 === 0 && now() < slotOpen(d0 / 7) ? d0 / 7 : Math.floor(Math.max(0, d0) / 7) + 1; if (nk <= CONFIG.weeks) kv.push(['Nächstes Wiegen', fmtD(slotStart(nk))]); }
   const last = Math.max(...Object.keys(me.wb).map(Number));
   if (last > me.js && me.weeks[last]) kv.push(['Letztes Wiegen', `+${me.weeks[last].weigh} P. (Woche ${last})`]);
   if (me.missed) kv.push(['Wiegen verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
@@ -2230,7 +2231,7 @@ document.addEventListener('click', async ev => {
       case 'hok': { // Haken eines anderen bestätigen / zurücknehmen
         const on = el.dataset.on !== '0';
         el.disabled = true; await DB.confirmHabit(el.dataset.u, +el.dataset.d, el.dataset.k, on);
-        if (on) toast(`Bestätigt. ${esc(S.players[el.dataset.u]?.name || '')} bekommt den Haken.`);
+        if (on) toast(`Bestätigt. ${S.players[el.dataset.u]?.name || ''} bekommt den Haken.`); // toast() setzt textContent, kein esc()
         break;
       }
       case 'xAdd': { // weitere Zeile für ein Extra-Habit (ohne neu zu rendern, damit Eingaben bleiben)
