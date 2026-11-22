@@ -455,6 +455,19 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 
 /* ---------- Listen, Tabellen, Diagramm ---------- */
 .task{padding-top:12px;border-top:1px solid var(--line)}
+/* Erklärung oben in den Challenges-Karten */
+.card .intro{font-size:14px;color:var(--text-2)}
+.expl{container-type:inline-size}
+.expl summary{display:inline-flex;align-items:center;gap:8px;min-height:32px;cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:var(--k)}
+.expl summary::-webkit-details-marker{display:none}
+.expl summary::after{content:"";width:6px;height:6px;margin-top:-3px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .25s var(--spring)}
+.expl[open] summary::after{margin-top:3px;transform:rotate(-135deg)}
+.expl summary:focus-visible{outline:2px solid var(--lime);outline-offset:2px;border-radius:var(--r-sm)}
+.expl dl{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 16px;margin-top:4px;padding:12px;border-radius:var(--r-sm);background:var(--card-2);font-size:13px;line-height:1.45}
+.expl dt{color:var(--muted);font-weight:700}
+.expl dd{color:var(--text-2)}
+.expl dd+dt{margin-top:6px}
+@container (min-width:26rem){.expl dl{grid-template-columns:auto minmax(0,1fr);gap:8px 16px}.expl dd+dt{margin-top:0}}
 .task .tt{font-weight:800}
 .task .who{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
 .row.top{align-items:flex-start}

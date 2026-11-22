@@ -1696,6 +1696,34 @@ function viewKasse() {
 }
 
 /* ---------- CHALLENGES ---------- */
+// Erklärung oben in den Challenges-Karten: ein Satz immer sichtbar, Details aufklappbar (offen, bis man sie einmal zuklappt)
+const EXPL_KEY = 'cdf-expl-closed';
+function explClosed() { try { return JSON.parse(LS.getItem(EXPL_KEY)) || []; } catch { return []; } }
+function explain(key, intro, rows) {
+  const open = !explClosed().includes(key);
+  return `<p class="intro">${intro}</p><details class="expl" data-expl="${key}"${open ? ' open' : ''}><summary>So läuft's</summary><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></details>`;
+}
+document.addEventListener('toggle', ev => {
+  const d = ev.target; if (!d.matches?.('details[data-expl]')) return;
+  const s = new Set(explClosed()); d.open ? s.delete(d.dataset.expl) : s.add(d.dataset.expl);
+  LS.setItem(EXPL_KEY, JSON.stringify([...s]));
+}, true);
+const explTask = () => explain('task', 'Einmal-Aufgaben raus aus der Komfortzone: etwas Größeres, das du sonst nicht machen würdest. Jede gilt eine ganze Etappe lang.', [
+  ['Wer stellt sie?', 'Jeder stellt <b>1 Aufgabe pro Etappe</b>, z. B. „2× 5 km laufen“ oder „1 Stunde schwimmen“. Je mehr Leute, desto mehr Aufgaben.'],
+  ['Wer macht mit?', 'Jeder darf jede Aufgabe machen, auch die eigene. Jede zählt pro Person einmal.'],
+  ['Wie zählt es?', '„Hab ich geschafft“ drücken und den Beweis in die Gruppe schicken. Erst wenn <b>jemand anderes bestätigt</b>, gibt es die Punkte.'],
+  ['Punkte', `+${CONFIG.taskPts} pro geschaffter Aufgabe. Zählt in Etappe und Gesamt, nicht in der Woche.`],
+  ['Bis wann?', `Bis zum Ende der Etappe (Montag danach, ${CONFIG.deadlineHour} Uhr).`]]);
+const explTeam = () => explain('team', `Ein gemeinsames Ziel für die ganze Gruppe, eine Etappe lang (${CONFIG.etappeWeeks} Wochen). Alle zusammen oder keiner.`, [
+  ['Vorschlagen', 'Jeder schlägt <b>1 Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“ oder „3× Sport pro Woche“. Für die nächste Etappe geht das, sobald die aktuelle läuft.'],
+  ['Ziehung', `Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge gezogen</b> und hochgerechnet: Satz pro Person × alle Spieler × Wochen.`],
+  ['Mitmachen', `Auf Heute eintragen: eine Zahl (Menge) oder ein Haken (Anzahl), bis zu ${CONFIG.backfillDays} Tage rückwirkend. Alles landet in einem gemeinsamen Topf.`],
+  ['Punkte', `Sind am Ende <b>alle ${CONFIG.teamDraw} Ziele</b> erreicht: +${CONFIG.teamPts} für jeden mit Eintrag. Fehlt eins, bekommt niemand etwas. Zählt in Etappe und Gesamt, nicht in der Woche.`]]);
+const explWeekly = () => explain('weekly', 'Jede Woche eine kleine Aufgabe für alle, z. B. „Treppe statt Aufzug“. Abgehakt wird in der Challenge-Zeile unter deinen Habits auf Heute.', [
+  ['Wer wählt?', `Montag nach dem Wiegen der <b>Wochenletzte</b>, ${CONFIG.chooseHours} Std. lang. Danach jeder, wer zuerst kommt.`],
+  ['Wie oft?', `Täglich (1 P. pro Tag) oder 1× bzw. 2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} P.).`],
+  ['Punkte', `Max. ${CONFIG.challengePts} pro Woche, zählt in Woche, Etappe und Gesamt. Auslassen kostet nichts und bricht keine Streak.`],
+  ['Hier', 'Die Challenges dieser Etappe und wer wie viele Punkte geholt hat.']]);
 function viewChallenges() {
   const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
   if (UI.etView === null) UI.etView = ce;
@@ -1706,7 +1734,7 @@ function viewChallenges() {
   const nav = navBar('ev', e, 1, ce, `Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}`);
   // Ausgestiegene zählen nicht mehr mit (weder bei den Spielern noch bei den gestellten Aufgaben)
   const nAct = Object.values(C).filter(p => (p.active || p.uid === S.me) && !p.finished).length, nSet = tasks.filter(([, t]) => !C[t.createdBy]?.finished).length;
-  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>`;
+  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>${explTask()}`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
   for (const [id, t] of tasks) {
     const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
@@ -1733,13 +1761,13 @@ function viewChallenges() {
     const who = Object.values(C).filter(p => p.weeks[w]?.weekly).map(p => ({ p, v: p.weeks[w].weekly })).sort((a, b) => b.v - a.v);
     wl += `<div class="task"><div class="row top"><span class="wk">W${w}</span><div class="grow"><div class="tt">${esc(ch.text)}</div><div class="small muted">${chLabel(ch)} · von ${esc(ch.setByName)}</div>${who.length ? `<div class="who">${chips(who)}</div>` : ''}</div></div></div>`;
   }
-  const wc = `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenges</h2></div>${wl || '<p class="t2">Noch keine.</p>'}</section>`;
+  const wc = `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenges</h2><span class="aside">max. ${CONFIG.challengePts} P./Woche</span></div>${explWeekly()}${wl || '<p class="t2">Noch keine.</p>'}</section>`;
   // Spalten: 1 = untereinander · 2 = [Aufgaben] [Team + Challenges] · 3 = [Aufgaben] [Team] [Challenges]
   return `<div class="view">${nav}<div class="board chal">${pane('t', h)}<div class="grp gT">${pane('tm', teamSection(e, ce))}${pane('wc', wc)}</div></div></div>`;
 }
 function teamSection(e, ce) {
   const t = TEAM[e];
-  let h = `<section class="card" data-k="team"><div class="hd"><h2>Team-Monat</h2><span class="aside">+${CONFIG.teamPts} P. wenn alle Ziele klappen</span></div>`;
+  let h = `<section class="card" data-k="team"><div class="hd"><h2>Team-Monat</h2><span class="aside">+${CONFIG.teamPts} P. wenn alle Ziele klappen</span></div>${explTeam()}`;
   if (t) h += teamHead(t, false);
   else if (now() < drawTime(e)) h += ideasBlock(e);
   else h += `<p class="t2">In dieser Etappe gab es keinen Team-Monat (keine Vorschläge).</p>`;
