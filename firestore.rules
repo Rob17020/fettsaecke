@@ -16,7 +16,7 @@ service cloud.firestore {
     function HOUR()     { return 3600000; }
     function TESTMODE() { return false; }  // true = Zeitfenster aus (nur zum Testen)
     function INVITE()   { return 'CODE-NUR-IN-DER-KONSOLE'; }  // <- in der Konsole durch den echten Code ersetzen
-    function ADMINS()   { return []; }  // Firebase-uids der Admins, z. B. ['abc123'] (wie CONFIG.adminUids)
+    function ADMINS()   { return ['ek9a9u2DM1O3Q6Lemg4jDOhIfUW2']; }  // Firebase-uids der Admins, z. B. ['abc123'] (wie CONFIG.adminUids)
 
     function signedIn() { return request.auth != null; }
     function me()       { return request.auth.uid; }
