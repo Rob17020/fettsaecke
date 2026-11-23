@@ -128,6 +128,43 @@ console.log('\n4) Beitreten (Firebase-Mock): viele Felder, 3 Snapshots');
   await ctx.close();
 }
 
+console.log('\n5) Habit-Karte: Extra-Habit direkt anlegen, abhaken, bearbeiten, entfernen');
+{
+  const m5 = me({ extraHabits: [{ name: '10 Min lesen', target: 5 }] }); // mit Startgewicht, sonst verschiebt die App den Start
+  m5.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m5.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(2, 19), mine: m5 });
+  const grid = () => page.evaluate(() => [...document.querySelectorAll('[data-form=habits] .hrow.xr .hn')].map(x => x.textContent));
+  ok('Trenner „Extra, ohne Punkte“ mit Aktionen', await page.evaluate(() => /Extra, ohne Punkte/.test(document.querySelector('.hsep')?.textContent) && !!document.querySelector('.hsep [data-act=xOpen][data-new]')));
+  await clk(page, '.hsep [data-act=xOpen][data-new]'); await page.waitForTimeout(200);
+  ok('Editor offen, neue Zeile hat den Fokus', await page.evaluate(() => !!document.querySelector('[data-form=habits] .xedit') && document.activeElement?.closest('#hX .xrow:last-child') !== null));
+  await page.keyboard.type('Wohnung aufräumen');
+  await page.evaluate(() => { const s = document.querySelector('#hX .xrow:last-child select'); s.value = '2'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await storm(page); await blur(page); await storm(page);
+  ok('Entwurf im Editor überlebt 2× Neuzeichnen', await page.evaluate(() => document.querySelector('#hX .xrow:last-child input.inp')?.value === 'Wohnung aufräumen'));
+  await clk(page, '[data-act=xSave]'); await page.waitForTimeout(400);
+  ok('gespeichert: zweite Extra-Zeile im Raster', JSON.stringify(await grid()) === JSON.stringify(['10 Min lesen', 'Wohnung aufräumen']));
+  ok('Editor wieder zu', await page.evaluate(() => !document.querySelector('.xedit')));
+  await clk(page, '.hc[data-act=habitx][data-x="1"][data-day="2"]'); await page.waitForTimeout(300);
+  let st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('Haken auf Platz 1 (Tag 2)', st.habitlogs['demo-me_2']?.extra?.[1] === true && !st.habitlogs['demo-me_2']?.extra?.[0]);
+  ok('Zähler 1/2', await page.evaluate(() => [...document.querySelectorAll('.hrow.xr .hp')].map(x => x.textContent).join('|') === '0/5|1/2'));
+  // das erste Extra entfernen: der Haken von „Wohnung aufräumen“ bleibt bei ihm
+  await clk(page, '.hsep [data-act=xOpen]:not([data-new])'); await page.waitForTimeout(200);
+  await clk(page, '#hX .xrow:first-child [data-act=xDel]'); await clk(page, '[data-act=xSave]'); await page.waitForTimeout(400);
+  st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('entfernt: Platz 0 nur markiert', st.player.extraHabits[0].off === true && st.player.extraHabits[1].name === 'Wohnung aufräumen');
+  ok('Raster zeigt nur noch Wohnung aufräumen mit 1/2', JSON.stringify(await grid()) === JSON.stringify(['Wohnung aufräumen']) && await page.evaluate(() => document.querySelector('.hrow.xr .hp')?.textContent === '1/2'));
+  // Profil zeigt dieselbe Liste und speichert ohne Plätze zu verschieben
+  await clk(page, '[data-act=profile]'); await page.waitForTimeout(300);
+  ok('Profil zeigt nur aktive Extras', await page.evaluate(() => [...document.querySelectorAll('#pX .xrow input.inp')].map(i => i.value).join('|') === 'Wohnung aufräumen'));
+  await clk(page, '[data-act=saveProfile]'); await page.waitForTimeout(300);
+  st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('Profil speichern lässt die Plätze stehen', st.player.extraHabits.length === 2 && st.player.extraHabits[1].name === 'Wohnung aufräumen');
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await page.screenshot({ path: new URL('./shots/forms-habits-390.png', import.meta.url).pathname.replace(/%20/g, ' ') });
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${oks} ok, ${fails} FAIL`);
 process.exit(fails ? 1 : 0);

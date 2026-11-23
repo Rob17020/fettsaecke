@@ -132,7 +132,25 @@ function normHabits(hs) { return [0, 1, 2].map(i => normHabit(hs?.[i])); }
    Haken in habitlogs.extra[i]. confirm = zählt erst, wenn jemand anderes den Tag bestätigt (habitok/<uid>_<Tag>_<Schlüssel>,
    Schlüssel '0'–'2' für die Punkte-Habits, 'x0'… für Extras). */
 const EXTRA_MAX = 5;
-const extrasOf = p => (Array.isArray(p?.extraHabits) ? p.extraHabits : []).slice(0, EXTRA_MAX).map(normHabit).filter(h => h.name);
+/* Plätze sind fest: Haken liegen in habitlogs.extra[Platz], Bestätigungen unter 'x<Platz>'. Entfernen markiert den Platz nur
+   (off: true), sonst rutschten die Haken der folgenden Extras auf das falsche Habit. Ein neues Extra nimmt einen freien Platz
+   am Ende oder einen entfernten (dann mit from = Tag, ab dem es zählt; ältere Haken auf dem Platz gehören dem alten). */
+const extraSlots = p => (Array.isArray(p?.extraHabits) ? p.extraHabits : []).slice(0, EXTRA_MAX).map((h, i) => ({ ...normHabit(h), i, off: !!h?.off, from: Number.isInteger(h?.from) ? h.from : 0 }));
+const extrasOf = p => extraSlots(p).filter(h => h.name && !h.off);
+// Editor-Zeilen ({ name, target, confirm, slot }) in die gespeicherte Liste einarbeiten, ohne Plätze zu verschieben.
+// used(Platz) = es gibt schon Haken auf dem Platz (z. B. von früher entfernten Extras): dann zählt das neue erst ab heute.
+function mergeExtras(cur, rows, today, used = () => false) {
+  const out = (Array.isArray(cur) ? cur : []).slice(0, EXTRA_MAX).map(h => typeof h === 'string' ? { name: h, target: HABIT_DEFAULT_T, confirm: false } : { ...h });
+  const keep = new Set(rows.filter(r => Number.isInteger(r.slot)).map(r => r.slot));
+  out.forEach((h, i) => { if (!keep.has(i) && !h.off) out[i] = { ...h, off: true }; });
+  for (const r of rows) {
+    const h = { name: r.name, target: r.target, confirm: !!r.confirm };
+    if (Number.isInteger(r.slot) && out[r.slot] && !out[r.slot].off) { out[r.slot] = { ...out[r.slot], ...h }; continue; }
+    if (out.length < EXTRA_MAX) { out.push(used(out.length) ? { ...h, from: today } : h); continue; }
+    const j = out.findIndex(x => x.off); if (j >= 0) out[j] = { ...h, from: today };
+  }
+  return out;
+}
 const isOk = (uid, d, k) => !!S.habitok?.[`${uid}_${d}_${k}`];
 function habitsFor(p, w) { // gültige Habits für Woche w: Satz der Etappe (oder der letzte davor)
   const sets = p?.habitSets || {}, ks = Object.keys(sets).map(Number).filter(k => k > 0).sort((a, b) => a - b);
@@ -143,7 +161,7 @@ function habitsFor(p, w) { // gültige Habits für Woche w: Satz der Etappe (ode
 const habitPts = (done, t) => Math.round(CONFIG.habitMaxPts * Math.min(done, t) / t);
 // Haken pro Woche; bei Habits mit Bestätigung zählen nur bestätigte Tage (H + uid nötig, sonst alle Haken)
 const tickCounts = (hl, w, H, uid) => { const c = [0, 0, 0, 0]; for (let d = 7 * (w - 1); d < 7 * w; d++) if (hl[d]) for (let i = 0; i < 4; i++) if (hl[d][i] && (i === 3 || !H?.[i]?.confirm || isOk(uid, d, String(i)))) c[i]++; return c; };
-const extraCounts = (xl, w, X, uid) => X.map((h, i) => { let n = 0; for (let d = 7 * (w - 1); d < 7 * w; d++) if (xl[d]?.[i] && (!h.confirm || isOk(uid, d, 'x' + i))) n++; return n; });
+const extraCounts = (xl, w, X, uid) => X.map(h => { let n = 0; for (let d = Math.max(7 * (w - 1), h.from || 0); d < 7 * w; d++) if (xl[d]?.[h.i] && (!h.confirm || isOk(uid, d, 'x' + h.i))) n++; return n; });
 // Woche w ist ab dem Wiegeschluss am Montag danach (14 Uhr) abgeschlossen: kein Nachtragen, kein Bestätigen mehr.
 // Damit stehen Wochenletzter, Habit-Strafe und Punkte ab da fest (auch Woche 24 mit dem Saisonende).
 const weekFinal = w => slotDeadline(w) <= now();
@@ -808,7 +826,7 @@ function fdirty(el) {
 }
 function freset(el) { if (isBox(el)) el.checked = el.defaultChecked; else if (el.tagName === 'SELECT') { const di = [...el.options].findIndex(o => o.defaultSelected); el.selectedIndex = di < 0 ? 0 : di; } else el.value = el.defaultValue; }
 // Extra-Habit-Zeilen (ohne ids): die ganze Liste als ein Entwurf
-const xRows = xl => [...xl.querySelectorAll('.xrow')].map(r => ({ n: r.querySelector('input.inp').value, t: +r.querySelector('select').value || 3, c: !!r.querySelector('.hconf input')?.checked }));
+const xRows = xl => [...xl.querySelectorAll('.xrow')].map(r => ({ n: r.querySelector('input.inp').value, t: +r.querySelector('select').value || 3, c: !!r.querySelector('.hconf input')?.checked, s: r.dataset.slot !== undefined ? +r.dataset.slot : null }));
 const xKey = xl => 'xl:' + xl.dataset.xlist;
 function draftList(xl) { const cur = JSON.stringify(xRows(xl)); if (cur !== xl.dataset.def) UI.drafts[xKey(xl)] = cur; else delete UI.drafts[xKey(xl)]; }
 function draftCapture(el) {
@@ -829,7 +847,7 @@ function restoreDrafts(root) {
   for (const xl of root.querySelectorAll('[data-xlist]')) {
     const d = UI.drafts[xKey(xl)]; if (d === undefined || xl.contains(document.activeElement) || JSON.stringify(xRows(xl)) === d) continue;
     let rows; try { rows = JSON.parse(d); } catch { continue; }
-    xl.innerHTML = rows.slice(0, EXTRA_MAX).map(r => extraRow(xl.dataset.xlist, 0, { name: r.n, target: r.t, confirm: r.c })).join('');
+    xl.innerHTML = rows.slice(0, EXTRA_MAX).map(r => extraRow(xl.dataset.xlist, 0, { name: r.n, target: r.t, confirm: r.c, i: Number.isInteger(r.s) ? r.s : undefined })).join('');
     const add = root.querySelector(`[data-act=xAdd][data-pre="${xl.dataset.xlist}"]`); if (add) add.hidden = rows.length >= EXTRA_MAX;
   }
   for (const el of root.querySelectorAll(FIELD)) {
@@ -1163,14 +1181,16 @@ function habitInputs(pre, hs, dis) {
 }
 const readHabits = pre => [0, 1, 2].map(i => ({ name: val(pre + 'H' + i), target: clamp(parseInt(val(pre + 'T' + i), 10) || HABIT_DEFAULT_T, 1, 7), confirm: !!document.getElementById(pre + 'C' + i)?.checked }));
 // Extra-Habits (ohne Punkte): jederzeit änderbar, bis zu EXTRA_MAX
-const extraRow = (pre, i, h) => `<div class="hin xrow"><div class="row"><input class="inp grow" maxlength="40" placeholder="z. B. Wohnung aufräumen" value="${esc(h?.name || '')}" aria-label="Extra-Habit">
+const extraRow = (pre, i, h) => `<div class="hin xrow"${Number.isInteger(h?.i) ? ` data-slot="${h.i}"` : ''}><div class="row"><input class="inp grow" maxlength="40" placeholder="z. B. Wohnung aufräumen" value="${esc(h?.name || '')}" aria-label="Extra-Habit">
   ${targetSel('', h?.target ?? 3, false, 'Wochenziel Extra-Habit')}<button type="button" class="iconbtn" data-act="xDel" data-pre="${pre}" aria-label="Extra-Habit entfernen">${svg('close')}</button></div>${confirmToggle('', h?.confirm, false, 'Extra-Habit')}</div>`;
 function extraInputs(pre, xs) {
-  const def = JSON.stringify(xs.map(h => ({ n: h.name || '', t: h.target ?? 3, c: !!h.confirm })));
+  const def = JSON.stringify(xs.map(h => ({ n: h.name || '', t: h.target ?? 3, c: !!h.confirm, s: Number.isInteger(h.i) ? h.i : null })));
   return `<div class="stack" id="${pre}X" data-xlist="${pre}" data-def="${esc(def)}">${xs.map((h, i) => extraRow(pre, i, h)).join('')}</div>
     <button type="button" class="btn ghost sm" data-act="xAdd" data-pre="${pre}"${xs.length >= EXTRA_MAX ? ' hidden' : ''}>+ Extra-Habit</button>`;
 }
-const readExtras = pre => [...document.querySelectorAll(`#${pre}X .xrow`)].map(r => ({ name: r.querySelector('input.inp').value.trim().slice(0, 40), target: clamp(parseInt(r.querySelector('select').value, 10) || 3, 1, 7), confirm: !!r.querySelector('.hconf input')?.checked })).filter(h => h.name).slice(0, EXTRA_MAX);
+const readExtraRows = pre => [...document.querySelectorAll(`#${pre}X .xrow`)].map(r => ({ name: r.querySelector('input.inp').value.trim().slice(0, 40), target: clamp(parseInt(r.querySelector('select').value, 10) || 3, 1, 7), confirm: !!r.querySelector('.hconf input')?.checked, slot: r.dataset.slot !== undefined ? +r.dataset.slot : null })).filter(h => h.name).slice(0, EXTRA_MAX);
+const readExtras = pre => readExtraRows(pre).map(({ slot, ...h }) => h); // neue Liste (Anmeldung)
+const saveExtrasOf = (p, pre) => { const xl = C[S.me]?.xl || {}; return mergeExtras(p.extraHabits, readExtraRows(pre), Math.max(0, dayIdx()), j => Object.values(xl).some(a => a?.[j])); }; // bestehende Liste (Profil, Habit-Karte)
 
 /* ---------- Ringe (Apple-Watch-Stil), auch für das Ziel im Tab Ich ----------
    key (optional): merkt sich den letzten Wert je Ring. Ändert er sich, läuft der Ring vom alten zum neuen Stand
@@ -1498,14 +1518,19 @@ function habitsCard(me, p, focus) {
   const rows = H.map((h, hi) => ({ html: `<span class="hn">${esc(h.name)}${conf(h)}</span>${prog(hi, h.target)}`, plain: h.name, key: String(hi), on: d => !!me.hl[d]?.[hi], act: `data-act="habit" data-h="${hi}"`, fxk: hi, need: h.confirm }));
   if (ch) rows.push({ html: `<span class="hn"><b>Challenge:</b> ${esc(ch.text)}</span>`, plain: 'Challenge: ' + ch.text, ch: true, on: d => !!me.hl[d]?.[3], act: 'data-act="habit" data-h="3"', fxk: 3 });
   const X = extrasOf(p), xc = extraCounts(me.xl, w, X, me.uid);
-  X.forEach((h, xi) => rows.push({ x: xi === 0, html: `<span class="hn">${esc(h.name)}${conf(h)}</span><span class="hp${xc[xi] >= h.target ? ' ok' : ''}">${xc[xi]}/${h.target}</span>`, plain: h.name, key: 'x' + xi, on: d => !!me.xl[d]?.[xi], act: `data-act="habitx" data-x="${xi}"`, fxk: 'x' + xi, need: h.confirm }));
-  let g = `<div class="hgrid${focus ? ' focus' : ''}"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div>`;
+  X.forEach((h, xi) => rows.push({ html: `<span class="hn">${esc(h.name)}${conf(h)}</span><span class="hp${xc[xi] >= h.target ? ' ok' : ''}">${xc[xi]}/${h.target}</span>`, plain: h.name, key: 'x' + h.i, on: d => d >= h.from && !!me.xl[d]?.[h.i], act: `data-act="habitx" data-x="${h.i}"`, fxk: 'x' + h.i, need: h.confirm, from: h.from }));
+  const xEdit = UI.xEdit && !me.finished;
+  let g = `<div class="hgrid${focus && !xEdit ? ' focus' : ''}"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div>`;
+  // Trenner zu den Extras (ohne Punkte): immer da, mit Hinzufügen/Bearbeiten direkt in der Karte
+  const xActs = xEdit ? '' : `${X.length < EXTRA_MAX ? `<button class="link" data-act="xOpen" data-new="1">+ Extra-Habit</button>` : ''}${X.length ? `<button class="link" data-act="xOpen">Bearbeiten</button>` : ''}`;
+  const sep = `<div class="hsep"><span>Extra, ohne Punkte</span><span class="hsepa">${xActs}</span></div>`;
+  let sepDone = false;
   for (const r of rows) {
-    if (r.x) g += `<div class="hsep"><span>Extra · ohne Punkte</span></div>`;
+    if (r.key?.[0] === 'x' && !sepDone) { g += sep; sepDone = true; }
     g += `<div class="hrow${r.ch ? ' ch' : ''}${r.key?.[0] === 'x' ? ' xr' : ''}"><span class="hname" title="${esc(r.plain)}">${r.html}</span><div class="hcells">`;
     for (let i = 0; i < 7; i++) {
       const d = d0 + i, on = r.on(d), wait = on && r.need && !isOk(me.uid, d, r.key);
-      const edit = canEdit(d) && !wk?.paused, fx = tapFx(`${r.key?.[0] === 'x' ? 'x' : 'h'}${d}_${r.key?.[0] === 'x' ? r.key.slice(1) : r.fxk}`);
+      const edit = canEdit(d) && !wk?.paused && !(r.from && d < r.from), fx = tapFx(`${r.key?.[0] === 'x' ? 'x' : 'h'}${d}_${r.key?.[0] === 'x' ? r.key.slice(1) : r.fxk}`);
       const cls = ['hc', on && 'on', wait && 'wait', d === today && 'td', d > today || d < minDay ? 'off' : edit ? '' : 'lock'].filter(Boolean).join(' ') + fx.cls;
       // byName kommt von einem anderen Spieler (Regeln prüfen es nicht): escapen, steht in Attributen
       const who = on && r.need && !wait ? ` (bestätigt von ${esc(S.habitok[`${me.uid}_${d}_${r.key}`]?.byName || 'der Gruppe')})` : wait ? ' (wartet auf Bestätigung)' : '';
@@ -1513,7 +1538,11 @@ function habitsCard(me, p, focus) {
     }
     g += '</div></div>';
   }
+  if (!sepDone) g += sep;
   g += '</div>';
+  // Extras direkt hier anlegen, ändern, entfernen (wie im Profil)
+  const xForm = xEdit ? `<div class="xedit"><p class="small t2">Für alles, wobei die Gruppe Druck machen soll. Bringt keine Punkte und kostet nichts, auch nicht, wenn das Wochenziel fehlt. Das Wochenziel ist nur die Anzeige „2/3“.</p>
+    ${extraInputs('h', X)}<div class="row xbtns"><button class="btn ghost" data-act="xCancel">Abbrechen</button><button class="btn" data-act="xSave">Speichern</button></div></div>` : '';
   const st = me.streak;
   const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Habits laufen normal weiter, mit Punkten und Strafe.</p>` : '';
   const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span></p>` : '';
@@ -1534,8 +1563,8 @@ function habitsCard(me, p, focus) {
   const lockP = lockNote && !warn ? `<p class="small muted">${lockNote}</p>` : '';
   let waitN = 0; for (const r of rows) if (r.need) for (let d = d0; d < d0 + 7; d++) if (r.on(d) && !isOk(me.uid, d, r.key)) waitN++;
   const waitP = waitN ? `<p class="small t2">${waitN === 1 ? '1 Haken wartet' : `${waitN} Haken warten`} auf Bestätigung aus der Gruppe (gestrichelt). Zählt erst danach.</p>` : '';
-  return `<section class="card" data-k="habits"><div class="hd"><h2>Habits</h2>${score}</div>${streak}${hold}
-    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${waitP}${warn}${lockP}
+  return `<section class="card" data-k="habits" data-form="habits"><div class="hd"><h2>Habits</h2>${score}</div>${streak}${hold}
+    ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${xForm}${waitP}${warn}${lockP}
     ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen (bis ${CONFIG.deadlineHour}:00 Uhr)</button>` : ''}</section>`;
 }
 // Bestätigen: Haken anderer mit "Gruppe bestätigt" aus den letzten Tagen, wie beim Nachtragen (dayOpen: 2 Tage, Vorwoche bis Mo 14 Uhr)
@@ -1550,7 +1579,7 @@ function confirmCard(me) {
       if (!dayOpen(d)) continue;
       const H = habitsFor(pl, weekOfDay(d));
       H.forEach((h, i) => { if (h.confirm && o.hl[d]?.[i]) items.push({ o, d, k: String(i), name: h.name }); });
-      extrasOf(pl).forEach((h, i) => { if (h.confirm && o.xl[d]?.[i]) items.push({ o, d, k: 'x' + i, name: h.name }); });
+      extrasOf(pl).forEach(h => { if (h.confirm && d >= h.from && o.xl[d]?.[h.i]) items.push({ o, d, k: 'x' + h.i, name: h.name }); });
     }
   }
   if (!items.length) return '';
@@ -2411,9 +2440,10 @@ document.addEventListener('click', async ev => {
         if (!dayOpen(+el.dataset.day)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
         tapStart(el, `x${el.dataset.day}_${el.dataset.x}`);
         el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on'));
-        const d = +el.dataset.day, i = +el.dataset.x, X = extrasOf(S.players[S.me]);
+        const d = +el.dataset.day, i = +el.dataset.x, X = extraSlots(S.players[S.me]);
+        if (!X[i] || X[i].off || d < X[i].from) { render(); return; }
         const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean); while (cur.length < 3) cur.push(false);
-        const ex = X.map((_, j) => !!C[S.me].xl[d]?.[j]); ex[i] = !ex[i];
+        const ex = Array.from({ length: Math.min(EXTRA_MAX, Math.max(X.length, i + 1)) }, (_, j) => !!C[S.me].xl[d]?.[j]); ex[i] = !ex[i];
         await DB.setHabit(d, cur, ex);
         if (ex[i] && X[i]?.confirm) { toast('Wartet auf Bestätigung aus der Gruppe.'); DB.autoConfirm?.(d, 'x' + i); }
         break;
@@ -2433,6 +2463,20 @@ document.addEventListener('click', async ev => {
         if (n + 1 >= EXTRA_MAX) el.hidden = true;
         draftList(box);
         break;
+      }
+      case 'xOpen': { // Extras in der Habit-Karte bearbeiten (data-new: gleich eine leere Zeile dazu)
+        UI.xEdit = true; UI.force.add('habits'); render();
+        if (el.dataset.new) { const add = document.querySelector('#app [data-act=xAdd][data-pre=h]'); if (add && !add.hidden) add.click(); }
+        else document.querySelector('#hX .xrow input')?.focus({ preventScroll: true });
+        break;
+      }
+      case 'xCancel': { UI.xEdit = false; const box = document.getElementById('hX'); if (box) delete UI.drafts[xKey(box)]; UI.force.add('habits'); render(); break; }
+      case 'xSave': {
+        const p = S.players[S.me], rows = readExtraRows('h');
+        document.activeElement?.blur();
+        await DB.updatePlayer({ extraHabits: saveExtrasOf(p, 'h') });
+        UI.xEdit = false; UI.force.add('habits'); formSaved(form);
+        toast(rows.length ? 'Extra-Habits gespeichert.' : 'Extra-Habits entfernt.'); break;
       }
       case 'xDel': { const box = el.closest('[data-xlist]'); el.closest('.xrow')?.remove(); document.querySelector(`[data-act=xAdd][data-pre="${el.dataset.pre}"]`)?.removeAttribute('hidden'); if (box) draftList(box); break; }
       case 'hw': {
@@ -2539,7 +2583,7 @@ document.addEventListener('click', async ev => {
       case 'pushOff': await DB.disablePush(); renderModal(); break;
       case 'saveProfile': {
         const name = val('pName'); if (!name) return toast('Name fehlt.');
-        const p = S.players[S.me], js = p.joinedSlot || 0, d = { name, extraHabits: readExtras('p') };
+        const p = S.players[S.me], js = p.joinedSlot || 0, d = { name, extraHabits: saveExtrasOf(p, 'p') };
         if (habitsEditable(js)) {
           const hs = readHabits('p'); if (hs.some(h => !h.name)) return toast('3 Habits nötig.');
           // pro Etappe speichern, damit alte Wochen ihre alten Ziele behalten

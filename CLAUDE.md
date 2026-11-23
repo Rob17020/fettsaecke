@@ -104,6 +104,7 @@ Tabs: Heute · Ranking (Woche/Etappe/Gesamt/Kasse) · Challenges (Extra-Aufgaben
 
 ## Habits: Extras und Bestätigung (Nov 2026)
 - Anzeige heißt überall „Habits“ (früher Gewohnheiten).
-- Extra-Habits: eigene Zeilen im Raster unter „Extra · ohne Punkte“, keine Punkte, keine Strafe, keine Erinnerung.
+- Extra-Habits: eigene Zeilen im Raster unter dem Trenner „Extra, ohne Punkte“, keine Punkte, keine Strafe, keine Erinnerung. Anlegen/ändern/entfernen direkt in der Habit-Karte („+ Extra-Habit“, „Bearbeiten“ → Editor `#hX`, `UI.xEdit`) und weiter im Profil.
+- **Feste Plätze:** Haken liegen in `habitlogs.extra[Platz]`, Bestätigungen unter `x<Platz>`. Entfernen setzt nur `off: true` (Platz bleibt), neue Extras hängen hinten an oder nehmen einen entfernten Platz mit `from: <Tag>` (ältere Haken dort zählen nicht; auch wenn der neue Platz schon alte Haken hat). `extraSlots()` (alle, mit `i`, `off`, `from`), `extrasOf()` (aktive), `mergeExtras()` (Editor → Liste). Alte kompakte Listen gelten unverändert (Platz = Index).
 - „Gruppe bestätigt“: Haken erscheinen gestrichelt, bis jemand anderes in der Karte „Bestätigen“ (Heute, Pane b) bestätigt; `tickCounts(hl, w, H, uid)` / `extraCounts` zählen nur bestätigte Tage. Demo: Julian bestätigt nach 3 s (`DB.autoConfirm`), Siggi hat ein Extra mit Bestätigung.
 - Haltephase: volle Waage-Punkte, solange `lossPct >= Ziel − holdBand` (unter dem Zielgewicht, 1 Prozentpunkt Puffer); Habits bleiben Pflicht, kein Bonus. Karte „Ziel erreicht“ (`goalChoiceCard`) zeigt beide Wege, „Weitermachen“ blendet sie aus (`cdf-goalchoice-<uid>`).

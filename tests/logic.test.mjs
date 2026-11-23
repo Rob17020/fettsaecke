@@ -13,7 +13,7 @@ ${logic}
 let S = { habitok: {}, teamideas: {}, member: true, me: 'a' };
 export const setS = s => { S = s; };
 export const setNow = t => { NOW_OVERRIDE = t ? new Date(t).getTime() : null; };
-export { CONFIG, compute, fees, pot, rankWeek, rankTotal, rankEtappe, weekLosers, weekFinal, dayOpen, canExit, exitSlot, challengePoints, habitPts, teamMonth, seasonOver };
+export { CONFIG, compute, fees, pot, rankWeek, rankTotal, rankEtappe, weekLosers, weekFinal, dayOpen, canExit, exitSlot, challengePoints, habitPts, teamMonth, seasonOver, mergeExtras, extraSlots, extrasOf, extraCounts };
 `);
 const L = await import(pathToFileURL(gen).href);
 rmSync(gen);
@@ -231,6 +231,38 @@ console.log('\n14) Team-Monat');
   eq('Ziel 2 × 7 = 14', tm.items[0].target, 14);
   eq('Summe der Haken (a 10 + b 7)', tm.items[0].sum, 17);
   eq('Ziel erreicht', tm.items[0].reached, true);
+}
+
+console.log('\n15) Extra-Habits: feste Plätze (Entfernen verschiebt keine Haken)');
+{
+  const { mergeExtras, extraSlots, extrasOf, extraCounts } = L;
+  const A = { name: 'Lesen', target: 5 }, B = { name: 'Aufräumen', target: 3, confirm: true };
+  // altes Format (kompakt, ohne Plätze) bleibt gültig
+  eq('altes Format: Platz = Index', extrasOf({ extraHabits: [A, B] }).map(h => [h.name, h.i]), [['Lesen', 0], ['Aufräumen', 1]]);
+  eq('Text-Einträge (ganz alt) gehen weiter', extrasOf({ extraHabits: ['Lesen'] }).map(h => [h.name, h.target, h.i]), [['Lesen', 7, 0]]);
+  // Lesen entfernen: Aufräumen bleibt auf Platz 1
+  const m1 = mergeExtras([A, B], [{ name: 'Aufräumen', target: 3, confirm: true, slot: 1 }], 10);
+  eq('Entfernen markiert den Platz nur', m1.map(h => [h.name, !!h.off]), [['Lesen', true], ['Aufräumen', false]]);
+  eq('aktiv bleibt Aufräumen auf Platz 1', extrasOf({ extraHabits: m1 }).map(h => [h.name, h.i]), [['Aufräumen', 1]]);
+  // umbenennen + Ziel ändern bleibt auf dem Platz
+  const m2 = mergeExtras(m1, [{ name: 'Wohnung aufräumen', target: 2, confirm: true, slot: 1 }], 10);
+  eq('Umbenennen bleibt auf dem Platz', extrasOf({ extraHabits: m2 }).map(h => [h.name, h.target, h.i]), [['Wohnung aufräumen', 2, 1]]);
+  // neu: freier Platz am Ende, ohne alte Haken ohne from
+  const m3 = mergeExtras(m2, [{ name: 'Wohnung aufräumen', target: 2, confirm: true, slot: 1 }, { name: 'Meditieren', target: 4, confirm: false, slot: null }], 10);
+  eq('Neues Extra hängt hinten an (Platz 2, ohne from)', extraSlots({ extraHabits: m3 }).map(h => [h.name, h.i, h.off, h.from]), [['Lesen', 0, true, 0], ['Wohnung aufräumen', 1, false, 0], ['Meditieren', 2, false, 0]]);
+  eq('Platz mit alten Haken -> zählt ab heute', mergeExtras([A], [{ name: 'Lesen', target: 5, slot: 0 }, { name: 'Neu', target: 3, slot: null }], 12, j => j === 1)[1].from, 12);
+  // voll (5 Plätze, einer entfernt): neues Extra nimmt den entfernten Platz und zählt ab heute
+  const full = [A, { ...B, off: true }, { name: 'C', target: 1 }, { name: 'D', target: 1 }, { name: 'E', target: 1 }];
+  const m4 = mergeExtras(full, [0, 2, 3, 4].map(i => ({ ...full[i], slot: i })).concat([{ name: 'F', target: 2, slot: null }]), 20);
+  eq('voll: entfernter Platz wird wiederverwendet, ab Tag 20', [m4.length, m4[1].name, m4[1].from, !!m4[1].off], [5, 'F', 20, false]);
+  // Zählen nach Platz, ab from
+  const X = extrasOf({ extraHabits: m4 }), xl = { 7: [false, true, false, false, false], 21: [false, true, false, false, false], 22: [true, true, false, false, false] };
+  eq('Zählen nach Platz: F zählt nur ab Tag 20 (Woche 4: Tag 21, 22)', extraCounts(xl, 4, X, 'a'), [1, 2, 0, 0, 0]); // Plätze 0 (Lesen), 1 (F), 2–4
+  eq('Woche 2: Haken auf Platz 1 an Tag 7 gehören dem alten Habit', extraCounts(xl, 2, X, 'a')[X.findIndex(h => h.i === 1)], 0);
+  // Bestätigung: Schlüssel x<Platz>
+  setS({ habitok: { 'a_22_x1': { by: 'b' } }, teamideas: {}, member: true, me: 'a' });
+  const XB = extrasOf({ extraHabits: [A, { name: 'Bestätigt', target: 2, confirm: true }] }), xl2 = { 21: [false, true], 22: [false, true] };
+  eq('mit Bestätigung zählt nur der bestätigte Tag (x1)', extraCounts(xl2, 4, XB, 'a'), [0, 1]);
 }
 
 console.log(`\n${oks} ok, ${fails} FAIL`);
