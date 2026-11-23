@@ -7,7 +7,8 @@ Nur zum Entwickeln, nicht Teil der App (GitHub Pages liefert den Ordner zwar mit
 | `logic.test.mjs` | Punkte und Geld aus `app.js`: Waage, Habits mit Bestätigung, Haltephase, Pause, Spätstarter, Wochenletzter, Ausstieg, Streak/Joker, Team-Monat, Abschluss der Woche am Montag 14 Uhr | nur Node |
 | `rules.test.mjs` | `firestore.rules`: jeder Schreibweg der App, erlaubt und verboten, jeweils mit `TESTMODE()` false und true | Emulator (firebase-tools, Java) |
 | `reminders.test.mjs` | `reminders/send.mjs` mit gestellter Uhr: wer bekommt wann welche Erinnerung, Doppelschutz, Sommerzeit, Saisonende | Emulator, `reminders/node_modules` |
-| `forms.mjs` | Eingaben überleben das Neuzeichnen: Felder füllen, 3 Daten-Updates + Minuten-Takt, Werte/Fokus/Cursor prüfen, Daten drumherum laufen weiter, Entwurf nach dem Speichern weg | Playwright, lokaler Server |
+| `forms.mjs` | Abläufe im Browser. Eingaben überleben das Neuzeichnen: Felder füllen, 3 Daten-Updates + Minuten-Takt, Werte/Fokus/Cursor prüfen, Daten drumherum laufen weiter, Entwurf nach dem Speichern weg; Extra-Habits in der Habit-Karte; Extra-Aufgabe mit Foto (verkleinern, melden, prüfen, ablehnen, Galerie); Erklärungen (?-Knöpfe, Texte) | Playwright, lokaler Server |
+| `docs.mjs` | schreibt die Tabellen in `README.md` aus `CONFIG` (zwischen `<!-- CONFIG:… -->`) und macht die Screenshots für `docs/screenshots/` (Demo-Daten, neutrale Namen). `npm run docs -- --tables` nur Tabellen | Node; für Screenshots Playwright + lokaler Server |
 | `ui.mjs` (+ `fbmock.mjs`) | Screenshots aller Tabs, Zustände und Breiten, dazu automatische Prüfungen (Überlauf, Konsolenfehler, leere Spalten) | Playwright, lokaler Server |
 
 ## Einrichten (einmal)
@@ -30,7 +31,7 @@ npm run rules         # nur Regeln; ONLY=Ausstieg npm run rules für einzelne F�
 npm run reminders     # nur Erinnerungen
 ```
 
-Formulare: im Repo-Ordner `python3 -m http.server 8765` starten, dann `cd tests && npm run forms`.
+Formulare: im Repo-Ordner `python3 -m http.server 8765` starten, dann `cd tests && npm run forms`. README nach CONFIG-Änderungen: `npm run docs -- --tables` (mit Server ohne `--tables` auch neue Screenshots).
 
 Screenshots: im Repo-Ordner `python3 -m http.server 8765` starten, dann `cd tests && npm run ui -- heute-mid` (Filter = Teil des Dateinamens, ohne Filter rund 170 Bilder). Bilder und `report.json` landen in `tests/shots/`.
 

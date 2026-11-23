@@ -1,127 +1,153 @@
 # Club der Fettsäcke
 
-Abnehm-Wettbewerb unter Freunden: montags wiegen (in Prozent vom Startgewicht), 3 Habits mit eigenem Wochenziel abhaken, Wochen-Challenge, Extra-Aufgaben, Team-Monat, persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit/Urlaub, Kasse.
+Ein fairer Abnehm-Wettbewerb für eine kleine Gruppe: Alles zählt in Prozent vom eigenen Startgewicht, dazu Habits, Challenges und ein gemeinsamer Topf.
 
-- App: `index.html` + `style.css` + `app.js` (kein Build), läuft auf GitHub Pages: https://rob17020.github.io/fettsaecke/
-- Daten: Firebase (Spark-Plan, kostenlos): Google-Login + Firestore
-- Ohne Firebase-Config (`CONFIG.firebase = null`) oder mit `?demo` in der URL läuft ein Demo-Modus mit simulierten Mitspielern.
+<p>
+  <img src="docs/screenshots/heute-mobil.png" width="250" alt="Heute auf dem Handy: Wochenstand mit Ringen, Habit-Raster und Topf">
+  <img src="docs/screenshots/ranking-mobil.png" width="250" alt="Ranking auf dem Handy: Gesamtwertung mit Punkten pro Bereich">
+  <img src="docs/screenshots/foto-beweis-mobil.png" width="250" alt="Extra-Aufgabe mit Foto-Beweis, Bestätigen oder Ablehnen">
+</p>
 
-## Dateien
+![Heute auf dem Desktop: Liveticker, Wochenstand, Habits, Topf, Team-Monat](docs/screenshots/heute-desktop.png)
 
-| Datei | Zweck |
-|---|---|
-| `index.html` | Hülle: lädt `style.css` und `app.js` (Versionsnummer `?v=` nach Änderungen hochzählen) |
-| `style.css` | komplettes Design |
-| `app.js` | die App: `CONFIG`, Punkte-Logik, Firebase/Demo, Oberfläche |
-| `firestore.rules` | Sicherheitsregeln, in der Firebase-Konsole einfügen und veröffentlichen |
-| `manifest.json`, `icons/` | installierbare App (Zum Home-Bildschirm) |
-| `firebase-messaging-sw.js` | Service Worker für Push-Nachrichten |
-| `fonts/` | Schrift Schibsted Grotesk, lokal eingebunden (SIL Open Font License, `fonts/OFL.txt`) |
-| `reminders/send.mjs` | verschickt die Erinnerungen (läuft in GitHub Actions) |
-| `reminders/backup.mjs`, `restore.mjs`, `backup-format.mjs` | wöchentliches verschlüsseltes Backup und Wiederherstellen |
-| `.github/workflows/reminders.yml` | Zeitplan für Erinnerungen und Backup |
+Die Screenshots zeigen den Demo-Modus mit erfundenen Daten.
 
-## Einrichten der Erinnerungen (Push)
+**Live:** [rob17020.github.io/fettsaecke](https://rob17020.github.io/fettsaecke/). Anmelden geht mit Google, Beitreten nur mit dem Einladungscode aus der Gruppe. Ohne Code: [Demo-Modus](https://rob17020.github.io/fettsaecke/?demo) ausprobieren, die Daten bleiben im eigenen Browser.
 
-Funktioniert ohne kostenpflichtigen Blaze-Plan: Firebase Cloud Messaging ist kostenlos, der Zeitplan läuft über GitHub Actions.
+## Funktionen
 
-1. **Web-Push-Schlüssel erzeugen**
-   Firebase-Konsole → Projekteinstellungen → Cloud Messaging → *Web-Push-Zertifikate* → *Schlüsselpaar generieren*.
-   Den öffentlichen Schlüssel in `app.js` bei `CONFIG.vapidKey` eintragen. Solange das Feld leer ist, sagt die App beim Aktivieren, dass Erinnerungen noch nicht eingerichtet sind.
+- **Wiegen und Punkte:** montags wiegen, Punkte nur für neue Tiefstwerte, Deckel pro Woche gegen Crash-Diäten. Andere sehen nur Prozente.
+- **Habits:** 3 eigene mit Wochenziel (1–7×), auf Wunsch mit Bestätigung durch die Gruppe; dazu bis zu 5 Extra-Habits ohne Punkte.
+- **Wochen-Challenge:** der Wochenletzte wählt, alle machen mit.
+- **Extra-Aufgaben mit Foto-Beweis:** jeder stellt eine pro Etappe, gemeldet wird mit Foto, jemand anderes bestätigt oder lehnt ab.
+- **Team-Monat:** gezogene Gruppenziele, die nur alle zusammen schaffen.
+- **Streaks und Meilensteine,** persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit oder Urlaub.
+- **Kasse:** Einsatz, Strafen, Wochenletzter; der Gesamtsieger bekommt den Topf.
+- **Push-Erinnerungen:** montags ans Wiegen, abends an offene Habits.
+- **Erklärungen:** ein ?-Knopf neben allem, was nicht selbsterklärend ist; dieselben Texte im Regeln-Tab.
+- **Demo-Modus** mit simulierten Mitspielern und frei einstellbarer Zeit.
 
-2. **Regeln veröffentlichen**
-   Inhalt von `firestore.rules` in der Firebase-Konsole → Firestore → Regeln einfügen und veröffentlichen. Neu in dieser Version: Habits mit Wochenziel (`habits: [{name, target}]`, `habitSets`), festes Ziel `maxLossPct`, Pause (`pausedWeeks`), Ausstieg (`status`, `finishedWeek`, `finishedAt`), Einführung (`onboardingDone`). Ohne die neuen Regeln schlagen Beitreten, Pause und Ausstieg fehl.
+## So wird gezählt
 
-3. **Service-Account als GitHub-Secret**
-   Firebase-Konsole → Projekteinstellungen → Dienstkonten → *Neuen privaten Schlüssel generieren* (lädt eine JSON-Datei herunter).
-   GitHub → Repo `fettsaecke` → Settings → Secrets and variables → Actions → *New repository secret*:
-   Name `FIREBASE_SERVICE_ACCOUNT`, Wert = der komplette Inhalt der JSON-Datei.
-   **Die Datei niemals ins Repo legen** (`.gitignore` fängt die üblichen Dateinamen ab). Danach die heruntergeladene Datei löschen.
+Die Werte kommen aus `CONFIG` in [`app.js`](app.js) (Tabelle erzeugt mit `cd tests && npm run docs -- --tables`).
 
-4. **Testen**
-   GitHub → Actions → *Erinnerungen* → *Run workflow*: Art `test`, *Nur zählen* an → zeigt, wie viele Geräte registriert sind.
-   Dann noch einmal mit *Nur zählen* aus → jedes registrierte Gerät bekommt eine Testnachricht.
+<!-- CONFIG:scoring -->
+| Was | Punkte | So zählt es |
+| --- | --- | --- |
+| Waage (montags 3–14 Uhr) | 3 pro 0,1 % unter dem bisherigen Tiefstwert | höchstens 1 % = **30** pro Woche; zunehmen kostet nichts |
+| 3 Habits mit Wochenziel (1–7×) | bis **4** pro Habit, **12** pro Woche | anteilig: 4 × geschafft ÷ Ziel, gerundet; 2 Tage nachtragen |
+| Wochen-Challenge | bis **4** pro Woche | täglich 1 pro Tag, 1× = 4, 2× = je 2; der Wochenletzte wählt 12 Std. lang allein |
+| Extra-Aufgabe | **+10** | jeder stellt 1 pro Etappe; zählt mit Foto-Beweis und Bestätigung durch jemand anderen |
+| Team-Monat | **+5** pro Etappe | 3 gezogene Gruppenziele, nur wenn alle erreicht sind |
+| Haltephase (Ziel erreicht) | **30** Waage-Punkte pro Woche | solange höchstens 1 Prozentpunkt über dem Ziel, sonst 0 |
 
-5. **Auf dem Handy aktivieren**
-   In der App: Profil (Kreis oben rechts) → *Erinnerungen aktivieren* → Benachrichtigungen erlauben.
-   **iPhone:** Web-Push geht nur ab iOS 16.4 und nur aus der installierten App: In Safari *Teilen* → *Zum Home-Bildschirm*, dann die App vom Home-Bildschirm öffnen und dort aktivieren.
+| Geld | Betrag |
+| --- | --- |
+| Einsatz (einmalig) | 20 € |
+| Wiegen verpasst | 5 € |
+| Woche ohne alle 3 Wochenziele | 1 € |
+| Wochenletzter (nur wenn nicht alle gleich viele Punkte haben) | 0,50 € |
+| Aussteigen mit erreichtem Ziel | Einsatz zurück, frühere Strafen bleiben |
 
-### Was wann kommt
+Saison: 24 Wochen ab 23.11.2026, 6 Etappen à 4 Wochen, bis zu 2 Pausenwochen pro Person. Der Gesamtsieger bekommt den Topf.
+<!-- /CONFIG:scoring -->
 
-| Wann (Berlin) | Nachricht | An wen |
-|---|---|---|
-| Montag 8:00 | Wiegen bis 14 Uhr, mehrere Textvarianten (nennt, wer schon gewogen hat) | nur wer für diese Woche noch nicht gewogen hat; wer sein Startgewicht verpasst hat, bekommt eine neue Start-Erinnerung |
-| täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, Text wechselt täglich und wird zum Sonntag dringlicher (sonntags: nachtragen nur bis Montag 14 Uhr) | nur wer ein Wochenziel noch nicht erreicht und diese Habit heute noch nicht abgehakt hat |
+Alle Regeln mit Beispielen stehen in der App unter **Regeln**.
 
-Keine Erinnerungen in pausierten Wochen und nach dem Ausstieg. In der Haltephase gibt es weiter beide Erinnerungen.
+## Technik
 
-GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- und Winterzeit). Das Skript prüft die Uhrzeit in Berlin und merkt sich in `reminderRuns/{art}_{datum}`, dass schon verschickt wurde. Geräte, die sich abgemeldet haben, werden automatisch aus `players/{uid}/private/tokens` entfernt.
+- **Drei Dateien, kein Build:** [`index.html`](index.html) (Hülle), [`style.css`](style.css), [`app.js`](app.js) (ES-Modul). Keine Bibliotheken außer dem Firebase-SDK per CDN.
+- **Firebase (Spark-Plan, kostenlos):** Google-Anmeldung, Firestore (Region europe-west3), Cloud Messaging für Push. Schutz über [`firestore.rules`](firestore.rules).
+- **GitHub Pages** liefert die App aus.
+- **GitHub Actions** ([`reminders.yml`](.github/workflows/reminders.yml)): Erinnerungen per Zeitplan ([`reminders/send.mjs`](reminders/send.mjs)) und ein wöchentliches, verschlüsseltes Backup ([`reminders/backup.mjs`](reminders/backup.mjs)).
+- **PWA:** installierbar (Zum Home-Bildschirm), Service Worker für Push.
+- **Fotos** für Extra-Aufgaben werden im Browser verkleinert (max. 1080 px, unter 200 KB) und als Text in Firestore gespeichert, ohne Firebase Storage.
 
-### Bekannte Grenzen
+## Lokal starten und Demo-Modus
 
-- **GitHub-Cron kann sich verspäten**, meist um Minuten, bei hoher Last auch mal länger. Das Skript akzeptiert deshalb Montag 8–14 Uhr bzw. 21–23 Uhr.
-- **Öffentliche Repos:** GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im Repo passiert. Dann unter Actions → *Erinnerungen* → *Enable workflow* wieder einschalten (oder zwischendurch etwas committen).
-- Die Logs der Actions sind bei öffentlichen Repos öffentlich. Das Skript loggt deshalb nur Zahlen, keine Namen oder Tokens.
+ES-Module laden nicht über `file://`, deshalb mit einem kleinen Server:
 
-## Backup (wöchentlich) und Wiederherstellen
-
-Jede Nacht von Sonntag auf Montag (23:30 bzw. 0:30 Uhr Berlin) sichert der Workflow *Erinnerungen* alle Firestore-Sammlungen samt Unter-Sammlungen (auch `players/{uid}/private` mit den kg-Werten und Push-Geräten) in **eine** Datei und legt sie als Artefakt ab. Artefakte werden nach 90 Tagen automatisch gelöscht.
-
-**Wichtig:** Das Repo ist öffentlich, und Artefakte öffentlicher Repos kann jeder angemeldete GitHub-Nutzer herunterladen. Deshalb wird die Datei vorher verschlüsselt (AES-256-GCM, Schlüssel aus einer Passphrase). Ohne Passphrase bricht der Job ab, statt unverschlüsselt hochzuladen. Backups **nie committen** (`.gitignore` fängt `backup/` und `*.fsbak` ab).
-
-### Einrichten (einmal)
-
-1. Lange, zufällige Passphrase erzeugen, z. B. `openssl rand -base64 32`, und sicher aufheben (Passwort-Manager). Ohne sie ist kein Backup lesbar.
-2. GitHub → Repo → Settings → Secrets and variables → Actions → *New repository secret*: Name `BACKUP_PASSPHRASE`, Wert = die Passphrase.
-3. Testen: Actions → *Erinnerungen* → *Run workflow* → Art `backup`. Danach steht im Lauf unten unter *Artifacts* `firestore-backup-JJJJ-MM-TT`.
-
-Der Service-Account (`FIREBASE_SERVICE_ACCOUNT`) ist derselbe wie für die Erinnerungen. Ein Backup liest jedes Dokument einmal (Ende der Saison bei 20 Spielern grob 5.000 bis 10.000 Lesevorgänge), das passt ins kostenlose Tageslimit.
-
-### Wiederherstellen
-
-Das Skript schreibt nur in eine **leere** Datenbank (sonst Abbruch, `--force` überschreibt gleiche Pfade trotzdem).
-
-```
-cd reminders
-npm install
-# Artefakt herunterladen und entpacken, dann:
-export BACKUP_PASSPHRASE='…'
-node restore.mjs firestore-2027-01-17.fsbak --dry-run                     # nur lesen und zählen
-node restore.mjs firestore-2027-01-17.fsbak --key=service-account.json --dry-run   # zusätzlich Ziel prüfen (leer?)
-node restore.mjs firestore-2027-01-17.fsbak --key=service-account.json    # zurückspielen
-```
-
-Ziel ist das Projekt des Service-Accounts (`--key=…` oder `FIREBASE_SERVICE_ACCOUNT`). Für eine neue Datenbank: neues Firebase-Projekt anlegen, Firestore aktivieren, Regeln veröffentlichen, Service-Account-Schlüssel erzeugen, zurückspielen, `CONFIG.firebase` in `app.js` und `firebase-messaging-sw.js` anpassen. Den Schlüssel danach löschen.
-
-Ein Backup von Hand geht auch lokal: `node backup.mjs --key=service-account.json --out=backup` (mit `BACKUP_PASSPHRASE`). Mit dem Firestore-Emulator (`FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`) laufen beide Skripte ohne Schlüssel, gut zum Ausprobieren.
-
-## Lokal ausprobieren
-
-ES-Module laden nicht per `file://`, deshalb über einen kleinen Server:
-
-```
+```sh
 python3 -m http.server 8000
 ```
 
-Dann `http://localhost:8000/index.html?demo` öffnen. Nützliche Zusätze:
+Dann <http://localhost:8000/index.html?demo> öffnen. `?demo` erzwingt den Demo-Modus auch mit Firebase-Config (oder `CONFIG.firebase = null` setzen). Nützlich:
 
-- `?demo&bots=18`: 20 Spieler, um zu sehen, wie Ranking und Diagramme mit vielen Leuten aussehen
-- `&now=2027-01-18T09:00`: Zeit setzen (z. B. Montag im Wiegefenster), `&now=2027-05-10T14:00` zeigt den Saisonrückblick
-- `#ich`, `#ranking`, `#verlauf`: direkt einen Tab öffnen
+| Parameter | Wirkung |
+| --- | --- |
+| `?demo&now=2027-01-18T09:00` | Zeit setzen, z. B. Montag im Wiegefenster |
+| `?demo&bots=18` | bis zu 20 simulierte Spieler |
+| `#ranking`, `#challenges`, `#ich`, `#regeln` | direkt einen Tab öffnen |
 
-Automatische Tests (Punkte-Logik, Firestore-Regeln im Emulator, Erinnerungen, Screenshots) liegen in `tests/`, siehe `tests/README.md`.
+Im Demo-Banner lässt sich die Zeit auch per Knopf verschieben. Tests (Punkte-Logik, Firestore-Regeln im Emulator, Erinnerungen, Formulare, Screenshots) stehen in [`tests/README.md`](tests/README.md).
 
-Das Layout passt sich ohne feste Breakpoints an: Jeder Tab ist ein Raster mit 1–4 Spalten je nach Fensterbreite, auf dem Desktop scrollt jede Spalte für sich. Zum Prüfen das Fenster von schmal (320 px) bis sehr breit ziehen, auch mit wenig Höhe.
+## Eigene Instanz einrichten
 
-## Vor dem Saisonstart
+Kurzfassung. Ausführlich mit allen Klicks: [docs/SETUP.md](docs/SETUP.md).
 
-- `CONFIG.testMode` in `app.js` und `TESTMODE()` in `firestore.rules` stehen auf `false` (für Tests auf `true`, nie so committen)
-- Regeln veröffentlichen und dabei in der Konsole den Platzhalter in `INVITE()` durch den echten Einladungscode ersetzen (nie ins Repo)
-- Test-Sammlungen in Firestore löschen (inkl. `teamideas`, `teamlogs`, `reminderRuns`, alte `teamgoals`). Wer schon als Tester angemeldet war, meldet sich danach neu an (dann mit Ziel in % und Wochenzielen).
-- `START_MS` (Regeln), `CONFIG.start` (`app.js`) und `SEASON.start` (`reminders/send.mjs`) müssen zusammenpassen, ebenso die festen Zahlen in den Regeln (24 Wochen, 4 Wochen pro Etappe, 2 Pausenwochen, Ziel-Band 1 Prozentpunkt) und `SEASON` im Erinnerungs-Skript (Strafen, `holdBand`)
-- GitHub-Secret `BACKUP_PASSPHRASE` anlegen und das Backup einmal per Hand starten (siehe oben)
+1. **Firebase-Projekt** anlegen (Spark-Plan reicht).
+2. **Web-App** im Projekt registrieren und die Config in `CONFIG.firebase` in `app.js` **und** in `firebase-messaging-sw.js` eintragen.
+3. **Authentication:** Anbieter Google aktivieren.
+4. **Firestore** anlegen (z. B. europe-west3) und [`firestore.rules`](firestore.rules) in der Konsole veröffentlichen. Dabei den Platzhalter in `INVITE()` durch euren Einladungscode ersetzen (nur in der Konsole, nie ins Repo) und eure uids in `ADMINS()` eintragen (dieselben wie `CONFIG.adminUids`).
+5. **Cloud Messaging:** Web-Push-Schlüsselpaar erzeugen und den öffentlichen Schlüssel in `CONFIG.vapidKey` eintragen.
+6. **Service-Account-Schlüssel** erzeugen und als GitHub-Secret `FIREBASE_SERVICE_ACCOUNT` ablegen, dazu ein Secret `BACKUP_PASSPHRASE`. Die JSON-Datei danach löschen.
+7. **GitHub Pages** für den Branch `main` (Ordner `/`) einschalten.
+8. **Autorisierte Domain:** in Authentication → Einstellungen die Pages-Domain (z. B. `name.github.io`) eintragen.
+9. Saisonstart anpassen: `CONFIG.start`, `START_MS` in den Regeln und `SEASON` in `reminders/send.mjs` müssen zusammenpassen.
 
+## Konfiguration
 
-> **Update Nov 2026:** Die Regeln haben eine neue Sammlung `habitok` (Habits bestätigen) und Felder `extraHabits`/`extra`. Nach dem Einspielen `firestore.rules` neu in der Konsole veröffentlichen (Einladungscode dort wieder eintragen).
->
-> **Update 22.11.2026 (Prüfung):** `firestore.rules` geschärft (Einstieg nur zum nächsten Montag, Vorwoche nur bis Montag 14 Uhr abhaken/bestätigen, Bestätigen 2 Tage, Ausstieg nur mit aktuellem Wiegen, Challenges/Aufgaben nur in ihrer Woche/Etappe, `byName` geprüft). Wieder komplett in die Konsole kopieren, dort `INVITE()` durch den echten Code und `TESTMODE()` nach Bedarf setzen, dann veröffentlichen.
+Alles steht oben in [`app.js`](app.js) unter `CONFIG`. Die wichtigsten Schlüssel mit den aktuellen Werten:
+
+<!-- CONFIG:config -->
+| Schlüssel | Wert | Bedeutung |
+| --- | --- | --- |
+| `firebase` | `{…}` | Web-App-Config aus der Firebase-Konsole; `null` = Demo-Modus. Steht auch in `firebase-messaging-sw.js`. |
+| `testMode` | `false` | Zeit per `?now=` simulierbar. **In der Saison `false`.** |
+| `start` | `2026-11-23` | Erster Montag der Saison (muss zu `START_MS` in den Regeln passen) |
+| `weeks / etappeWeeks` | `24 / 4` | Saisonlänge und Wochen pro Etappe |
+| `weighStartHour / deadlineHour` | `3 / 14` | Wiegefenster am Montag (Uhr) |
+| `weighPerTenth / weighMaxTenths` | `3 / 10` | Waage-Punkte pro 0,1 % und Deckel in Zehntelprozent |
+| `habitMaxPts` | `4` | Punkte pro Habit und Woche |
+| `challengePts / taskPts / teamPts` | `4 / 10 / 5` | Wochen-Challenge, Extra-Aufgabe, Team-Monat |
+| `einsatz / strafe / habitFee / loserFee` | `20 / 5 / 1 / 0.5` | Geld in Euro (Strafen auch in `reminders/send.mjs`) |
+| `pauseWeeks / holdBand` | `2 / 1` | Pausenwochen pro Saison, Puffer der Haltephase in Prozentpunkten |
+| `backfillDays / chooseHours` | `2 / 12` | Tage zum Nachtragen, Stunden für den Wochenletzten |
+| `vapidKey` | (gesetzt) | Web-Push-Schlüssel; leer = Erinnerungen aus |
+| `adminUids / lateMaxDays` | `[] / 7` | Admins (Nachtrag erlauben, wie `ADMINS()` in den Regeln) und längste Nachtrag-Frist in Tagen |
+<!-- /CONFIG:config -->
+
+Feste Zahlen in [`firestore.rules`](firestore.rules) (Wochen, Etappen, Zeitfenster, Pausen, Ziel-Band) und `SEASON` in [`reminders/send.mjs`](reminders/send.mjs) müssen dazu passen. Nach Änderungen an `app.js` oder `style.css` die Versionsnummer `?v=` in `index.html` hochzählen, GitHub Pages cacht 10 Minuten.
+
+## Projektstruktur
+
+```text
+index.html                  Hülle, lädt style.css und app.js (?v= hochzählen)
+style.css                   komplettes Design
+app.js                      CONFIG, Punkte-Logik, Firebase/Demo-Datenschicht, Oberfläche
+firestore.rules             Sicherheitsregeln (in der Firebase-Konsole veröffentlichen)
+firebase-messaging-sw.js    Service Worker für Push (enthält ebenfalls die Firebase-Config)
+manifest.json, icons/       installierbare App
+fonts/                      Schibsted Grotesk, lokal eingebunden (OFL)
+reminders/                  Erinnerungen, Backup und Wiederherstellen (Node, firebase-admin)
+.github/workflows/          Zeitplan für Erinnerungen und Backup
+tests/                      Logik-, Regel-, Erinnerungs-, Formular- und Screenshot-Tests, README-Tabellen
+docs/                       ausführliche Einrichtung, Screenshots für diese Seite
+```
+
+## Wartung
+
+- **Testmodus aus:** `CONFIG.testMode` in `app.js` und `TESTMODE()` in den Regeln müssen in der Saison `false` sein, sonst lässt sich die Zeit verstellen und die Zeitfenster gelten nicht.
+- **Zeitpläne schlafen ein:** GitHub schaltet geplante Workflows in öffentlichen Repos ab, wenn 60 Tage lang kein Commit kam. Dann unter Actions → *Erinnerungen* → *Enable workflow* wieder einschalten, oder vorher etwas committen.
+- **Backups** laufen jede Woche (Sonntagnacht) und liegen 90 Tage als verschlüsseltes Artefakt im Workflow-Lauf. Zurückspielen mit [`reminders/restore.mjs`](reminders/restore.mjs), nur in eine leere Datenbank (`--dry-run` zum Prüfen). Anleitung: [docs/SETUP.md](docs/SETUP.md#backup-und-wiederherstellen).
+- **Regeln geändert?** Die ganze Datei neu in der Konsole veröffentlichen und dort Einladungscode und Admin-uids wieder eintragen.
+
+## Datenschutz
+
+- Gewichte in kg liegen in `players/{uid}/private/weights` und sind nur für die Person selbst lesbar. Alle anderen sehen nur Prozente vom Startgewicht, auch beim Ziel.
+- Beweisfotos für Extra-Aufgaben sehen alle Mitglieder der Gruppe. Beim Verkleinern fallen Metadaten wie der Aufnahmeort weg.
+- Die Logs der Erinnerungen enthalten nur Zahlen, keine Namen. Backups werden vor dem Hochladen verschlüsselt, weil Artefakte öffentlicher Repos für alle angemeldeten GitHub-Nutzer abrufbar sind.
+
+## Lizenz
+
+Der Code steht unter der [MIT-Lizenz](LICENSE). Die Schrift Schibsted Grotesk in `fonts/` steht unter der [SIL Open Font License 1.1](fonts/OFL.txt).

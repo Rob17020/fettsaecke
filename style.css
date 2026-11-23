@@ -366,7 +366,7 @@ code.uid{font:500 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var
 .streak{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:13px;color:var(--text-2)}
 .streak .ico{width:16px;height:16px;color:var(--lime)}
 .streak b{color:var(--text);font-weight:800}
-.streak .m:not(:last-child)::after{content:" ·";color:var(--muted)}
+.streak .m:not(:last-of-type)::after{content:" ·";color:var(--muted)}
 /* Team-Monat */
 .tmi .tt{font-weight:800}
 .tmi .bar{margin-top:8px}

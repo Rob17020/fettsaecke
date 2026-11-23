@@ -12,3 +12,4 @@ firestore-*.json
 tests/shots/
 firestore-debug.log
 tests/.logic.gen.mjs
+tests/.docs.gen.mjs
