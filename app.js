@@ -700,7 +700,7 @@ async function makeFirebaseDB(cfg, emit) {
    UI
    ===================================================================== */
 let S = emptyState(), C = {}, DB = null, CHARTS = {};
-const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: null, tmDay: null, obStep: 0, obDone: false };
+const UI = { tab: 'heute', rankMode: 'gesamt', rankWeek: null, rankEtappe: null, etView: null, habitWeek: null, chartTable: false, kgTable: false, modal: null, feedN: null, tmDay: null, obStep: 0, obDone: false, drafts: {}, force: new Set() };
 // Desktop: Seitenleiste, "Ich" und "Verlauf" sind ein Tab
 const DESK = matchMedia('(min-width:1025px)');
 const isDesk = () => DESK.matches;
@@ -787,10 +787,107 @@ function checkWrapped() { // Saisonrückblick einmal automatisch öffnen, danach
   LS.setItem(k, '1'); UI.modal = 'wrapped';
 }
 
+/* ---------- Formulare: Eingaben überleben das Neuzeichnen ----------
+   render() baut #app bei jedem Daten-Update (Firestore-Snapshot, 60-s-Takt) neu. Damit halb ausgefüllte Felder nicht verschwinden:
+   1. Jede Eingabe landet in UI.drafts (Schlüssel = data-draft oder id). Gelöscht wird ein Entwurf erst nach erfolgreichem
+      Speichern (formSaved) oder wenn das Feld wieder seinen Ausgangswert hat.
+   2. Karten mit data-form, in denen gerade etwas eingegeben wird (Fokus in einem Feld oder geänderter Wert), bleiben beim
+      Neuzeichnen als Knoten stehen; nur die Knoten drumherum werden ersetzt (morph). So bleiben Fokus, Cursor und Tastatur.
+      UI.force (Schlüssel) zeichnet eine Karte trotzdem neu, z. B. beim Blättern innerhalb der Karte.
+   3. Nach jedem Neuzeichnen kommen die Entwürfe zurück in die neuen Felder, Fokus und Cursor ebenso. */
+const FIELD = 'input:not([type=file]), select, textarea';
+const NO_DRAFT = new Set(['demoTime', 'testTime', 'tmDay']);
+const fkey = el => el.dataset?.draft || el.id || '';
+const isBox = el => el.type === 'checkbox' || el.type === 'radio';
+const fval = el => isBox(el) ? el.checked : el.value;
+function fdirty(el) {
+  if (NO_DRAFT.has(fkey(el)) || el.disabled) return false;
+  if (isBox(el)) return el.checked !== el.defaultChecked;
+  if (el.tagName === 'SELECT') { const di = [...el.options].findIndex(o => o.defaultSelected); return el.selectedIndex !== (di < 0 ? 0 : di); }
+  return el.value !== el.defaultValue;
+}
+function freset(el) { if (isBox(el)) el.checked = el.defaultChecked; else if (el.tagName === 'SELECT') { const di = [...el.options].findIndex(o => o.defaultSelected); el.selectedIndex = di < 0 ? 0 : di; } else el.value = el.defaultValue; }
+// Extra-Habit-Zeilen (ohne ids): die ganze Liste als ein Entwurf
+const xRows = xl => [...xl.querySelectorAll('.xrow')].map(r => ({ n: r.querySelector('input.inp').value, t: +r.querySelector('select').value || 3, c: !!r.querySelector('.hconf input')?.checked }));
+const xKey = xl => 'xl:' + xl.dataset.xlist;
+function draftList(xl) { const cur = JSON.stringify(xRows(xl)); if (cur !== xl.dataset.def) UI.drafts[xKey(xl)] = cur; else delete UI.drafts[xKey(xl)]; }
+function draftCapture(el) {
+  const k = fkey(el), xl = el.closest?.('[data-xlist]');
+  if (xl) { draftList(xl); return; }
+  if (!k || NO_DRAFT.has(k)) return;
+  if (fdirty(el)) UI.drafts[k] = fval(el); else delete UI.drafts[k];
+}
+for (const t of ['input', 'change']) document.addEventListener(t, e => { if (e.target.matches?.(FIELD) && e.target.closest('#app, #modal')) draftCapture(e.target); }, true);
+const focusField = () => { const a = document.activeElement; return a && a.matches?.(FIELD + ', [data-dial]') ? a : null; };
+function formBusy(f) {
+  if (UI.force.has(f.dataset.form)) return false;
+  const a = focusField(); if (a && f.contains(a)) return true;
+  return [...f.querySelectorAll(FIELD)].some(fdirty) || [...f.querySelectorAll('[data-xlist]')].some(xl => UI.drafts[xKey(xl)] !== undefined);
+}
+function restoreDrafts(root) {
+  if (!Object.keys(UI.drafts).length) return;
+  for (const xl of root.querySelectorAll('[data-xlist]')) {
+    const d = UI.drafts[xKey(xl)]; if (d === undefined || xl.contains(document.activeElement) || JSON.stringify(xRows(xl)) === d) continue;
+    let rows; try { rows = JSON.parse(d); } catch { continue; }
+    xl.innerHTML = rows.slice(0, EXTRA_MAX).map(r => extraRow(xl.dataset.xlist, 0, { name: r.n, target: r.t, confirm: r.c })).join('');
+    const add = root.querySelector(`[data-act=xAdd][data-pre="${xl.dataset.xlist}"]`); if (add) add.hidden = rows.length >= EXTRA_MAX;
+  }
+  for (const el of root.querySelectorAll(FIELD)) {
+    const k = fkey(el); if (!k || !(k in UI.drafts) || el.disabled || el === document.activeElement || el.closest('[data-xlist]')) continue;
+    if (fval(el) === UI.drafts[k]) continue;
+    if (isBox(el)) el.checked = UI.drafts[k]; else el.value = UI.drafts[k];
+    if (el.id === 'kg') el.dispatchEvent(new Event('input', { bubbles: true })); // Ziel-Vorschau neben dem Startgewicht
+  }
+}
+const syncAttrs = (a, b) => { for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name); for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value); };
+const formSel = k => `[data-form="${k.dataset.form}"]`;
+// a (im DOM) an b (neu) angleichen: Kinder, die eine behaltene Karte enthalten, bleiben stehen (und werden rekursiv angeglichen),
+// alle anderen werden durch die neuen ersetzt. Behaltene Knoten werden nie verschoben (sonst ginge der Fokus verloren).
+function morph(a, b, keep, root) {
+  if (!root) syncAttrs(a, b);
+  const want = [...b.childNodes], pair = new Map();
+  for (const x of [...a.children]) {
+    const ks = [...keep].filter(k => k === x || x.contains(k)); if (!ks.length) continue;
+    const y = want.find(n => n.nodeType === 1 && !pair.has(n) && n.tagName === x.tagName && ks.some(k => n.matches(formSel(k)) || n.querySelector(formSel(k))));
+    if (y) pair.set(y, x);
+  }
+  const stay = new Set(pair.values());
+  for (const x of [...a.childNodes]) if (!stay.has(x)) x.remove();
+  let cur = null;
+  for (const n of want) {
+    const x = pair.get(n);
+    if (x) { cur = x; if (!keep.has(x)) morph(x, n, keep, false); continue; }
+    if (cur) cur.after(n); else a.prepend(n);
+    cur = n;
+  }
+}
+function paint(root, html) {
+  const a = focusField(), ak = a && root.contains(a) ? fkey(a) : '';
+  let sel = null; try { sel = ak && a.selectionStart !== null ? [a.selectionStart, a.selectionEnd] : null; } catch { }
+  const keep = [...root.querySelectorAll('[data-form]')].filter(formBusy);
+  if (!keep.length) root.innerHTML = html;
+  else { const t = document.createElement('div'); t.innerHTML = html; morph(root, t, new Set(keep), true); }
+  UI.force.clear();
+  restoreDrafts(root);
+  if (ak && !a.isConnected) { // Fokus und Cursor zurück, falls das Feld doch ersetzt wurde
+    const n = [...root.querySelectorAll(FIELD)].find(x => fkey(x) === ak);
+    if (n) { n.focus({ preventScroll: true }); try { if (sel) n.setSelectionRange(sel[0], sel[1]); } catch { } }
+  }
+}
+// Nach erfolgreichem Speichern: Entwürfe des Formulars löschen, Felder auf den Ausgangswert, neu zeichnen
+function formSaved(form) {
+  if (!form) return;
+  for (const x of form.querySelectorAll(FIELD)) delete UI.drafts[fkey(x)];
+  for (const xl of form.querySelectorAll('[data-xlist]')) delete UI.drafts[xKey(xl)];
+  for (const f of document.querySelectorAll(formSel(form))) { for (const x of f.querySelectorAll(FIELD)) freset(x); if (f.contains(document.activeElement)) document.activeElement.blur(); }
+  if (form.closest('#modal')) renderModal(); else render();
+}
+
 /* ---------- Rendern ---------- */
 function render() {
+  // Felder außerhalb einer data-form-Karte (z. B. Zeit im Demo-Banner): wie bisher erst nach dem Verlassen neu zeichnen
   const a = document.activeElement;
-  if (a && a.matches && a.matches('#app input, #app select') && a.value) { pendingRender = true; return; }
+  if (a && a.matches && a.matches('#app input, #app select') && a.value && !a.closest('[data-form]')) { pendingRender = true; return; }
   if (DRAG) { pendingRender = true; return; } // Drehrad wird gerade gedreht
   pendingRender = false;
   CHARTS = {};
@@ -798,7 +895,7 @@ function render() {
   // Einblend-Animation nur beim Tab-Wechsel, nicht bei jedem Daten-Update
   const enter = page && lastTab !== vt;
   const dir = enter && lastTab ? Math.sign(TAB_KEYS.indexOf(vt) - TAB_KEYS.indexOf(lastTab)) : 0;
-  document.getElementById('app').innerHTML = header() + banner() + body(enter, dir);
+  paint(document.getElementById('app'), header() + banner() + body(enter, dir));
   if (page) lastTab = vt;
   renderTabs();
   wireCharts();
@@ -899,7 +996,7 @@ function viewLogin() {
 function viewRegister() {
   const k = nextJoinSlot();
   if (k === null) return `<section class="card narrow"><div class="hd"><h2>Saison vorbei</h2></div><p class="t2">Einsteigen geht erst wieder in der nächsten Saison.</p></section>`;
-  return `<div class="view"><div class="lgrid reg"><section class="card regf"><div class="hd"><h2>Beitreten</h2></div>
+  return `<div class="view"><div class="lgrid reg"><section class="card regf" data-form="register"><div class="hd"><h2>Beitreten</h2></div>
     <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
     ${goalPicker('r', { askStart: true })}
@@ -1069,7 +1166,8 @@ const readHabits = pre => [0, 1, 2].map(i => ({ name: val(pre + 'H' + i), target
 const extraRow = (pre, i, h) => `<div class="hin xrow"><div class="row"><input class="inp grow" maxlength="40" placeholder="z. B. Wohnung aufräumen" value="${esc(h?.name || '')}" aria-label="Extra-Habit">
   ${targetSel('', h?.target ?? 3, false, 'Wochenziel Extra-Habit')}<button type="button" class="iconbtn" data-act="xDel" data-pre="${pre}" aria-label="Extra-Habit entfernen">${svg('close')}</button></div>${confirmToggle('', h?.confirm, false, 'Extra-Habit')}</div>`;
 function extraInputs(pre, xs) {
-  return `<div class="stack" id="${pre}X">${xs.map((h, i) => extraRow(pre, i, h)).join('')}</div>
+  const def = JSON.stringify(xs.map(h => ({ n: h.name || '', t: h.target ?? 3, c: !!h.confirm })));
+  return `<div class="stack" id="${pre}X" data-xlist="${pre}" data-def="${esc(def)}">${xs.map((h, i) => extraRow(pre, i, h)).join('')}</div>
     <button type="button" class="btn ghost sm" data-act="xAdd" data-pre="${pre}"${xs.length >= EXTRA_MAX ? ' hidden' : ''}>+ Extra-Habit</button>`;
 }
 const readExtras = pre => [...document.querySelectorAll(`#${pre}X .xrow`)].map(r => ({ name: r.querySelector('input.inp').value.trim().slice(0, 40), target: clamp(parseInt(r.querySelector('select').value, 10) || 3, 1, 7), confirm: !!r.querySelector('.hconf input')?.checked })).filter(h => h.name).slice(0, EXTRA_MAX);
@@ -1197,7 +1295,7 @@ function seasonEnd(me) {
   return `<div class="view"><div class="board two">${pane('', win + feedCard())}${pane('', rankCards('gesamt').list)}</div></div>`;
 }
 function weighInput(slot, label, val, primary) {
-  return `<div class="row weighrow"><label class="kgin"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="0,0" aria-label="Gewicht in kg" value="${val ?? ''}"><span aria-hidden="true">kg</span></label><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
+  return `<div class="row weighrow"><label class="kgin"><input id="kg" data-draft="kg-${slot}" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="0,0" aria-label="Gewicht in kg" value="${val ?? ''}"><span aria-hidden="true">kg</span></label><button class="btn${primary ? '' : ' ghost'}" data-act="weigh" data-slot="${slot}">${label}</button></div>`;
 }
 const cdHtml = to => `<b class="cd${to - now() < 2 * 36e5 ? ' bad' : ''}">${countdown(to)}</b>`;
 function weighCard(me, p) {
@@ -1212,17 +1310,17 @@ function weighCard(me, p) {
     const goal = me.goal && tk ? `<p class="small t2">Zielgewicht <b>${tn(fmt1(tk))} kg</b> <span id="goalLive"></span> · ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : me.goal ? `<p class="small t2">Dein Ziel: <b>−${tn(pct(me.goal))} %</b> vom Startgewicht, ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : `<label class="f" for="mlp">Dein Ziel: so viel willst du abnehmen <span class="muted">(in %)</span></label>${goalInput('mlp', null)}<p class="small muted">${goalHint}</p>`;
-    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>${late ? 'Startgewicht nachtragen' : `Startgewicht bis ${dl}`}</h2></div>
+    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? 'Startgewicht nachtragen' : `Startgewicht bis ${dl}`}</h2></div>
       ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · andere sehen nur Prozente</p>`}${me.goal ? '' : goal}${weighInput(js, 'Speichern', '', true)}${me.goal ? goal : ''}</section>` };
     return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
       <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
   if (os === null || os < js || me.finished) return { due: false, html: '' };
   if (me.weeks[os]?.paused) return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Heute kein Wiegen</h2><span class="aside">Woche ${os}</span></div><p class="small t2">Woche ${os} ist pausiert, das Wiegen heute fällt weg. Nächste Woche vergleicht die Waage wie immer mit deinem Tiefstwert.</p></section>` };
-  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>${late ? `Wiegen nachtragen` : `Wiegen bis ${dl}`}</h2><span class="aside">Woche ${os}</span></div>
+  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? `Wiegen nachtragen` : `Wiegen bis ${dl}`}</h2><span class="aside">Woche ${os}</span></div>
     ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>`}${weighInput(os, 'Eintragen', '', true)}</section>` };
   const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
-  return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Waage</h2><span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
+  return { due: false, html: `<section class="card" data-k="weigh" data-form="weigh"><div class="hd"><h2>Waage</h2><span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
     <p class="okline">${msg} <span class="muted">Korrigieren bis ${dl}.</span></p>${weighInput(os, 'Korrigieren', S.myWeights[os], false)}</section>` };
 }
 // Bei vielen Spielern: Top 3, du mit Nachbarn und der Letzte; dazwischen eine Lücke
@@ -1502,14 +1600,14 @@ function weeklyCard(me) {
   let team = '';
   const ne = nextDrawE();
   if (ne && canSuggest(ne)) team = `<p class="small t2 sep">Team-Monat Etappe ${ne}: Dein Vorschlag fehlt noch, gezogen wird ${fmtDT(drawTime(ne))}. <button class="link" data-tab="challenges">Vorschlagen</button></p>`;
-  return `<section class="card" data-k="challenge"><div class="hd"><h2>Wochen-Challenge</h2>${aside}</div>${inner}${team}</section>`;
+  return `<section class="card" data-k="challenge" data-form="weekly"><div class="hd"><h2>Wochen-Challenge</h2>${aside}</div>${inner}${team}</section>`;
 }
 function teamCard(me) {
   const cw = curWeek(); if (cw < 1 || cw > CONFIG.weeks) return '';
   const ce = etappeOf(cw), prev = TEAM[ce - 1];
   // am ersten Montag der Etappe läuft bis zum Wiegeschluss noch die alte (Nachtragen), danach die neue
   const t = TEAM[ce] || (prev && !prev.closed ? prev : null); if (!t) return '';
-  return `<section class="card" data-k="team">${teamHead(t, true)}${teamEntry(t, me)}</section>`;
+  return `<section class="card" data-k="team" data-form="team">${teamHead(t, true)}${teamEntry(t, me)}</section>`;
 }
 function teamHead(t, hd) {
   const done = t.items.filter(i => i.reached).length, end = slotDeadline(etEndWeek(t.e));
@@ -1534,7 +1632,7 @@ function teamEntry(t, me) {
       const on = (+mine[i.id] || 0) > 0, fx = tapFx('tm' + day + i.id);
       return `<div class="tmrow"><span class="hname">${esc(i.text)}</span><button class="hc${on ? ' on' : ''}${fx.cls}"${fx.st} data-act="tmTog" data-day="${day}" data-id="${esc(i.id)}" aria-pressed="${on}" aria-label="${esc(i.text)}, ${lbl(day)}">${svg('check', 'ck')}</button></div>`;
     }
-    return `<div class="tmrow"><label class="hname" for="tmv-${esc(i.id)}">${esc(i.text)}</label><input class="inp" id="tmv-${esc(i.id)}" data-tm="${esc(i.id)}" inputmode="decimal" autocomplete="off" placeholder="${esc(i.unit || 'Wert')}" value="${mine[i.id] ? String(mine[i.id]).replace('.', ',') : ''}"></div>`;
+    return `<div class="tmrow"><label class="hname" for="tmv-${esc(i.id)}">${esc(i.text)}</label><input class="inp" id="tmv-${esc(i.id)}" data-tm="${esc(i.id)}" data-draft="tmv-${day}-${esc(i.id)}" inputmode="decimal" autocomplete="off" placeholder="${esc(i.unit || 'Wert')}" value="${mine[i.id] ? String(mine[i.id]).replace('.', ',') : ''}"></div>`;
   }).join('');
   return `<div class="tmentry sep"><div class="row"><span class="small t2 grow">Dein Beitrag</span><select class="inp auto" id="tmDay" aria-label="Tag">${days.map(d => `<option value="${d}"${d === day ? ' selected' : ''}>${lbl(d)}</option>`).join('')}</select></div>
     ${rows}${t.items.some(i => i.kind !== 'count') ? `<button class="btn ghost full" data-act="tmSave" data-day="${day}">Eintragen</button>` : ''}</div>`;
@@ -1750,7 +1848,7 @@ function viewChallenges() {
   const nav = navBar('ev', e, 1, ce, `Etappe ${e} · ${fmtD(dayDate(7 * (ws - 1)))}–${fmtD(dayDate(7 * we - 1))}`);
   // Ausgestiegene zählen nicht mehr mit (weder bei den Spielern noch bei den gestellten Aufgaben)
   const nAct = Object.values(C).filter(p => (p.active || p.uid === S.me) && !p.finished).length, nSet = tasks.filter(([, t]) => !C[t.createdBy]?.finished).length;
-  let h = `<section class="card" data-k="task"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>${explTask()}`;
+  let h = `<section class="card" data-k="task" data-form="tasks"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>${explTask()}`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
   for (const [id, t] of tasks) {
     const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
@@ -1783,7 +1881,7 @@ function viewChallenges() {
 }
 function teamSection(e, ce) {
   const t = TEAM[e];
-  let h = `<section class="card" data-k="team"><div class="hd"><h2>Team-Monat</h2><span class="aside">+${CONFIG.teamPts} P. wenn alle Ziele klappen</span></div>${explTeam()}`;
+  let h = `<section class="card" data-k="team" data-form="ideas"><div class="hd"><h2>Team-Monat</h2><span class="aside">+${CONFIG.teamPts} P. wenn alle Ziele klappen</span></div>${explTeam()}`;
   if (t) h += teamHead(t, false);
   else if (now() < drawTime(e)) h += ideasBlock(e);
   else h += `<p class="t2">In dieser Etappe gab es keinen Team-Monat (keine Vorschläge).</p>`;
@@ -1939,7 +2037,7 @@ function goalCard(me) {
   const form = ed ? `${goalPicker('goal', { start: st0, target: S.myPlan?.targetKg ?? (g && st0 ? st0 * (1 - g / 100) : null), askStart: kg.start === undefined })}
     <button class="btn full${g ? ' ghost' : ''}" data-act="setGoal">${g ? 'Ziel ändern' : 'Ziel festlegen'}</button>`
     : g ? `<p class="small muted row">${svg('lock')}Fest seit deinem Startgewicht.</p>` : '';
-  return `<section class="card goal${done ? ' done' : ''}" data-k="me"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
+  return `<section class="card goal${done ? ' done' : ''}" data-k="me" data-form="goal"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
     ${ed ? '' : `<div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0, 'goal')}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %${goalKg ? ` · ${tn(fmt1(goalKg))} kg` : ''}` : 'noch kein Ziel'}</small></div></div>`}
     <p class="small t2">${txt}</p>
     ${form}${exitBtn(me)}${tiles}
@@ -2162,7 +2260,7 @@ function profileHtml(fresh) {
     unsupported: `<p class="small t2">Dieser Browser kann keine Push-Nachrichten empfangen.</p>`,
     denied: `<p class="small t2">Benachrichtigungen sind für diese Seite blockiert. Erlaube sie in den Browser-Einstellungen und öffne das Profil neu.</p>`,
   }[pushInfo()];
-  return `<div class="modal${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet" data-stop role="dialog" aria-modal="true" aria-labelledby="pTitle" tabindex="-1">
+  return `<div class="modal${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet" data-stop data-form="profile" role="dialog" aria-modal="true" aria-labelledby="pTitle" tabindex="-1">
     <div class="hd"><h2 id="pTitle">Profil</h2><button class="iconbtn" data-act="closeModal" aria-label="Schließen">${svg('close')}</button></div>
     <label class="f" for="pName">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
     <label class="f">Habits ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'}</label>
@@ -2235,8 +2333,9 @@ function renderModal() {
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
   const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : k === 'feed' ? feedHtml(fresh) : profileHtml(fresh);
   if (!html) { UI.modal = null; renderModal(); return; }
-  m.innerHTML = html; m.dataset.k = k; document.body.classList.add('locked');
-  if (!fresh) { const sh = m.querySelector('.sheet'); if (sh) sh.scrollTop = sc; return; }
+  if (fresh) { m.innerHTML = html; restoreDrafts(m); } else paint(m, html);
+  m.dataset.k = k; document.body.classList.add('locked');
+  if (!fresh) { const sh = m.querySelector('.sheet'); if (sh && sh.scrollTop !== sc) sh.scrollTop = sc; return; }
   // Fokus ins Overlay (ohne Tastatur aufzuklappen), damit Daten-Updates es nicht neu zeichnen
   m.querySelector('.sheet, .wrapped')?.focus({ preventScroll: true });
   if (k === 'wrapped') setTimeout(() => runCountUps(m), 250);
@@ -2261,7 +2360,7 @@ document.addEventListener('click', async ev => {
   if (tab) { go(tab.dataset.tab); return; }
   const el = ev.target.closest('[data-act]'); if (!el) return;
   if (el.dataset.act === 'closeModal' && ev.target.closest('[data-stop]') && el.classList.contains('modal')) return;
-  const a = el.dataset.act;
+  const a = el.dataset.act, form = el.closest('[data-form]');
   try {
     switch (a) {
       case 'signin': await DB.signIn(); break;
@@ -2276,7 +2375,7 @@ document.addEventListener('click', async ev => {
         document.activeElement?.blur();
         await DB.register({ name, habits, habitSets: { [etappeOf(k + 1)]: habits }, extraHabits: readExtras('r'), maxLossPct, joinedSlot: k, invite: DEMO ? 'DEMO' : val('rCode') });
         await DB.savePlan({ estKg: dl.start, targetKg: dl.target }).catch(() => { });
-        break; // danach öffnet sich die Einführung (nennt auch den Starttermin)
+        formSaved(form); break; // danach öffnet sich die Einführung (nennt auch den Starttermin)
       }
       case 'weigh': {
         const slot = +el.dataset.slot; const kg = parseFloat(val('kg').replace(',', '.'));
@@ -2294,7 +2393,7 @@ document.addEventListener('click', async ev => {
           const gg = Math.min(g, GOAL_MAX); if (gg !== p.maxLossPct) extra = { maxLossPct: gg };
         }
         document.activeElement?.blur();
-        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss, extra);
+        await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss, extra); formSaved(form);
         toast(slot === js ? `Startgewicht gespeichert${extra?.maxLossPct ? `. Dein Ziel: −${pct(extra.maxLossPct)} %` : ''}.` : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
       case 'habit': {
@@ -2332,18 +2431,19 @@ document.addEventListener('click', async ev => {
         box.insertAdjacentHTML('beforeend', extraRow(el.dataset.pre, n, null));
         box.querySelector('.xrow:last-child input')?.focus();
         if (n + 1 >= EXTRA_MAX) el.hidden = true;
+        draftList(box);
         break;
       }
-      case 'xDel': el.closest('.xrow')?.remove(); document.querySelector(`[data-act=xAdd][data-pre="${el.dataset.pre}"]`)?.removeAttribute('hidden'); break;
+      case 'xDel': { const box = el.closest('[data-xlist]'); el.closest('.xrow')?.remove(); document.querySelector(`[data-act=xAdd][data-pre="${el.dataset.pre}"]`)?.removeAttribute('hidden'); if (box) draftList(box); break; }
       case 'hw': {
         const cur = Math.min(curWeek(), CONFIG.weeks); const minW = Math.min(cur, Math.max(1, (S.players[S.me]?.joinedSlot || 0) + 1));
-        UI.habitWeek = clamp((UI.habitWeek ?? cur) + +el.dataset.d, minW, cur); if (UI.habitWeek === cur) UI.habitWeek = null; render(); break;
+        UI.habitWeek = clamp((UI.habitWeek ?? cur) + +el.dataset.d, minW, cur); if (UI.habitWeek === cur) UI.habitWeek = null; UI.force.add('habits'); render(); break;
       }
       case 'setWeekly': {
         const t = val('wText'); if (!t) return toast('Text fehlt.');
         const k = document.getElementById('wKind')?.value || 'daily';
         document.activeElement?.blur();
-        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); toast('Challenge gespeichert.'); break;
+        await DB.setWeekly(+el.dataset.w, t, k === 'daily' ? 'daily' : 'count', k === 'daily' ? 7 : +k); formSaved(form); toast('Challenge gespeichert.'); break;
       }
       case 'addIdea': {
         const e = +el.dataset.e, text = val('iText'), kind = val('iKind') === 'count' ? 'count' : 'sum', period = ['day', 'week', 'month'].includes(val('iPeriod')) ? val('iPeriod') : 'week';
@@ -2353,7 +2453,7 @@ document.addEventListener('click', async ev => {
         const maxCount = { day: 1, week: 7, month: 7 * CONFIG.etappeWeeks }[period];
         if (kind === 'count' && per > maxCount) return toast(`Abhaken geht höchstens 1× pro Tag, also max. ${maxCount} pro ${PERIOD[period]}.`);
         document.activeElement?.blur();
-        await DB.addTeamIdea(e, { text, kind, per, period, unit }); toast(`Vorschlag für Etappe ${e} gespeichert.`); break;
+        await DB.addTeamIdea(e, { text, kind, per, period, unit }); formSaved(form); toast(`Vorschlag für Etappe ${e} gespeichert.`); break;
       }
       case 'delIdea': await DB.delTeamIdea(el.dataset.id); toast('Vorschlag zurückgezogen.'); break;
       case 'tmTog': {
@@ -2373,10 +2473,10 @@ document.addEventListener('click', async ev => {
           vals[inp.dataset.tm] = v;
         }
         document.activeElement?.blur();
-        await DB.setTeamLog(d, e, vals); toast(`Eingetragen für ${fmtD(dayDate(d))}.`); break;
+        await DB.setTeamLog(d, e, vals); formSaved(form); toast(`Eingetragen für ${fmtD(dayDate(d))}.`); break;
       }
       case 'reload': location.reload(); break;
-      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); break; }
+      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); formSaved(form); break; }
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
       case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt.'); break;
@@ -2396,7 +2496,7 @@ document.addEventListener('click', async ev => {
         const dg = DIAL.goal, g = dialPct(dg); if (!g) return toast(dg?.start ? 'Bitte dein Zielgewicht am Rad einstellen.' : 'Bitte dein ungefähres Gewicht eintragen.');
         if (!goalEditable(C[S.me], S.players[S.me])) return toast('Dein Ziel ist seit dem Startgewicht fest.');
         document.activeElement?.blur(); await DB.updatePlayer({ maxLossPct: g });
-        await DB.savePlan(S.myWeights[S.players[S.me]?.joinedSlot || 0] ? { targetKg: dg.target } : { estKg: dg.start, targetKg: dg.target });
+        await DB.savePlan(S.myWeights[S.players[S.me]?.joinedSlot || 0] ? { targetKg: dg.target } : { estKg: dg.start, targetKg: dg.target }); formSaved(form);
         toast(C[S.me]?.active ? `Ziel gespeichert: −${pct(g)} %.` : `Ziel gespeichert: −${pct(g)} %. Ab dem Startgewicht ist es fest.`); break;
       }
       case 'wrapped': UI.modal = 'wrapped'; renderModal(); break;
@@ -2405,7 +2505,7 @@ document.addEventListener('click', async ev => {
       case 'pause': {
         const w = parseInt(val('pWeek'), 10), me = C[S.me];
         if (!pauseOptions(me).includes(w)) return toast('Diese Woche kann nicht mehr pausiert werden.');
-        await DB.updatePlayer({ pausedWeeks: [...me.paused, w].sort((a, b) => a - b) }); renderModal(); toast(`Woche ${w} pausiert.`); break;
+        await DB.updatePlayer({ pausedWeeks: [...me.paused, w].sort((a, b) => a - b) }); delete UI.drafts.pWeek; renderModal(); toast(`Woche ${w} pausiert.`); break;
       }
       case 'unpause': {
         const w = +el.dataset.w, me = C[S.me];
@@ -2428,7 +2528,7 @@ document.addEventListener('click', async ev => {
         if (started && slot < js) return toast(`${pl.name} hat schon ein Startgewicht (${fmtD(slotStart(js))}).`);
         const d = { lateUntil: until.getTime(), lateSlot: slot };
         if (!started && slot !== js) d.joinedSlot = slot; // noch kein Startgewicht: Start auf diesen Montag
-        await DB.setLate(uid, d); renderModal();
+        await DB.setLate(uid, d); for (const k of ['aP', 'aS', 'aU']) delete UI.drafts[k]; renderModal();
         toast(`${pl.name} darf bis ${fmtDT(until)} nachtragen.`); break;
       }
       case 'revokeLate': { if (!isAdmin()) return; await DB.setLate(el.dataset.u, { lateUntil: realNow().getTime() - 1000 }); renderModal(); toast('Nachtrag aufgehoben.'); break; }
@@ -2447,7 +2547,7 @@ document.addEventListener('click', async ev => {
           if (!Object.keys(sets).length && etappeOf(js + 1) < e) sets[etappeOf(js + 1)] = normHabits(p.habits);
           sets[e] = hs; d.habits = hs; d.habitSets = sets;
         }
-        document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; renderModal(); toast('Gespeichert'); break;
+        document.activeElement?.blur(); await DB.updatePlayer(d); UI.modal = null; formSaved(form); toast('Gespeichert'); break;
       }
       case 'demoReset': DB.reset(); UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; break;
       case 'testShift': { const t = now(); if (el.dataset.u === 'm') t.setMonth(t.getMonth() + +el.dataset.n); else t.setDate(t.getDate() + +el.dataset.n); setNow(t); break; }
@@ -2458,7 +2558,7 @@ document.addEventListener('click', async ev => {
 });
 document.addEventListener('change', ev => {
   if ((ev.target.id === 'demoTime' || ev.target.id === 'testTime') && ev.target.value) setNow(new Date(ev.target.value));
-  if (ev.target.id === 'tmDay') { UI.tmDay = +ev.target.value; ev.target.blur(); render(); }
+  if (ev.target.id === 'tmDay') { UI.tmDay = +ev.target.value; ev.target.blur(); UI.force.add('team'); render(); } // Werte des anderen Tags bleiben als Entwurf
 });
 function setNow(t) {
   NOW_OVERRIDE = t ? t.getTime() : null;
@@ -2470,6 +2570,8 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && UI.modal) { closeModal(); return; }
   if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row, .tmentry, .idea')?.querySelector('.btn'); if (b) b.click(); }
 });
+
+const tick60 = () => { if (S.ready && !UI.modal) render(); }; // Countdown & Co. jede Minute
 
 /* ---------- START ---------- */
 (async function init() {
@@ -2488,5 +2590,6 @@ document.addEventListener('keydown', ev => {
     try { DB = await makeFirebaseDB(CONFIG.firebase, onState); }
     catch (e) { console.error(e); document.getElementById('app').innerHTML = `<section class="card"><div class="hd"><h2>Verbindung fehlgeschlagen</h2></div><p class="t2">Firebase konnte nicht geladen werden. Prüf die Config in app.js.</p></section>`; }
   }
-  setInterval(() => { if (S.ready && !UI.modal) render(); }, 60000);
+  setInterval(tick60, 60000);
+  window.__cdf = { emit: () => DB?.refresh(), tick: tick60, drafts: () => ({ ...UI.drafts }) }; // für tests/forms.mjs (zeichnet nur neu, liest nichts)
 })();
