@@ -15,6 +15,7 @@ export const collection = (db, name) => ({ kind: 'col', path: name });
 export const doc = (db, ...s) => ({ kind: 'doc', path: s.join('/') });
 export const serverTimestamp = () => ({ __ts: 1 });
 export const deleteField = () => ({ __del: 1 });
+export const Timestamp = { fromMillis: ms => ms };
 export class FieldPath { constructor(...s) { this.s = s; } }
 const clean = v => { if (v && typeof v === 'object' && !Array.isArray(v)) { if (v.__ts) return Date.now(); const o = {}; for (const [k, x] of Object.entries(v)) if (!(x && x.__del)) o[k] = clean(x); return o; } return Array.isArray(v) ? v.map(clean) : v; };
 const deep = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b)) o[k] = v && typeof v === 'object' && !Array.isArray(v) && a?.[k] && typeof a[k] === 'object' ? deep(a[k], v) : v; return o; };

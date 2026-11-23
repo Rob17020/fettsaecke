@@ -14,7 +14,8 @@ const H = 3600e3, D = 864e5, WK = 7 * D;
 const INV = RULES.match(/function INVITE\(\)\s*\{ return '([^']*)'/)[1];
 const variant = (testmode, start) => {
   const r = RULES.replace(/function START_MS\(\) \{ return \d+; \}/, `function START_MS() { return ${Math.round(start)}; }`)
-    .replace(/function TESTMODE\(\) \{ return (true|false); \}/, `function TESTMODE() { return ${testmode}; }`);
+    .replace(/function TESTMODE\(\) \{ return (true|false); \}/, `function TESTMODE() { return ${testmode}; }`)
+    .replace(/function ADMINS\(\)\s*\{ return \[[^\]]*\]; \}/, `function ADMINS()   { return ['bob']; }`); // Bob ist in den Tests Admin
   if (r === RULES) throw new Error('Regel-Variante nicht erzeugt');
   return r;
 };
@@ -58,6 +59,8 @@ const SC = {
   e2tue: { label: 'Di Woche 5 (1. Woche Etappe 2)', off: 4 * WK + D + 10 * H },
 };
 const day = d => d; // Tag seit Start
+// Nachtrag ohne Regeln setzen (wie ihn ein Admin gesetzt hätte): Frist = jetzt + ms
+const late = (uid, slot, ms) => env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'players', uid), { lateUntil: Timestamp.fromMillis(Date.now() + ms), lateSlot: slot }));
 const weighBatch = (f, uid, slot, lossPct, player) => { const b = writeBatch(f); if (player) b.update(doc(f, 'players', uid), player); b.set(doc(f, 'weighins', `${uid}_${slot}`), { uid, slot, lossPct, ts: serverTimestamp() }); b.set(doc(f, 'players', uid, 'private', 'weights'), { slots: { [slot]: 99 } }, { merge: true }); return b.commit(); };
 
 // [Szenario, Beschreibung, erwartet bei TESTMODE false, erwartet bei TESTMODE true, Aktion]
@@ -132,6 +135,48 @@ const T = [
     await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'players/gina'), p));
     return weighBatch(db('gina'), 'gina', 1, 0, { maxLossPct: 7 });
   }],
+  // --- Nachtrag (Admin-Ausnahme, Bob ist Admin) ---
+  ['mon20', 'Nachtrag: Admin erlaubt Alice Slot 1 bis heute Nacht', A, A, () => updateDoc(doc(db('bob'), 'players/alice'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1 })],
+  ['mon20', 'Nachtrag: Admin hebt ihn wieder auf (Frist = jetzt)', A, A, async () => { await late('alice', 1, 3 * H); return updateDoc(doc(db('bob'), 'players/alice'), { lateUntil: Timestamp.fromMillis(Date.now() - 1000) }); }],
+  ['mon20', 'Nachtrag: Nicht-Admin setzt sich selbst lateUntil', X, X, () => updateDoc(doc(db('alice'), 'players/alice'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1 })],
+  ['mon20', 'Nachtrag: Nicht-Admin setzt ihn bei jemand anderem', X, X, () => updateDoc(doc(db('alice'), 'players/bob'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1 })],
+  ['mon20', 'Nachtrag: Admin ändert dabei auch den Namen', X, X, () => updateDoc(doc(db('bob'), 'players/alice'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1, name: 'Hack' })],
+  ['mon20', 'Nachtrag: Frist 30 Tage', X, X, () => updateDoc(doc(db('bob'), 'players/alice'), { lateUntil: Timestamp.fromMillis(Date.now() + 30 * D), lateSlot: 1 })],
+  ['mon20', 'Nachtrag: lateUntil als Zahl statt Zeitstempel', X, X, () => updateDoc(doc(db('bob'), 'players/alice'), { lateUntil: Date.now() + 3 * H, lateSlot: 1 })],
+  ['mon20', 'Nachtrag: für Ausgestiegene', X, X, () => updateDoc(doc(db('bob'), 'players/carol'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1 })],
+  ['pre', 'register: gleich mit lateUntil', X, X, () => setDoc(doc(db('eve'), 'players/eve'), pdoc({ lateUntil: Timestamp.fromMillis(Date.now() + D), lateSlot: 0 }))],
+  ['mon20', 'Nachtrag: Wiegen Slot 1 nach 14 Uhr', A, A, async () => { await late('alice', 1, 3 * H); return weighBatch(db('alice'), 'alice', 1, 1.2); }],
+  ['mon20', 'Nachtrag: Wiegen Slot 1 ohne Nachtrag (Kontrolle)', X, A, () => weighBatch(db('alice'), 'alice', 1, 1.2)],
+  ['mon20', 'Nachtrag für Slot 1: Wiegen Slot 2', X, A, async () => { await late('alice', 1, 3 * H); return weighBatch(db('alice'), 'alice', 2, 1.2); }],
+  ['mon20', 'Nachtrag abgelaufen: Wiegen Slot 1', X, A, async () => { await late('alice', 1, -H); return weighBatch(db('alice'), 'alice', 1, 1.2); }],
+  ['mon20', 'Nachtrag: Admin setzt Start zurück (Frank js 2 -> 1, noch ohne Startgewicht)', A, A, async () => {
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'players/frank'), pdoc({ name: 'Frank', joinedSlot: 2 })));
+    return updateDoc(doc(db('bob'), 'players/frank'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1, joinedSlot: 1 });
+  }],
+  ['mon20', 'Nachtrag: Admin setzt joinedSlot auf etwas anderes als lateSlot', X, X, async () => {
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'players/frank'), pdoc({ name: 'Frank', joinedSlot: 2 })));
+    return updateDoc(doc(db('bob'), 'players/frank'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1, joinedSlot: 0 });
+  }],
+  ['mon20', 'Nachtrag: Admin setzt Start zurück, obwohl schon ein Startgewicht da ist', X, X, async () => {
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'players/frank'), pdoc({ name: 'Frank', joinedSlot: 1 })));
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'weighins/frank_1'), { uid: 'frank', slot: 1, lossPct: 0 }));
+    return updateDoc(doc(db('bob'), 'players/frank'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 0, joinedSlot: 0 });
+  }],
+  ['mon20', 'Nachtrag: Spätstarter nach dem Zurücksetzen trägt Startgewicht + Ziel ein und hakt heute ab', A, A, async () => {
+    await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'players/frank'), pdoc({ name: 'Frank', joinedSlot: 2 })));
+    await updateDoc(doc(db('bob'), 'players/frank'), { lateUntil: Timestamp.fromMillis(Date.now() + 3 * H), lateSlot: 1, joinedSlot: 1 });
+    await weighBatch(db('frank'), 'frank', 1, 0, { maxLossPct: 6.3 });
+    return setDoc(doc(db('frank'), 'habitlogs/frank_7'), { uid: 'frank', day: 7, done: [true, false, false, false], ts: serverTimestamp() });
+  }],
+  ['mon20', 'Nachtrag aktiv: Spieler verschiebt seinen Start selbst (alte App)', X, X, async () => {
+    await env.withSecurityRulesDisabled(c => deleteDoc(doc(c.firestore(), 'weighins/alice_0'))); await late('alice', 0, 3 * H);
+    return updateDoc(doc(db('alice'), 'players/alice'), { joinedSlot: 2 });
+  }],
+  ['mon20', 'Nachtrag abgelaufen: Spieler verschiebt seinen Start (wie sonst)', A, A, async () => {
+    await env.withSecurityRulesDisabled(c => deleteDoc(doc(c.firestore(), 'weighins/alice_0'))); await late('alice', 0, -H);
+    return updateDoc(doc(db('alice'), 'players/alice'), { joinedSlot: 2 });
+  }],
+  ['mon20', 'Nachtrag: Spieler mit Nachtrag ändert Namen (lateUntil bleibt)', A, A, async () => { await late('alice', 1, 3 * H); return updateDoc(doc(db('alice'), 'players/alice'), { name: 'Ali' }); }],
   // --- Ausstieg ---
   ['mon9', 'Ausstieg: Wiegen 4,5 % bei Ziel 5 % (im Band)', A, A, () => updateDoc(doc(db('alice'), 'players/alice'), { status: 'finished', finishedWeek: 3, finishedAt: serverTimestamp() })],
   ['mon9', 'Ausstieg: Wiegen 3,5 % bei Ziel 5 % (nicht erreicht)', X, X, () => updateDoc(doc(db('bob'), 'players/bob'), { status: 'finished', finishedWeek: 3, finishedAt: serverTimestamp() })],

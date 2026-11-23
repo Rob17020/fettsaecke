@@ -5,6 +5,7 @@ rules_version = '2';
 // 3) Feste Zahlen hier müssen zu CONFIG in app.js passen: 24 Wochen, 4 Wochen/Etappe (28 Tage), pauseWeeks 2, holdBand 1,
 //    Ziel 1–40 %, Wochenziel 1–7×, Wiegefenster 3–14 Uhr (2–14 Std. nach Mitternacht MEZ + 5 Min., im Sommer also bis 15 Uhr),
 //    Nachtragen/Bestätigen 2 Tage, die Vorwoche nur bis zum Wiegeschluss am Montag (CLOSE).
+// 4) ADMINS(): dieselben uids wie CONFIG.adminUids in app.js (dürfen per Profil einen Nachtrag erlauben)
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -15,6 +16,7 @@ service cloud.firestore {
     function HOUR()     { return 3600000; }
     function TESTMODE() { return false; }  // true = Zeitfenster aus (nur zum Testen)
     function INVITE()   { return 'CODE-NUR-IN-DER-KONSOLE'; }  // <- in der Konsole durch den echten Code ersetzen
+    function ADMINS()   { return []; }  // Firebase-uids der Admins, z. B. ['abc123'] (wie CONFIG.adminUids)
 
     function signedIn() { return request.auth != null; }
     function me()       { return request.auth.uid; }
@@ -25,6 +27,21 @@ service cloud.firestore {
     function at(ms)     { return timestamp.value(ms); }
     function notFinished() { return !('status' in player()); }   // mit erreichtem Ziel ausgestiegen = nur noch lesen
     function changed(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
+    function isAdmin()  { return signedIn() && me() in ADMINS(); }
+
+    // Nachtrag (Admin-Ausnahme): bis lateUntil darf der Spieler das Wiegen für lateSlot auch außerhalb des Fensters eintragen.
+    function lateOk(p, slot) { return 'lateUntil' in p && 'lateSlot' in p && p.lateSlot == slot && request.time < p.lateUntil; }
+    function lateActive(d)   { return 'lateUntil' in d && request.time < d.lateUntil; }
+    // Nur Admins schreiben lateUntil/lateSlot (Frist höchstens 8 Tage voraus). joinedSlot dürfen sie dabei auf lateSlot setzen,
+    // aber nur, solange der Spieler noch kein Startgewicht hat (sonst würden alte Wiegen umgedeutet).
+    function adminLateOk(uid) {
+      return isAdmin() && !('status' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lateUntil', 'lateSlot', 'joinedSlot'])
+        && request.resource.data.lateUntil is timestamp && request.resource.data.lateUntil < request.time + duration.value(8, 'd')
+        && request.resource.data.lateSlot is int && request.resource.data.lateSlot >= 0 && request.resource.data.lateSlot <= 24
+        && (!changed(['joinedSlot']) || (request.resource.data.joinedSlot == request.resource.data.lateSlot && request.resource.data.joinedSlot < 24
+          && !exists(/databases/$(database)/documents/weighins/$(uid + '_' + string(resource.data.joinedSlot)))));
+    }
 
     // Habits: 3 Stück, je { name, target 1–7× pro Woche }
     function habitOk(h)   { return h is map && h.name is string && h.name.size() >= 1 && h.name.size() <= 40 && h.target is int && h.target >= 1 && h.target <= 7; }
@@ -92,12 +109,15 @@ service cloud.firestore {
         && request.resource.data.get('habitSets', {}) is map && request.resource.data.get('habitSets', {}).size() <= 7
         && goalOk()
         && request.resource.data.joinedSlot is int && joinOk(request.resource.data.joinedSlot)
-        && !('status' in request.resource.data) && request.resource.data.get('pausedWeeks', []).size() == 0;
-      allow update: if signedIn() && uid == me()
+        && !('status' in request.resource.data) && request.resource.data.get('pausedWeeks', []).size() == 0
+        && !('lateUntil' in request.resource.data) && !('lateSlot' in request.resource.data);
+      allow update: if adminLateOk(uid) || (signedIn() && uid == me()
+        && !changed(['lateUntil', 'lateSlot'])
         && request.resource.data.invite == resource.data.invite
         && request.resource.data.joinedAt == resource.data.joinedAt
         && request.resource.data.joinedSlot >= resource.data.joinedSlot
-        && (!changed(['joinedSlot']) || (joinOk(request.resource.data.joinedSlot)
+        // Start verschieben (verpasstes Startgewicht): nicht, solange ein Nachtrag erlaubt ist
+        && (!changed(['joinedSlot']) || (joinOk(request.resource.data.joinedSlot) && !lateActive(resource.data)
           && !exists(/databases/$(database)/documents/weighins/$(uid + '_' + string(resource.data.joinedSlot)))))
         && request.resource.data.name.size() <= 20
         && request.resource.data.habits.size() == 3 && extrasOk(request.resource.data)
@@ -107,7 +127,7 @@ service cloud.firestore {
         && (!changed(['status', 'finishedWeek', 'finishedAt']) || finishOk(uid))
         && (!('status' in resource.data) || finishKept())
         && (!changed(['pausedWeeks']) || pauseOk())
-        && (!changed(['onboardingDone']) || request.resource.data.onboardingDone is bool);
+        && (!changed(['onboardingDone']) || request.resource.data.onboardingDone is bool));
 
       // private Gewichte (kg) – nur für den Besitzer
       match /private/{doc} {
@@ -115,7 +135,7 @@ service cloud.firestore {
       }
     }
 
-    // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 3–14 Uhr) ----------
+    // ---------- Wiegen (nur Prozent, nur im Zeitfenster Mo 3–14 Uhr oder mit Nachtrag vom Admin) ----------
     match /weighins/{id} {
       allow read: if member();
       allow create, update: if member() && ownNew() && notFinished()
@@ -127,7 +147,8 @@ service cloud.firestore {
         && request.resource.data.slot <= 24
         && request.resource.data.lossPct is number
         // 3–14 Uhr deutscher Zeit; START_MS ist MEZ, deshalb 1 Std. Toleranz wegen Sommerzeit (2–15 Std. nach Mitternacht MEZ)
-        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.slot * WEEK() + 2 * HOUR())
+        && (TESTMODE() || lateOk(player(), request.resource.data.slot)
+        || (request.time >= at(START_MS() + request.resource.data.slot * WEEK() + 2 * HOUR())
         && request.time <= at(CLOSE(request.resource.data.slot))));
     }
 
@@ -247,6 +268,7 @@ service cloud.firestore {
     // - habitlogs.ts und taskDone.ts (Zeitpunkt für den Liveticker) sind zusätzliche Felder, die Regeln oben lassen sie zu.
     // - Das Ziel in kg (estKg/targetKg) liegt privat in players/{uid}/private/weights, öffentlich nur maxLossPct.
     // - Push-Tokens liegen in players/{uid}/private/tokens (nur Besitzer, Regel "private" oben).
+    // - lateUntil/lateSlot (Nachtrag) schreibt nur ein Admin (adminLateOk), der Spieler selbst nie.
     // - reminderRuns/* schreibt nur das Erinnerungs-Skript mit Admin-Rechten; ohne Regel kein Client-Zugriff.
   }
 }

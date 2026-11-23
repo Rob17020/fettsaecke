@@ -36,6 +36,8 @@ const CONFIG = {
   teamDraw: 3,        // so viele Vorschläge werden pro Etappe für den Team-Monat gezogen
   activeEveryMin: 10, // "zuletzt aktiv" höchstens alle 10 Min. speichern
   vapidKey: 'BBoHd4s2c9OpkUMNpDAjTpqWl4R4Up5Zu8oMqKpo8zgY2nuYrY9TUuclbUINZmOdh_hPS2hHq2qT3Nx8OTyt1KI',       // Web-Push-Schlüssel (Firebase-Konsole → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate). Leer = Erinnerungen aus.
+  adminUids: [],      // Firebase-uids der Admins (Profil → Nachtrag erlauben). Dieselbe Liste in firestore.rules: ADMINS(). Die eigene uid steht im Profil unter Konto.
+  lateMaxDays: 7,     // Nachtrag: so weit in die Zukunft darf ein Admin die Frist höchstens setzen (Regeln: 8 Tage Toleranz)
 };
 // Wenn du start/weeks änderst: auch START_MS in firestore.rules und SEASON in reminders/send.mjs anpassen.
 // Zum Ausprobieren ohne Firebase: ?demo an die URL hängen (lokale Daten), ?demo&bots=18 simuliert bis zu 20 Spieler.
@@ -65,6 +67,10 @@ function lastClosedSlot() { const t = now(); let k = -1; for (let i = 0; i <= CO
 function openSlot() { const t = now(), d = dayIdx(t); if (d >= 0 && d % 7 === 0 && d / 7 <= CONFIG.weeks && t >= slotOpen(d / 7) && t < slotDeadline(d / 7)) return d / 7; return null; }
 function nextJoinSlot(t = now()) { for (let k = 0; k < CONFIG.weeks; k++) if (slotDeadline(k) > t) return k; return null; }
 const seasonOver = () => lastClosedSlot() >= CONFIG.weeks;
+/* Nachtrag (Admin-Ausnahme): bis lateUntil darf der Spieler das Wiegen für lateSlot eintragen, obwohl das Fenster zu ist.
+   Mit Firebase zählt die echte Uhrzeit (die Regeln prüfen request.time), im Demo die Demo-Zeit. */
+const realNow = () => DEMO ? now() : new Date();
+const lateOpen = p => !!p && Number.isInteger(p.lateSlot) && p.lateSlot >= 0 && p.lateSlot <= CONFIG.weeks && tsNum(p.lateUntil) > realNow().getTime();
 
 /* ---------- Helfer ---------- */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -391,7 +397,7 @@ function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.
 function makeDemoDB(emit) {
   const KEY = 'cdf-demo-v1';
   const ME = 'demo-me';
-  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false });
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false, botPatch: {} });
   let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
   mine = { ...blank(), ...(mine || {}) };
   const save = () => LS.setItem(KEY, JSON.stringify(mine));
@@ -499,6 +505,7 @@ function makeDemoDB(emit) {
     S.member = !!mine.player;
     for (const k of ['players', 'weighins', 'habitlogs', 'weekly', 'weeklyDone', 'tasks', 'taskDone', 'teamideas', 'teamlogs', 'habitok']) S[k] = { ...s[k], ...(k === 'players' ? {} : mine[k] || {}) };
     if (mine.player) S.players[ME] = mine.player;
+    for (const [u, x] of Object.entries(mine.botPatch || {})) if (S.players[u]) S.players[u] = { ...S.players[u], ...x }; // Admin-Nachtrag für Bots
     S.myWeights = { ...mine.myWeights }; S.myPlan = { ...(mine.plan || {}) };
     return S;
   }
@@ -513,6 +520,8 @@ function makeDemoDB(emit) {
     async updatePlayer(d) { Object.assign(mine.player, d); commit(); },
     async savePlan(d) { mine.plan = { ...(mine.plan || {}), ...d }; commit(); },
     async finish(fw) { Object.assign(mine.player, { status: 'finished', finishedWeek: fw, finishedAt: ts() }); commit(); },
+    // Admin: Nachtrag erlauben (lateUntil in ms, lateSlot, ggf. joinedSlot zurück)
+    async setLate(uid, d) { if (uid === ME) Object.assign(mine.player, d); else mine.botPatch = { ...(mine.botPatch || {}), [uid]: { ...(mine.botPatch?.[uid] || {}), ...d } }; commit(); },
     async saveWeigh(slot, kg, lossPct, player) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; if (player) Object.assign(mine.player, player); commit(); },
     async setHabit(day, done, extra) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ...(extra ? { extra } : {}), ts: ts() }; commit(); },
     // Haken eines anderen bestätigen (on) oder Bestätigung zurücknehmen
@@ -639,6 +648,8 @@ async function makeFirebaseDB(cfg, emit) {
     savePlan: d => wrap(F.setDoc(F.doc(db, 'players', me(), 'private', 'weights'), d, { merge: true })),
     // Ausstieg mit erreichtem Ziel (einmalig, die Regeln lassen es nicht rückgängig machen)
     finish: fw => wrap(F.updateDoc(F.doc(db, 'players', me()), { status: 'finished', finishedWeek: fw, finishedAt: F.serverTimestamp() })),
+    // Admin: Nachtrag erlauben (die Regeln lassen nur Admins lateUntil/lateSlot schreiben und joinedSlot auf lateSlot setzen)
+    setLate: (uid, d) => wrap(F.updateDoc(F.doc(db, 'players', uid), { ...d, lateUntil: F.Timestamp.fromMillis(d.lateUntil) })),
     saveWeigh(slot, kg, lossPct, player) { // player: z. B. { maxLossPct } beim Startgewicht, im selben Schreibvorgang
       const b = F.writeBatch(db);
       if (player) b.update(F.doc(db, 'players', me()), player);
@@ -711,7 +722,8 @@ function onState(ns) {
   // Mit Firebase nach der echten Uhrzeit: eine simulierte Zeit im Testmodus (?now=) würde joinedSlot sonst dauerhaft verschieben
   // (die Regeln lassen es nur steigen).
   const p = S.players[S.me], tj = DEMO ? now() : new Date();
-  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= tj && !bumping) {
+  // Nicht, solange ein Admin einen Nachtrag erlaubt hat (lateUntil): dann darf das Startgewicht noch kommen.
+  if (S.member && S.synced && p && !C[S.me]?.active && S.myWeights[p.joinedSlot || 0] === undefined && slotDeadline(p.joinedSlot || 0) <= tj && !bumping && !lateOpen(p)) {
     const k = nextJoinSlot(tj);
     if (k !== null && k > (p.joinedSlot || 0)) { bumping = true; DB.updatePlayer({ joinedSlot: k }).finally(() => bumping = false); }
   }
@@ -1189,22 +1201,26 @@ function weighInput(slot, label, val, primary) {
 }
 const cdHtml = to => `<b class="cd${to - now() < 2 * 36e5 ? ' bad' : ''}">${countdown(to)}</b>`;
 function weighCard(me, p) {
-  const js = p.joinedSlot || 0; const os = openSlot(); const dl = `${CONFIG.deadlineHour}:00 Uhr`;
+  const js = p.joinedSlot || 0; let os = openSlot(), until = os !== null ? slotDeadline(os) : null, dl = `${CONFIG.deadlineHour}:00 Uhr`;
+  // Nachtrag (Admin-Ausnahme): außerhalb des Fensters gilt lateSlot bis lateUntil
+  const late = os === null && lateOpen(p) && p.lateSlot >= js && !me.finished;
+  if (late) { os = p.lateSlot; until = new Date(tsNum(p.lateUntil)); dl = fmtDT(until); }
+  const lateLine = late ? `<p class="when late">Nachtrag erlaubt bis <b>${fmtDT(until)}</b> · noch ${cdHtml(until)}</p>` : '';
   if (!me.active) {
     // Ziel: fehlt es noch, wird es hier zusammen mit dem Startgewicht gespeichert (danach fest)
     const tk = S.myPlan?.targetKg;
     const goal = me.goal && tk ? `<p class="small t2">Zielgewicht <b>${tn(fmt1(tk))} kg</b> <span id="goalLive"></span> · ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : me.goal ? `<p class="small t2">Dein Ziel: <b>−${tn(pct(me.goal))} %</b> vom Startgewicht, ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : `<label class="f" for="mlp">Dein Ziel: so viel willst du abnehmen <span class="muted">(in %)</span></label>${goalInput('mlp', null)}<p class="small muted">${goalHint}</p>`;
-    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Startgewicht bis ${dl}</h2></div>
-      <p class="when">Noch ${cdHtml(slotDeadline(js))} · andere sehen nur Prozente</p>${me.goal ? '' : goal}${weighInput(js, 'Speichern', '', true)}${me.goal ? goal : ''}</section>` };
+    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>${late ? 'Startgewicht nachtragen' : `Startgewicht bis ${dl}`}</h2></div>
+      ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · andere sehen nur Prozente</p>`}${me.goal ? '' : goal}${weighInput(js, 'Speichern', '', true)}${me.goal ? goal : ''}</section>` };
     return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
       <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
   if (os === null || os < js || me.finished) return { due: false, html: '' };
   if (me.weeks[os]?.paused) return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Heute kein Wiegen</h2><span class="aside">Woche ${os}</span></div><p class="small t2">Woche ${os} ist pausiert, das Wiegen heute fällt weg. Nächste Woche vergleicht die Waage wie immer mit deinem Tiefstwert.</p></section>` };
-  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>Wiegen bis ${dl}</h2><span class="aside">Woche ${os}</span></div>
-    <p class="when">Noch ${cdHtml(slotDeadline(os))} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>${weighInput(os, 'Eintragen', '', true)}</section>` };
+  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh"><div class="hd"><h2>${late ? `Wiegen nachtragen` : `Wiegen bis ${dl}`}</h2><span class="aside">Woche ${os}</span></div>
+    ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>`}${weighInput(os, 'Eintragen', '', true)}</section>` };
   const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
   return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Waage</h2><span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
     <p class="okline">${msg} <span class="muted">Korrigieren bis ${dl}.</span></p>${weighInput(os, 'Korrigieren', S.myWeights[os], false)}</section>` };
@@ -2116,6 +2132,25 @@ function pauseBlock() {
     <p class="small t2">Noch <b>${left}</b> von ${CONFIG.pauseWeeks} Pausenwochen. Eine Pause gilt für eine ganze Woche (Mo–So) und das Wiegen am Montag danach: keine Punkte, keine Strafen, Streak bleibt stehen. Die laufende Woche geht bis Mittwoch 23:59.</p>
     ${list}${opts.length ? `<div class="row"><select class="inp grow" id="pWeek" aria-label="Woche pausieren">${opts.map(w => `<option value="${w}">${pauseLbl(w)}</option>`).join('')}</select><button class="btn ghost" data-act="pause">Pausieren</button></div>` : ''}`;
 }
+// Admin (CONFIG.adminUids, im Demo jeder): Nachtrag erlauben, wenn jemand das Wiegefenster verpasst hat
+const isAdmin = () => DEMO || (CONFIG.adminUids || []).includes(S.me);
+function adminBlock() {
+  if (!isAdmin()) return '';
+  const lc = Math.min(lastClosedSlot(), CONFIG.weeks), tnow = realNow();
+  const ps = Object.entries(S.players).filter(([, x]) => x.status !== 'finished').sort((a, b) => String(a[1].name).localeCompare(String(b[1].name)));
+  const active = ps.filter(([, x]) => lateOpen(x));
+  const slotLbl = k => `${fmtD(slotStart(k))} · ${k === 0 ? 'Startgewicht' : `Woche ${k} (bzw. Start)`}`;
+  const list = active.map(([u, x]) => `<div class="row"><span class="small grow"><b>${esc(x.name)}</b>: ${slotLbl(x.lateSlot)}, bis ${fmtDT(new Date(tsNum(x.lateUntil)))}</span><button class="link" data-act="revokeLate" data-u="${esc(u)}">Aufheben</button></div>`).join('');
+  const def = new Date(tnow); def.setHours(23, 59, 0, 0); if (def <= tnow) def.setDate(def.getDate() + 1);
+  const slots = []; for (let k = Math.max(0, lc - 2); k <= lc; k++) slots.push(k);
+  const form = slots.length ? `<label class="f" for="aP">Spieler</label><select class="inp" id="aP">${ps.map(([u, x]) => `<option value="${esc(u)}">${esc(x.name)}${u === S.me ? ' (du)' : ''}</option>`).join('')}</select>
+    <label class="f" for="aS">Wiegen</label><select class="inp" id="aS">${slots.map(k => `<option value="${k}"${k === lc ? ' selected' : ''}>${slotLbl(k)}</option>`).join('')}</select>
+    <label class="f" for="aU">Nachtrag erlaubt bis</label><div class="row"><input class="inp grow" type="datetime-local" id="aU" value="${toLocalInput(def)}"><button class="btn ghost" data-act="grantLate">Nachtrag erlauben</button></div>`
+    : '<p class="small muted">Noch ist kein Wiegefenster vorbei.</p>';
+  return `<h3>Admin: Nachtrag erlauben</h3>
+    <p class="small t2">Für Notfälle, wenn jemand das Wiegefenster verpasst hat. Bis zur gewählten Zeit darf er das Wiegen dieses Montags eintragen. Fehlt noch sein Startgewicht, beginnt er wieder an diesem Montag, dann gehen auch die Haken dieser Woche.</p>
+    ${list}${form}`;
+}
 function profileHtml(fresh) {
   const p = S.players[S.me]; const he = habitsEditable(p.joinedSlot || 0);
   const code = p.invite && !DEMO ? `<h3>Neue Leute einladen</h3><p class="small t2">Schick ihnen den Link und den Code <b>${esc(p.invite)}</b>.</p>` : '';
@@ -2140,7 +2175,8 @@ function profileHtml(fresh) {
     <h3>Erinnerungen</h3>${push}
     <h3>Dein Fortschritt</h3><p class="small t2">Ziel, Gewichtsverlauf in kg, Heatmap und Meilensteine stehen im Tab <button class="link" data-tab="ich">Ich</button>.</p>
     ${code}
-    ${DEMO ? '' : `<h3>Konto</h3><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
+    ${adminBlock()}
+    ${DEMO ? '' : `<h3>Konto</h3><p class="small muted">Deine Nutzer-ID: <code class="uid">${esc(S.me)}</code></p><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
 }
 /* Einführung: 3 Screens, alle Zahlen aus CONFIG */
 function exampleWeek() { // eine realistische Woche: 0,6 % runter, Habits fast geschafft, Challenge 3×
@@ -2381,6 +2417,21 @@ document.addEventListener('click', async ev => {
         UI.modal = null; renderModal(); await DB.finish(exitSlot(C[S.me]));
         toast('Ausgestiegen. Ziel erreicht, Einsatz kommt zurück. Glückwunsch!'); celebrate(); break;
       }
+      case 'grantLate': { // Admin: Nachtrag erlauben
+        if (!isAdmin()) return;
+        const uid = val('aP'), slot = parseInt(val('aS'), 10), until = new Date(val('aU')), pl = S.players[uid], tnow = realNow();
+        if (!pl) return toast('Bitte einen Spieler wählen.');
+        if (!Number.isInteger(slot) || slot < 0 || slot > CONFIG.weeks) return toast('Bitte ein Wiegen wählen.');
+        if (!(until > tnow)) return toast('Die Frist muss in der Zukunft liegen.');
+        if (until - tnow > CONFIG.lateMaxDays * DAY) return toast(`Höchstens ${CONFIG.lateMaxDays} Tage.`);
+        const js = pl.joinedSlot || 0, started = !!C[uid]?.active;
+        if (started && slot < js) return toast(`${pl.name} hat schon ein Startgewicht (${fmtD(slotStart(js))}).`);
+        const d = { lateUntil: until.getTime(), lateSlot: slot };
+        if (!started && slot !== js) d.joinedSlot = slot; // noch kein Startgewicht: Start auf diesen Montag
+        await DB.setLate(uid, d); renderModal();
+        toast(`${pl.name} darf bis ${fmtDT(until)} nachtragen.`); break;
+      }
+      case 'revokeLate': { if (!isAdmin()) return; await DB.setLate(el.dataset.u, { lateUntil: realNow().getTime() - 1000 }); renderModal(); toast('Nachtrag aufgehoben.'); break; }
       case 'closeModal': closeModal(); break;
       case 'obNav': UI.obStep = clamp(UI.obStep + +el.dataset.d, 0, 2); renderModal(); document.querySelector('#modal .sheet')?.scrollTo(0, 0); break;
       case 'obOpen': UI.modal = 'onboarding'; UI.obStep = 0; renderModal(); break;
