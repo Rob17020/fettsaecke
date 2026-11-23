@@ -117,6 +117,8 @@ Object.assign(I, {
   team: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19.5c.6-3.2 2.7-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="16.5" cy="9" r="2.5"/><path d="M15.7 14.6c2.5-.2 4.2 1.5 4.8 4.9"/>',
   lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>',
   spark: '<path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.8 2.8M15.2 15.2L18 18M6 18l2.8-2.8M15.2 8.8L18 6"/>',
+  camera: '<path d="M3.5 8.5a2 2 0 0 1 2-2h2.2l1.6-2h5.4l1.6 2h2.2a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.75"/>',
+  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.75"/><path d="M20.5 15.5l-5-5-9 9"/>',
 });
 
 /* =====================================================================
@@ -415,7 +417,7 @@ function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.
 function makeDemoDB(emit) {
   const KEY = 'cdf-demo-v1';
   const ME = 'demo-me';
-  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false, botPatch: {} });
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false, botPatch: {}, proofs: {} });
   let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
   mine = { ...blank(), ...(mine || {}) };
   const save = () => LS.setItem(KEY, JSON.stringify(mine));
@@ -504,15 +506,15 @@ function makeDemoDB(emit) {
       const at = (dd, h) => past(dayDate(e0 + dd).getTime() + h * 36e5);
       const ta = 'e' + e + '_bot-siggi', tb = 'e' + e + '_bot-julian';
       S.tasks[ta] = { etappe: e, text: '2× 5 km laufen', createdBy: 'bot-siggi', createdByName: 'Siggi', ts: at(0, 19) };
-      if (!open || into > 6) S.taskDone[ta + '_bot-siggi'] = { uid: 'bot-siggi', taskId: ta, confirmedBy: 'bot-julian', confirmedByName: 'Julian', ts: at(5, 20), confirmedAt: at(6, 8) };
+      if (!open || into > 6) S.taskDone[ta + '_bot-siggi'] = { uid: 'bot-siggi', taskId: ta, confirmedBy: 'bot-julian', confirmedByName: 'Julian', ts: at(5, 20), confirmedAt: at(6, 8), proof: true, note: '5,3 km und 5,1 km, Screenshot von der Uhr' };
       if (!open || into > 10) {
         S.tasks[tb] = { etappe: e, text: '1 Stunde schwimmen', createdBy: 'bot-julian', createdByName: 'Julian', ts: at(1, 12) };
-        S.taskDone[tb + '_bot-julian'] = { uid: 'bot-julian', taskId: tb, confirmedBy: null, ts: at(10, 18) };
+        S.taskDone[tb + '_bot-julian'] = { uid: 'bot-julian', taskId: tb, confirmedBy: null, ts: at(10, 18), proof: true, note: 'Hallenbad, 60 Min' };
       }
       // weitere Bots machen Siggis Aufgabe mit (nur bei ?bots=…)
       BOTS.slice(2).forEach((b, i) => {
         if (i % 3 || (open && into <= 8 + i)) return;
-        S.taskDone[ta + '_' + b.uid] = { uid: b.uid, taskId: ta, confirmedBy: i % 2 ? null : 'bot-siggi', confirmedByName: i % 2 ? null : 'Siggi', ts: at(8 + (i % 5), 17), confirmedAt: i % 2 ? null : at(9 + (i % 5), 9) };
+        S.taskDone[ta + '_' + b.uid] = { uid: b.uid, taskId: ta, confirmedBy: i % 2 ? null : 'bot-siggi', confirmedByName: i % 2 ? null : 'Siggi', ts: at(8 + (i % 5), 17), confirmedAt: i % 2 ? null : at(9 + (i % 5), 9), proof: true };
       });
     }
     return S;
@@ -528,6 +530,7 @@ function makeDemoDB(emit) {
     return S;
   }
   const ts = () => now().getTime();
+  const S0 = () => state();
   const commit = () => { if (mine.player) mine.player.lastActive = ts(); save(); emit(state()); };
   setTimeout(() => emit(state()));
   return {
@@ -549,12 +552,22 @@ function makeDemoDB(emit) {
     async setWeekly(w, text, kind, target) { mine.weekly[w] = { text, kind, target, setBy: ME, setByName: mine.player.name, ts: ts() }; commit(); },
     async addTask(e, text) { const id = 'e' + e + '_' + ME; mine.tasks[id] = { etappe: e, text, createdBy: ME, createdByName: mine.player.name, ts: ts() }; commit(); },
     async deleteTask(id) { delete mine.tasks[id]; for (const k of Object.keys(mine.taskDone)) if (k.startsWith(id + '_')) delete mine.taskDone[k]; commit(); },
-    async markTask(id, on) {
+    // Erledigt melden mit Foto (auch erneut nach einer Ablehnung). Demo: Julian prüft nach ein paar Sekunden.
+    async reportTask(id, img, note) {
       const k = id + '_' + ME;
-      if (on) { mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null, ts: ts() }; setTimeout(() => { if (mine.taskDone[k]) { Object.assign(mine.taskDone[k], { confirmedBy: 'bot-julian', confirmedByName: 'Julian', confirmedAt: ts() }); commit(); toast('Julian hat deine Aufgabe bestätigt.'); } }, 2500); }
-      else delete mine.taskDone[k];
+      mine.proofs ||= {}; mine.proofs[k] = { uid: ME, taskId: id, img: img.url, w: img.w, h: img.h, ts: ts() };
+      mine.taskDone[k] = { uid: ME, taskId: id, confirmedBy: null, confirmedByName: null, ts: ts(), note: note || '', proof: true };
+      commit();
+      setTimeout(() => { const td = mine.taskDone[k]; if (td && !td.confirmedBy && !td.rejectedBy) { Object.assign(td, { confirmedBy: 'bot-julian', confirmedByName: 'Julian', confirmedAt: ts() }); commit(); toast('Julian hat deine Aufgabe bestätigt.'); } }, 2500);
+    },
+    async withdrawTask(id) { const k = id + '_' + ME; delete mine.taskDone[k]; if (mine.proofs) delete mine.proofs[k]; commit(); },
+    async rejectTask(tdId, reason) {
+      const r = { rejectedBy: ME, rejectedByName: mine.player.name, rejectedAt: ts(), rejectReason: reason || '' };
+      if (mine.taskDone[tdId]) Object.assign(mine.taskDone[tdId], r); else { const s = seed().taskDone[tdId]; if (s) mine.taskDone[tdId] = { ...s, ...r }; }
       commit();
     },
+    // Foto laden (Bots: erzeugtes Platzhalterbild, keine echten Fotos)
+    async loadProof(tdId) { const m = mine.proofs?.[tdId]; if (m) return m; const td = S0().taskDone[tdId]; return td?.proof ? demoProof(tdId, td) : null; },
     async confirmTask(tdId) {
       const td = mine.taskDone[tdId] || null;
       const c = { confirmedBy: ME, confirmedByName: mine.player.name, confirmedAt: ts() };
@@ -682,7 +695,22 @@ async function makeFirebaseDB(cfg, emit) {
     setWeekly: (w, text, kind, target) => F.setDoc(F.doc(db, 'weekly', String(w)), { text, kind, target, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, e => { toast(e.code === 'permission-denied' ? 'Zu spät, jemand anderes war schneller.' : 'Fehler: ' + e.message); throw e; }),
     addTask: (e, text) => wrap(F.setDoc(F.doc(db, 'tasks', 'e' + e + '_' + me()), { etappe: e, text, createdBy: me(), createdByName: S.players[me()]?.name || '', ts: F.serverTimestamp() })),
     deleteTask: id => wrap(F.deleteDoc(F.doc(db, 'tasks', id))),
-    markTask: (id, on) => wrap(on ? F.setDoc(F.doc(db, 'taskDone', id + '_' + me()), { uid: me(), taskId: id, confirmedBy: null, confirmedByName: null, ts: F.serverTimestamp() }) : F.deleteDoc(F.doc(db, 'taskDone', id + '_' + me()))),
+    // Erledigt melden: Foto (proofs/<id>) und Meldung in einem Schreibvorgang. Nach einer Ablehnung: neues Foto, Ablehnung weg.
+    reportTask(id, img, note) {
+      const k = id + '_' + me(), td = S.taskDone[k], b = F.writeBatch(db);
+      b.set(F.doc(db, 'proofs', k), { uid: me(), taskId: id, img: img.url, w: img.w, h: img.h, ts: F.serverTimestamp() });
+      if (td && td.rejectedBy) b.update(F.doc(db, 'taskDone', k), { rejectedBy: null, rejectedByName: null, rejectedAt: null, rejectReason: null, ts: F.serverTimestamp(), note: note || '', proof: true });
+      else b.set(F.doc(db, 'taskDone', k), { uid: me(), taskId: id, confirmedBy: null, confirmedByName: null, ts: F.serverTimestamp(), note: note || '', proof: true });
+      return wrap(b.commit());
+    },
+    withdrawTask(id) { // zurückziehen (nur unbestätigt), Foto mit weg
+      const k = id + '_' + me(), b = F.writeBatch(db);
+      b.delete(F.doc(db, 'taskDone', k)); if (S.taskDone[k]?.proof) b.delete(F.doc(db, 'proofs', k));
+      return wrap(b.commit());
+    },
+    rejectTask: (tdId, reason) => wrap(F.updateDoc(F.doc(db, 'taskDone', tdId), { rejectedBy: me(), rejectedByName: S.players[me()]?.name || '', rejectedAt: F.serverTimestamp(), rejectReason: reason || '' })),
+    // Fotos werden nicht abonniert (groß), sondern erst geladen, wenn jemand sie ansieht
+    async loadProof(tdId) { const d = await F.getDoc(F.doc(db, 'proofs', tdId)); return d.exists() ? d.data() : null; },
     async confirmTask(tdId) {
       const ref = F.doc(db, 'taskDone', tdId), d = { confirmedBy: me(), confirmedByName: S.players[me()]?.name || '' };
       // confirmedAt (Zeitpunkt für den Liveticker) braucht die aktuellen Regeln.
@@ -916,6 +944,7 @@ function render() {
   paint(document.getElementById('app'), header() + banner() + body(enter, dir));
   if (page) lastTab = vt;
   renderTabs();
+  hydrateProofs();
   wireCharts();
   markFeedSeen();
   animatePot();
@@ -1582,15 +1611,19 @@ function confirmCard(me) {
       extrasOf(pl).forEach(h => { if (h.confirm && d >= h.from && o.xl[d]?.[h.i]) items.push({ o, d, k: 'x' + h.i, name: h.name }); });
     }
   }
-  if (!items.length) return '';
+  // Extra-Aufgaben, die jemand anderes mit Foto gemeldet hat und die noch warten
+  const tasks = Object.entries(S.taskDone).filter(([, d]) => d.uid !== S.me && tdState(d) === 'wait' && C[d.uid]?.active && !C[d.uid].finished && S.tasks[d.taskId]);
+  const tli = tasks.map(([id, d]) => `<li><i style="background:${C[d.uid].color}"></i><span><b>${esc(C[d.uid].name)}</b> ${esc(S.tasks[d.taskId].text)} <span class="muted">Aufgabe${d.proof ? ', mit Foto' : ''}</span></span>
+    <button class="btn ghost sm" data-act="toProof" data-id="${esc(id)}">Prüfen</button></li>`).join('');
   const open = items.filter(x => !isOk(x.o.uid, x.d, x.k)), done = items.filter(x => isOk(x.o.uid, x.d, x.k) && S.habitok[`${x.o.uid}_${x.d}_${x.k}`]?.by === S.me);
-  if (!open.length && !done.length) return '';
+  if (!open.length && !done.length && !tasks.length) return '';
   const day = d => d === today ? 'heute' : d === today - 1 ? 'gestern' : fmtD(dayDate(d));
   const li = (x, on) => `<li><i style="background:${x.o.color}"></i><span><b>${esc(x.o.name)}</b> ${esc(x.name)} <span class="muted">${day(x.d)}</span></span>
     <button class="btn ${on ? 'sm' : 'ghost sm'}" data-act="hok" data-u="${x.o.uid}" data-d="${x.d}" data-k="${x.k}" data-on="${on ? 1 : 0}">${on ? 'Bestätigen' : 'Zurücknehmen'}</button></li>`;
-  return `<section class="card okc" data-k="habits"><div class="hd"><h2>Bestätigen</h2>${open.length ? `<span class="aside"><b>${open.length}</b> offen</span>` : ''}</div>
-    <p class="small t2">Hat das wirklich geklappt? Nur bestätigen, wenn du es gesehen hast oder ein Beweis in der Gruppe ist.</p>
-    <ul class="oklist">${open.map(x => li(x, true)).join('')}${done.slice(-3).map(x => li(x, false)).join('')}</ul></section>`;
+  const nOpen = open.length + tasks.length;
+  return `<section class="card okc" data-k="habits"><div class="hd"><h2>Bestätigen</h2>${nOpen ? `<span class="aside"><b>${nOpen}</b> offen</span>` : ''}</div>
+    <p class="small t2">Hat das wirklich geklappt? Nur bestätigen, wenn du es gesehen hast oder ein Beweis da ist.</p>
+    <ul class="oklist">${tli}${open.map(x => li(x, true)).join('')}${done.slice(-3).map(x => li(x, false)).join('')}</ul></section>`;
 }
 // Punktestand vieler Spieler als umbrechende Chips (sortiert)
 const chips = arr => `<div class="chips">${arr.map(({ p, v }) => `<span class="chip${p.uid === S.me ? ' me' : ''}"><i style="background:${p.color}"></i>${esc(p.name)} <b>${v}</b></span>`).join('')}</div>`;
@@ -1702,7 +1735,8 @@ function feedEvents() {
     const task = S.tasks[td.taskId]; if (!task || !C[td.uid]) continue;
     const rt = tsNum(td.ts), ct = tsNum(td.confirmedAt), tx = `„${esc(task.text)}“`;
     if (td.confirmedBy && (ct || rt)) ev.push({ id: 'c' + id, k: 'confirm', t: ct || rt, html: `${nm(td.confirmedBy)} hat die Aufgabe von ${nm(td.uid)} bestätigt`, sub: `${tx} · +${CONFIG.taskPts} P.` });
-    else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} geschafft`, sub: 'wartet auf Bestätigung' });
+    else if (td.rejectedBy && tsNum(td.rejectedAt)) ev.push({ id: 'rj' + id + tsNum(td.rejectedAt), k: 'task', t: tsNum(td.rejectedAt), html: `${nm(td.rejectedBy)} hat die Aufgabe von ${nm(td.uid)} abgelehnt`, sub: `${tx}${td.rejectReason ? ` · „${esc(td.rejectReason)}“` : ''}` });
+    else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id + rt, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} gemeldet${td.proof ? ', mit Foto' : ''}`, sub: 'wartet auf Bestätigung' });
   }
   for (const p of Object.values(C)) if (p.finished && p.finishedAt) ev.push({ id: 'x' + p.uid, k: 'weigh', t: p.finishedAt, html: `${nm(p.uid)} ist mit erreichtem Ziel ausgestiegen`, sub: frozenLine(p) });
   for (const [w, ch] of Object.entries(S.weekly)) if (tsNum(ch.ts)) ev.push({ id: 'ch' + w, k: 'challenge', t: tsNum(ch.ts), html: `${nm(ch.setBy)} hat die Challenge für Woche ${w} gewählt`, sub: esc(ch.text) });
@@ -1847,6 +1881,7 @@ function explain(key, intro, rows) {
   return `<p class="intro">${intro}</p><details class="expl" data-expl="${key}"${open ? ' open' : ''}><summary>So läuft's</summary><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></details>`;
 }
 document.addEventListener('toggle', ev => {
+  const g = ev.target; if (g.matches?.('details[data-gal]')) { const e = +g.dataset.gal; if (g.open !== (UI.galOpen === e)) { UI.galOpen = g.open ? e : null; UI.force.add('tasks'); render(); } return; }
   const d = ev.target; if (!d.matches?.('details[data-expl]')) return;
   const s = new Set(explClosed()); d.open ? s.delete(d.dataset.expl) : s.add(d.dataset.expl);
   LS.setItem(EXPL_KEY, JSON.stringify([...s]));
@@ -1854,7 +1889,9 @@ document.addEventListener('toggle', ev => {
 const explTask = () => explain('task', 'Einmal-Aufgaben raus aus der Komfortzone: etwas Größeres, das du sonst nicht machen würdest. Jede gilt eine ganze Etappe lang.', [
   ['Wer stellt sie?', 'Jeder stellt <b>1 Aufgabe pro Etappe</b>, z. B. „2× 5 km laufen“ oder „1 Stunde schwimmen“. Je mehr Leute, desto mehr Aufgaben.'],
   ['Wer macht mit?', 'Jeder darf jede Aufgabe machen, auch die eigene. Jede zählt pro Person einmal.'],
-  ['Wie zählt es?', '„Hab ich geschafft“ drücken und den Beweis in die Gruppe schicken. Erst wenn <b>jemand anderes bestätigt</b>, gibt es die Punkte.'],
+  ['Wie melde ich?', '„Erledigt melden“ und ein <b>Foto als Beweis</b> aufnehmen oder aus der Galerie wählen, dazu eine kurze Notiz, wenn du willst. Zählt als Beweis: alles, woran man sieht, dass du es gemacht hast, z. B. Screenshot der Laufuhr, Foto vor Ort, Eintrittskarte.'],
+  ['Wer bestätigt?', 'Jeder außer dir. Die anderen sehen dein Foto in der Aufgabe und tippen auf <b>Bestätigen</b> oder <b>Ablehnen</b> (mit Grund). Erst nach der Bestätigung gibt es die Punkte.'],
+  ['Abgelehnt?', 'Dann siehst du den Grund und kannst mit einem neuen Foto noch einmal melden, bis zum Ende der Etappe.'],
   ['Punkte', `+${CONFIG.taskPts} pro geschaffter Aufgabe. Zählt in Etappe und Gesamt, nicht in der Woche.`],
   ['Bis wann?', `Bis zum Ende der Etappe (Montag danach, ${CONFIG.deadlineHour} Uhr).`]]);
 const explTeam = () => explain('team', `Ein gemeinsames Ziel für die ganze Gruppe, eine Etappe lang (${CONFIG.etappeWeeks} Wochen). Alle zusammen oder keiner.`, [
@@ -1867,6 +1904,124 @@ const explWeekly = () => explain('weekly', 'Jede Woche eine kleine Aufgabe für 
   ['Wie oft?', `Täglich (1 P. pro Tag) oder 1× bzw. 2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} P.).`],
   ['Punkte', `Max. ${CONFIG.challengePts} pro Woche, zählt in Woche, Etappe und Gesamt. Auslassen kostet nichts und bricht keine Streak.`],
   ['Hier', 'Die Challenges dieser Etappe und wer wie viele Punkte geholt hat.']]);
+/* ---------- Extra-Aufgaben: Meldung mit Foto, Prüfung durch die anderen ----------
+   Status einer Meldung (taskDone): bestätigt (confirmedBy) · abgelehnt (rejectedBy, mit Grund) · wartet.
+   Fotos liegen in proofs/<taskDone-ID> (base64, verkleinert) und werden erst geladen, wenn jemand sie ansieht. */
+const PROOF_SIDE = 1080, PROOF_TARGET = 200000, PROOF_MAX = 400000; // längste Seite in px, Ziel- und Höchstgröße (Zeichen, Regeln: < 400000)
+const tdState = td => !td ? null : td.confirmedBy ? 'ok' : td.rejectedBy ? 'rej' : 'wait';
+async function loadBitmap(file) {
+  if (window.createImageBitmap) { try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch { } }
+  return new Promise((res, rej) => { const u = URL.createObjectURL(file), i = new Image(); i.onload = () => { res(i); setTimeout(() => URL.revokeObjectURL(u), 1000); }; i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('Das Bild lässt sich nicht lesen. Bitte ein JPG oder PNG wählen.')); }; i.src = u; });
+}
+// Verkleinern auf PROOF_SIDE (längste Seite), WebP (Safari: JPEG), Qualität ab 0,7 abwärts, bis es unter PROOF_TARGET liegt.
+// Nebenbei fallen die Metadaten (Ort, Kamera) weg, weil das Bild neu gezeichnet wird.
+async function compressImage(file) {
+  if (file.type && !file.type.startsWith('image/')) throw new Error('Bitte ein Foto wählen.');
+  const src = await loadBitmap(file), sw = src.width || src.naturalWidth, sh = src.height || src.naturalHeight;
+  if (!sw || !sh) throw new Error('Das Bild ist leer.');
+  let side = PROOF_SIDE, best = null;
+  for (let round = 0; round < 5; round++) {
+    const k = Math.min(1, side / Math.max(sw, sh)), w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(src, 0, 0, w, h);
+    for (const q of [0.7, 0.6, 0.5, 0.4]) {
+      let url = c.toDataURL('image/webp', q); if (!url.startsWith('data:image/webp')) url = c.toDataURL('image/jpeg', q);
+      if (!best || url.length < best.url.length) best = { url, w, h };
+      if (url.length <= PROOF_TARGET) return best;
+    }
+    side = Math.round(side * 0.8);
+  }
+  if (best && best.url.length < PROOF_MAX) return best;
+  throw new Error('Das Foto ist zu groß, bitte ein anderes nehmen.');
+}
+function blobUrl(dataUrl) { // data:… -> Objekt-URL (das große base64 steht dann nicht bei jedem Neuzeichnen im HTML)
+  const [head, b64] = String(dataUrl).split(','), type = (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg', bin = atob(b64 || ''), a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([a], { type }));
+}
+// Demo: erzeugtes Platzhalterbild statt eines echten Fotos
+function demoProof(tdId, td) {
+  const c = document.createElement('canvas'); c.width = 720; c.height = 960; const g = c.getContext('2d'), r = rng(tdId);
+  const gr = g.createLinearGradient(0, 0, 720, 960); gr.addColorStop(0, '#111'); gr.addColorStop(1, '#2c2c2e'); g.fillStyle = gr; g.fillRect(0, 0, 720, 960);
+  g.strokeStyle = ['#b6ff3c', '#2de2ff', '#ff2d78'][Math.floor(r() * 3)]; g.lineWidth = 10; g.beginPath(); g.arc(360, 420, 200, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (0.55 + r() * 0.45)); g.stroke();
+  g.fillStyle = '#fff'; g.font = '900 96px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText((3 + r() * 9).toFixed(1).replace('.', ','), 360, 450);
+  g.font = '600 34px system-ui, sans-serif'; g.fillStyle = '#a1a1a6'; g.fillText('km · Demo-Beweisfoto', 360, 510);
+  g.fillText(S.tasks[td.taskId]?.text?.slice(0, 32) || '', 360, 820);
+  return { img: c.toDataURL('image/jpeg', 0.7), w: 720, h: 960 };
+}
+// Geladene Fotos: tdId -> { key, url } (key = Meldung + Zeitpunkt, nach einer neuen Meldung wird neu geladen)
+const PROOF = {};
+const proofKey = id => id + '|' + tsNum(S.taskDone[id]?.ts);
+function hydrateProofs() {
+  for (const el of document.querySelectorAll('img[data-proof]')) {
+    const id = el.dataset.proof, k = proofKey(id), c = PROOF[id];
+    if (c && c.key === k && !c.loading) { if (c.url && el.getAttribute('src') !== c.url) el.src = c.url; el.closest('.proofbox')?.classList.toggle('miss', !c.url); continue; }
+    if (c?.loading === k) continue;
+    if (c?.url) URL.revokeObjectURL(c.url);
+    PROOF[id] = { key: k, loading: k };
+    Promise.resolve(DB.loadProof?.(id)).then(d => { PROOF[id] = { key: k, url: d?.img ? blobUrl(d.img) : null }; }, () => { PROOF[id] = { key: k, url: null }; }).then(hydrateProofs);
+  }
+}
+const proofImg = (id, alt, cls = '') => `<div class="proofbox ${cls}"><img data-proof="${esc(id)}" alt="${esc(alt)}" decoding="async"></div>`;
+const RSN_MAX = 140;
+function reportForm(id, again) {
+  const img = UI.reportImg?.[id];
+  return `<div class="report"><p class="small t2">${again ? 'Neues Foto als Beweis' : 'Foto als Beweis'}, z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Alle in der Gruppe sehen es.</p>
+    ${img ? `<div class="proofbox prev"><img src="${img.prev}" alt="Dein Beweisfoto"></div>` : ''}
+    <div class="row wrapr"><label class="btn ghost sm filebtn">${svg('camera')}${img ? 'Neu aufnehmen' : 'Foto aufnehmen'}<input class="sr" type="file" accept="image/*" capture="environment" data-proofin="${esc(id)}"></label>
+      <label class="btn ghost sm filebtn">${svg('image')}Aus Galerie<input class="sr" type="file" accept="image/*" data-proofin="${esc(id)}"></label></div>
+    <input class="inp" id="tdNote-${esc(id)}" maxlength="${RSN_MAX}" placeholder="Notiz (optional), z. B. 5,2 km in 31 Min" aria-label="Notiz zur Meldung">
+    <div class="row xbtns"><button class="btn ghost" data-act="reportCancel">Abbrechen</button><button class="btn" data-act="reportSend" data-id="${esc(id)}"${img ? '' : ' disabled'}>Melden</button></div></div>`;
+}
+// Foto ansehen und entscheiden (nur andere, nur solange die Meldung wartet)
+function proofPanel(tdId, td) {
+  const n = esc(C[td.uid]?.name || S.players[td.uid]?.name || '?'), st = tdState(td), mine = td.uid === S.me, canDecide = st === 'wait' && !mine && S.member && !C[S.me]?.finished;
+  const status = st === 'ok' ? `<p class="small ok">Bestätigt von ${esc(td.confirmedByName || '')}.</p>`
+    : st === 'rej' ? `<p class="small bad">Abgelehnt von ${esc(td.rejectedByName || '')}${td.rejectReason ? `: „${esc(td.rejectReason)}“` : ''}.</p>` : '';
+  return `<div class="proofp">${td.proof ? proofImg(tdId, `Beweisfoto von ${C[td.uid]?.name || ''}`) : '<p class="small muted">Ohne Foto gemeldet (vor der Foto-Pflicht).</p>'}
+    ${td.note ? `<p class="small"><b>${n}:</b> ${esc(td.note)}</p>` : ''}${status}
+    ${canDecide ? `<input class="inp" id="rjReason-${esc(tdId)}" maxlength="${RSN_MAX}" placeholder="Grund, falls du ablehnst (optional)" aria-label="Grund für die Ablehnung">
+      <div class="row xbtns"><button class="btn ghost danger" data-act="rejectTd" data-id="${esc(tdId)}">Ablehnen</button><button class="btn" data-act="confirm" data-id="${esc(tdId)}">Bestätigen</button></div>` : ''}
+    <button class="link" data-act="proofClose">Schließen</button></div>`;
+}
+function taskItem(id, t, canReport) {
+  const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id), mineId = id + '_' + S.me, mine = S.taskDone[mineId], ms = tdState(mine);
+  let my = '';
+  if (!mine) my = canReport ? (UI.report === id ? reportForm(id) : `<button class="btn ghost sm" data-act="report" data-id="${esc(id)}">Erledigt melden</button>`) : '';
+  else if (ms === 'ok') my = `<span class="tag ok">+${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
+  else if (ms === 'rej') my = `<p class="small bad rejl">Abgelehnt von ${esc(mine.rejectedByName || '')}${mine.rejectReason ? `: „${esc(mine.rejectReason)}“` : ''}.</p>`
+    + (canReport ? (UI.report === id ? reportForm(id, true) : `<button class="btn ghost sm" data-act="report" data-id="${esc(id)}">Neu melden</button><button class="link" data-act="withdraw" data-id="${esc(id)}">Zurückziehen</button>`) : '');
+  else my = `<span class="tag">Wartet auf Bestätigung</span>${mine.proof ? `<button class="link" data-act="proofOpen" data-id="${esc(mineId)}">Dein Foto</button>` : ''}${canReport ? `<button class="link" data-act="withdraw" data-id="${esc(id)}">Zurückziehen</button>` : ''}`;
+  const others = tds.filter(([, d]) => d.uid !== S.me).sort((a, b) => (C[a[1].uid]?.name || '').localeCompare(C[b[1].uid]?.name || '')).map(([tid, d]) => {
+    const n = esc(C[d.uid]?.name || '?'), st = tdState(d), on = UI.proofOpen === tid ? ' on' : '';
+    if (st === 'ok') return `<button class="tag ok tagb${on}" data-act="proofOpen" data-id="${esc(tid)}">${n} geschafft</button>`;
+    if (st === 'rej') return `<button class="tag tagb${on}" data-act="proofOpen" data-id="${esc(tid)}">${n} abgelehnt</button>`;
+    return `<button class="btn ghost sm${on}" data-act="proofOpen" data-id="${esc(tid)}">${n} prüfen</button>`;
+  }).join('');
+  const canDel = t.createdBy === S.me && !tds.length;
+  const open = tds.find(([tid]) => tid === UI.proofOpen);
+  return `<div class="task"><div class="row top"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="small muted">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="link" data-act="delTask" data-id="${esc(id)}">Löschen</button>` : ''}</div>
+    ${my + others ? `<div class="who">${my}${others}</div>` : ''}${open ? proofPanel(open[0], open[1]) : ''}</div>`;
+}
+// Beweisfotos der Etappe: erst beim Aufklappen geladen
+function proofGallery(e) {
+  const list = Object.entries(S.taskDone).filter(([, d]) => d.proof && S.tasks[d.taskId]?.etappe === e && C[d.uid]).sort((a, b) => tsNum(b[1].ts) - tsNum(a[1].ts));
+  if (!list.length) return '';
+  const open = UI.galOpen === e;
+  const items = open ? list.map(([id, d]) => `<button class="galitem" data-act="photo" data-id="${esc(id)}" aria-label="Foto von ${esc(C[d.uid].name)} ansehen: ${esc(S.tasks[d.taskId].text)}">${proofImg(id, '', 'th')}
+    <span><b>${esc(C[d.uid].name)}</b> ${esc(S.tasks[d.taskId].text)}<i class="${tdState(d)}">${{ ok: 'bestätigt', rej: 'abgelehnt', wait: 'wartet' }[tdState(d)]}</i></span></button>`).join('') : '';
+  return `<details class="gal" data-gal="${e}"${open ? ' open' : ''}><summary>Beweisfotos · Etappe ${e} <span class="muted">(${list.length})</span></summary>${open ? `<div class="galg">${items}</div>` : ''}</details>`;
+}
+function photoHtml(fresh) {
+  const id = UI.photo, td = S.taskDone[id]; if (!td) return '';
+  const n = esc(C[td.uid]?.name || '?'), t = S.tasks[td.taskId];
+  return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet photo" data-stop role="dialog" aria-modal="true" aria-label="Beweisfoto von ${n}" tabindex="-1">
+    <div class="hd"><h2>${n}</h2><button class="iconbtn" data-act="closeModal" aria-label="Schließen">${svg('close')}</button></div>
+    ${proofImg(id, `Beweisfoto von ${C[td.uid]?.name || ''}`, 'big')}
+    <p class="small t2">${esc(t?.text || '')}${td.note ? ` · ${esc(td.note)}` : ''}</p>
+    <p class="small ${tdState(td) === 'ok' ? 'ok' : tdState(td) === 'rej' ? 'bad' : 't2'}">${tdState(td) === 'ok' ? `Bestätigt von ${esc(td.confirmedByName || '')}` : tdState(td) === 'rej' ? `Abgelehnt von ${esc(td.rejectedByName || '')}${td.rejectReason ? `: „${esc(td.rejectReason)}“` : ''}` : 'Wartet auf Bestätigung'}</p></div></div>`;
+}
+
 function viewChallenges() {
   const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
   if (UI.etView === null) UI.etView = ce;
@@ -1879,24 +2034,10 @@ function viewChallenges() {
   const nAct = Object.values(C).filter(p => (p.active || p.uid === S.me) && !p.finished).length, nSet = tasks.filter(([, t]) => !C[t.createdBy]?.finished).length;
   let h = `<section class="card" data-k="task" data-form="tasks"><div class="hd"><h2>Extra-Aufgaben</h2><span class="aside">${nSet}/${nAct} gestellt · +${CONFIG.taskPts} P.</span></div>${explTask()}`;
   if (!tasks.length) h += `<p class="t2">Noch keine Aufgaben für diese Etappe.</p>`;
-  for (const [id, t] of tasks) {
-    const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id);
-    const mine = S.taskDone[id + '_' + S.me];
-    let my;
-    if (!mine) my = ed && cw > 0 ? `<button class="btn ghost sm" data-act="mark" data-id="${id}" data-on="1">Hab ich geschafft</button>` : '';
-    else if (!mine.confirmedBy) my = `<span class="tag">Wartet auf Bestätigung</span>${ed ? `<button class="link" data-act="mark" data-id="${id}" data-on="0">Zurückziehen</button>` : ''}`;
-    else my = `<span class="tag ok">+${CONFIG.taskPts} · bestätigt von ${esc(mine.confirmedByName || '')}</span>`;
-    const others = tds.filter(([, d]) => d.uid !== S.me).sort((a, b) => (C[a[1].uid]?.name || '').localeCompare(C[b[1].uid]?.name || '')).map(([tid, d]) => {
-      const n = esc(C[d.uid]?.name || '?');
-      return d.confirmedBy ? `<span class="tag ok">${n} geschafft</span>` : `<button class="btn ghost sm" data-act="confirm" data-id="${tid}">${n} bestätigen</button>`;
-    }).join('');
-    const canDel = t.createdBy === S.me && !tds.length;
-    h += `<div class="task"><div class="row top"><div class="grow"><div class="tt">${esc(t.text)}</div><div class="small muted">von ${esc(t.createdByName)}</div></div>${canDel ? `<button class="link" data-act="delTask" data-id="${id}">Löschen</button>` : ''}</div>
-      ${my + others ? `<div class="who">${my}${others}</div>` : ''}</div>`;
-  }
-  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e}</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Aufgabe"><button class="btn" data-act="addTask" data-e="${e}">Stellen</button></div>`;
-  else if (tasks.length) h += `<p class="small muted">Zählt, sobald jemand anderes bestätigt.</p>`;
-  h += `</section>`;
+  for (const [id, t] of tasks) h += taskItem(id, t, ed && cw > 0);
+  if (ed && !tasks.some(([, t]) => t.createdBy === S.me)) h += `<h3>Deine Aufgabe für Etappe ${e}</h3><div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Aufgabe"><button class="btn${UI.report || UI.proofOpen ? ' ghost' : ''}" data-act="addTask" data-e="${e}">Stellen</button></div>`;
+  else if (tasks.length) h += `<p class="small muted">Zählt, sobald jemand anderes dein Foto bestätigt.</p>`;
+  h += proofGallery(e) + `</section>`;
   // Wochen-Challenges der Etappe
   let wl = '';
   for (let w = ws; w <= we; w++) {
@@ -2213,7 +2354,8 @@ function viewRegeln(compact) {
     `Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Habits.`])}
   ${sec(`Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)`, [
     `<b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.`,
-    `Zählt erst, wenn <b>jemand anderes bestätigt</b>. Beweis in die Gruppe.`])}
+    `„Erledigt melden“ geht nur mit <b>Foto als Beweis</b> (Kamera oder Galerie, dazu eine Notiz, wenn du willst), z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Die Fotos sehen alle in der Gruppe.`,
+    `Zählt erst, wenn <b>jemand anderes bestätigt</b>. Wer ablehnt, schreibt einen Grund dazu. Abgelehnt? Mit einem neuen Foto noch einmal melden, bis zum Ende der Etappe.`])}
   ${sec(`Team-Monat (+${CONFIG.teamPts} P. pro Etappe)`, [
     `Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.`,
     `Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (Spätstarter und Pausen zählen nur ihre Wochen).`,
@@ -2324,7 +2466,7 @@ function onboardingHtml(fresh) {
       <ul class="small t2 xlist"><li><b>Waage:</b> ${CONFIG.weighPerTenth} Punkte pro 0,1 % unter deinem bisherigen Tiefstwert, max. ${wMax} pro Woche.</li>
       <li><b>Habits:</b> 3 eigene mit eigenem Wochenziel (1–7×), je bis zu ${CONFIG.habitMaxPts} Punkte, anteilig. Mehr gehen als Extra-Habits, ohne Punkte. Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.</li>
       <li><b>Wochen-Challenge:</b> bis zu ${CONFIG.challengePts} Punkte, der Wochenletzte sucht sie aus.</li>
-      <li><b>Extra-Aufgaben:</b> +${CONFIG.taskPts} pro geschaffter Aufgabe, ein anderer bestätigt. Team-Monat: +${CONFIG.teamPts}, wenn alle Ziele klappen.</li></ul>
+      <li><b>Extra-Aufgaben:</b> +${CONFIG.taskPts} pro geschaffter Aufgabe. Du meldest sie mit einem Foto, ein anderer bestätigt. Team-Monat: +${CONFIG.teamPts}, wenn alle Ziele klappen.</li></ul>
       <h3>Eine realistische Woche</h3>${exampleWeek()}`],
     ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<p class="t2">Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, gleiche Waage, Foto in die Gruppe. Die anderen sehen nur Prozente, nie deine kg.</p>
       <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf. Krank oder im Urlaub? Bis zu ${CONFIG.pauseWeeks} Wochen pro Saison pausieren, im Profil.</p>
@@ -2360,10 +2502,10 @@ function renderModal() {
   const fresh = m.dataset.k !== k;
   if (k === 'wrapped' && !fresh) return; // nicht neu zeichnen, sonst laufen Animationen und Zähler erneut
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
-  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : k === 'feed' ? feedHtml(fresh) : profileHtml(fresh);
+  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : k === 'feed' ? feedHtml(fresh) : k === 'photo' ? photoHtml(fresh) : profileHtml(fresh);
   if (!html) { UI.modal = null; renderModal(); return; }
   if (fresh) { m.innerHTML = html; restoreDrafts(m); } else paint(m, html);
-  m.dataset.k = k; document.body.classList.add('locked');
+  m.dataset.k = k; document.body.classList.add('locked'); hydrateProofs();
   if (!fresh) { const sh = m.querySelector('.sheet'); if (sh && sh.scrollTop !== sc) sh.scrollTop = sc; return; }
   // Fokus ins Overlay (ohne Tastatur aufzuklappen), damit Daten-Updates es nicht neu zeichnen
   m.querySelector('.sheet, .wrapped')?.focus({ preventScroll: true });
@@ -2522,8 +2664,31 @@ document.addEventListener('click', async ev => {
       case 'reload': location.reload(); break;
       case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); formSaved(form); break; }
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
-      case 'mark': await DB.markTask(el.dataset.id, el.dataset.on === '1'); break;
-      case 'confirm': await DB.confirmTask(el.dataset.id); toast('Bestätigt.'); break;
+      case 'report': UI.report = el.dataset.id; UI.proofOpen = null; UI.force.add('tasks'); render(); break;
+      case 'reportCancel': if (UI.report) { delete (UI.reportImg ||= {})[UI.report]; delete UI.drafts['tdNote-' + UI.report]; } UI.report = null; UI.force.add('tasks'); render(); break;
+      case 'reportSend': {
+        const id = el.dataset.id, img = UI.reportImg?.[id]; if (!img) return toast('Erst ein Foto aufnehmen oder auswählen.');
+        if (img.url.length >= PROOF_MAX) return toast('Das Foto ist zu groß.');
+        const note = val('tdNote-' + id).slice(0, RSN_MAX); el.disabled = true; document.activeElement?.blur();
+        await DB.reportTask(id, img, note);
+        URL.revokeObjectURL(img.prev); delete UI.reportImg[id]; UI.report = null; UI.force.add('tasks'); formSaved(form);
+        toast('Gemeldet. Jetzt muss jemand anderes dein Foto bestätigen.'); break;
+      }
+      case 'withdraw': await DB.withdrawTask(el.dataset.id); toast('Meldung zurückgezogen.'); break;
+      case 'proofOpen': UI.proofOpen = UI.proofOpen === el.dataset.id ? null : el.dataset.id; UI.report = null; UI.force.add('tasks'); render(); break;
+      case 'proofClose': UI.proofOpen = null; UI.force.add('tasks'); render(); break;
+      case 'confirm': {
+        const td = S.taskDone[el.dataset.id]; if (td && (td.uid === S.me || td.rejectedBy)) return;
+        await DB.confirmTask(el.dataset.id); UI.proofOpen = null; UI.force.add('tasks'); render(); toast(`Bestätigt. ${C[td?.uid]?.name || ''} bekommt +${CONFIG.taskPts} Punkte.`); break;
+      }
+      case 'rejectTd': {
+        const id = el.dataset.id, td = S.taskDone[id]; if (!td || td.uid === S.me || tdState(td) !== 'wait') return;
+        const reason = val('rjReason-' + id).slice(0, RSN_MAX); el.disabled = true;
+        await DB.rejectTask(id, reason); delete UI.drafts['rjReason-' + id]; UI.proofOpen = null; UI.force.add('tasks'); render();
+        toast(`Abgelehnt. ${C[td.uid]?.name || ''} kann mit einem neuen Foto noch einmal melden.`); break;
+      }
+      case 'photo': UI.photo = el.dataset.id; UI.modal = 'photo'; renderModal(); break;
+      case 'toProof': { const td = S.taskDone[el.dataset.id]; UI.proofOpen = el.dataset.id; UI.etView = S.tasks[td?.taskId]?.etappe ?? UI.etView; go('challenges'); break; }
       case 'rmode': UI.rankMode = el.dataset.m; render(); break;
       case 'rw': UI.rankWeek = clamp(UI.rankWeek + +el.dataset.d, 1, CONFIG.weeks); render(); break;
       case 're': UI.rankEtappe = clamp(UI.rankEtappe + +el.dataset.d, 1, NUM_ETAPPEN); render(); break;
@@ -2600,7 +2765,19 @@ document.addEventListener('click', async ev => {
     }
   } catch (e) { console.warn(e); /* Fehler wurde schon angezeigt */ }
 });
-document.addEventListener('change', ev => {
+document.addEventListener('change', async ev => {
+  const pin = ev.target.dataset?.proofin;
+  if (pin && ev.target.files?.[0]) {
+    const f = ev.target.files[0]; ev.target.value = '';
+    try {
+      toast('Foto wird verkleinert…');
+      const img = await compressImage(f); img.prev = blobUrl(img.url);
+      const old = (UI.reportImg ||= {})[pin]; if (old?.prev) URL.revokeObjectURL(old.prev);
+      UI.reportImg[pin] = img; UI.force.add('tasks'); render();
+      toast(`Foto bereit (${Math.round(img.url.length * 0.75 / 1024)} KB).`);
+    } catch (e) { toast(e.message || 'Das Foto ging nicht.'); }
+    return;
+  }
   if ((ev.target.id === 'demoTime' || ev.target.id === 'testTime') && ev.target.value) setNow(new Date(ev.target.value));
   if (ev.target.id === 'tmDay') { UI.tmDay = +ev.target.value; ev.target.blur(); UI.force.add('team'); render(); } // Werte des anderen Tags bleiben als Entwurf
 });

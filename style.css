@@ -884,3 +884,34 @@ p.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch} /* nur der Absatz auf d
   .sheet.ob .btn{min-height:54px;padding:0 30px;font-size:17px}
 }
 .rankbig small.unit{margin:0 0 0 8px;vertical-align:.9em}
+
+/* ---------- Extra-Aufgaben: Foto-Beweis ---------- */
+.report,.proofp{display:grid;gap:10px;margin-top:10px;padding:12px;border-radius:var(--r);background:var(--card-2)}
+.report .xbtns,.proofp .xbtns{justify-content:flex-end}
+.proofp>.link{justify-self:start}
+.filebtn{position:relative;cursor:pointer}
+.filebtn .ico{width:16px;height:16px}
+.filebtn:focus-within{outline:2px solid var(--lime);outline-offset:2px}
+.proofbox{position:relative;border-radius:var(--r-sm);overflow:hidden;background:var(--card);aspect-ratio:3/4;max-height:min(60vh,520px);display:grid;place-items:center}
+.proofbox img{width:100%;height:100%;object-fit:contain;display:block}
+.proofbox img:not([src]){visibility:hidden}
+.proofbox:has(img:not([src]))::before{content:"Lädt…";position:absolute;font-size:13px;color:var(--muted)}
+.proofbox.miss::before{content:"Kein Foto gefunden"}
+.proofbox.prev{aspect-ratio:auto;max-height:240px;justify-self:start;max-width:100%}
+.proofbox.prev img{max-height:240px;width:auto}
+.proofbox.th{aspect-ratio:1;max-height:none}
+.proofbox.th img{object-fit:cover}
+.proofbox.big{max-height:70vh}
+.tagb{cursor:pointer;font-family:inherit;background:none}
+.tagb.on,.btn.on{box-shadow:0 0 0 2px var(--cyan)}
+.rejl,.who>.report{flex-basis:100%}
+.gal{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.gal>summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--text-2)}
+.galg{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin-top:10px}
+.galitem{display:grid;gap:6px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.galitem>span{font-size:12px;line-height:1.35;color:var(--text-2)}
+.galitem>span b{color:var(--text)}
+.galitem i{display:block;font-style:normal;color:var(--muted)}
+.galitem i.ok{color:var(--lime)}.galitem i.rej{color:var(--blood)}
+.galitem:hover .proofbox,.galitem:focus-visible .proofbox{box-shadow:0 0 0 2px var(--cyan)}
+.sheet.photo{display:grid;gap:12px}

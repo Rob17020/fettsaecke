@@ -30,6 +30,7 @@ export function onSnapshot(ref, a, b, c) {
 }
 export async function setDoc(ref, data, opt) { M.writes.push({ op: 'set', path: ref.path, data: clean(data) }); M.store[ref.path] = opt?.merge ? deep(M.store[ref.path] || {}, clean(data)) : clean(data); emit(); }
 export async function updateDoc(ref, data) { M.writes.push({ op: 'update', path: ref.path, data: clean(data) }); if (!M.store[ref.path]) throw Object.assign(new Error('nf'), { code: 'not-found' }); M.store[ref.path] = { ...M.store[ref.path], ...clean(data) }; for (const [k, v] of Object.entries(data)) if (v && v.__del) delete M.store[ref.path][k]; emit(); }
+export async function getDoc(ref) { const d = M.store[ref.path]; return { exists: () => d !== undefined, data: () => d && structuredClone(d) }; }
 export async function deleteDoc(ref) { M.writes.push({ op: 'delete', path: ref.path }); delete M.store[ref.path]; emit(); }
-export function writeBatch() { const ops = []; return { set: (r, d, o) => ops.push(() => setDoc(r, d, o)), update: (r, d) => ops.push(() => updateDoc(r, d)), commit: async () => { for (const o of ops) await o(); } }; }`,
+export function writeBatch() { const ops = []; return { set: (r, d, o) => ops.push(() => setDoc(r, d, o)), update: (r, d) => ops.push(() => updateDoc(r, d)), delete: r => ops.push(() => deleteDoc(r)), commit: async () => { for (const o of ops) await o(); } }; }`,
 };

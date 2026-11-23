@@ -59,6 +59,17 @@ const SC = {
   e2tue: { label: 'Di Woche 5 (1. Woche Etappe 2)', off: 4 * WK + D + 10 * H },
 };
 const day = d => d; // Tag seit Start
+// Extra-Aufgabe mit Foto melden wie die App: proofs/<id> + taskDone/<id> in einem Batch (again = nach Ablehnung neu melden)
+const IMG = n => { const p = 'data:image/jpeg;base64,'; return p + 'A'.repeat(n - p.length); };
+const report = (f, uid, task, o = {}) => {
+  const id = `${task}_${uid}`, b = writeBatch(f);
+  b.set(doc(f, 'proofs', id), { uid, taskId: task, img: o.img || IMG(5000), w: 720, h: 960, ts: serverTimestamp(), ...(o.extra || {}) });
+  if (o.again) b.update(doc(f, 'taskDone', id), { rejectedBy: null, rejectedByName: null, rejectedAt: null, rejectReason: null, ts: serverTimestamp(), note: o.note || '', proof: true });
+  else b.set(doc(f, 'taskDone', id), { uid, taskId: task, confirmedBy: null, confirmedByName: null, ts: serverTimestamp(), note: o.note ?? '', proof: true });
+  return b.commit();
+};
+const proofSeed = uid => env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'proofs', `e1_bob_${uid}`), { uid, taskId: 'e1_bob', img: IMG(500), w: 1, h: 1, ts: Timestamp.fromMillis(1) }));
+const rejected = () => env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'taskDone/e1_bob_alice'), { rejectedBy: 'bob', rejectedByName: 'Bob', rejectedAt: Timestamp.fromMillis(2), rejectReason: 'unscharf' }));
 // Nachtrag ohne Regeln setzen (wie ihn ein Admin gesetzt hätte): Frist = jetzt + ms
 const late = (uid, slot, ms) => env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'players', uid), { lateUntil: Timestamp.fromMillis(Date.now() + ms), lateSlot: slot }));
 const weighBatch = (f, uid, slot, lossPct, player) => { const b = writeBatch(f); if (player) b.update(doc(f, 'players', uid), player); b.set(doc(f, 'weighins', `${uid}_${slot}`), { uid, slot, lossPct, ts: serverTimestamp() }); b.set(doc(f, 'players', uid, 'private', 'weights'), { slots: { [slot]: 99 } }, { merge: true }); return b.commit(); };
@@ -238,13 +249,37 @@ const T = [
   ['mon9', 'Aufgabe für Etappe 6 vorab (früher Lücke)', X, A, () => setDoc(doc(db('alice'), 'tasks/e6_alice'), { etappe: 6, text: 'x', createdBy: 'alice', createdByName: 'Alice' })],
   ['mon9', 'fremde Aufgabe löschen', X, X, () => deleteDoc(doc(db('alice'), 'tasks/e1_bob'))],
   ['mon9', 'eigene Aufgabe löschen, obwohl Alice sie schon gemacht hat (früher Lücke)', X, A, () => deleteDoc(doc(db('bob'), 'tasks/e1_bob'))],
-  ['mon9', 'Aufgabe als erledigt melden', A, A, () => setDoc(doc(db('bob'), 'taskDone/e1_bob_bob'), { uid: 'bob', taskId: 'e1_bob', confirmedBy: null, confirmedByName: null, ts: serverTimestamp() })],
+  ['mon9', 'Aufgabe melden ohne Foto (alte App)', X, X, () => setDoc(doc(db('bob'), 'taskDone/e1_bob_bob'), { uid: 'bob', taskId: 'e1_bob', confirmedBy: null, confirmedByName: null, ts: serverTimestamp() })],
+  ['mon9', 'Aufgabe melden mit Foto + Notiz (Batch)', A, A, () => report(db('bob'), 'bob', 'e1_bob', { note: '60 Min Hallenbad' })],
+  ['mon9', 'Aufgabe melden: Notiz 141 Zeichen', X, X, () => report(db('bob'), 'bob', 'e1_bob', { note: 'x'.repeat(141) })],
+  ['mon9', 'Foto 400.000 Zeichen (zu groß)', X, X, () => report(db('bob'), 'bob', 'e1_bob', { img: IMG(400000) })],
+  ['mon9', 'Foto knapp unter der Grenze (399.999 Zeichen)', A, A, () => report(db('bob'), 'bob', 'e1_bob', { img: IMG(399999) })],
+  ['mon9', 'Foto ist kein Bild (data:text/html)', X, X, () => report(db('bob'), 'bob', 'e1_bob', { img: 'data:text/html;base64,PHNjcmlwdD4=' })],
+  ['mon9', 'Foto mit Zusatzfeld', X, X, () => report(db('bob'), 'bob', 'e1_bob', { extra: { gps: '1,2' } })],
+  ['mon9', 'Foto für jemand anderen', X, X, () => setDoc(doc(db('bob'), 'proofs/e1_bob_alice'), { uid: 'alice', taskId: 'e1_bob', img: IMG(100), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'Foto mit falschem Zeitstempel', X, X, () => setDoc(doc(db('bob'), 'proofs/e1_bob_bob'), { uid: 'bob', taskId: 'e1_bob', img: IMG(100), w: 1, h: 1, ts: Timestamp.fromMillis(1) })],
+  ['mon9', 'Mitglied liest fremdes Foto', A, A, async () => { await proofSeed('alice'); return getDoc(doc(db('bob'), 'proofs/e1_bob_alice')); }],
+  ['mon9', 'Nicht-Mitglied liest Foto', X, X, async () => { await proofSeed('alice'); return getDoc(doc(db('eve'), 'proofs/e1_bob_alice')); }],
+  ['mon9', 'Bob lehnt Alices Meldung ab (mit Grund)', A, A, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { rejectedBy: 'bob', rejectedByName: 'Bob', rejectedAt: serverTimestamp(), rejectReason: 'Man sieht nur Wasser' })],
+  ['mon9', 'Alice lehnt ihre eigene Meldung ab', X, X, () => updateDoc(doc(db('alice'), 'taskDone/e1_bob_alice'), { rejectedBy: 'alice', rejectedByName: 'Alice', rejectedAt: serverTimestamp() })],
+  ['mon9', 'Ablehnung mit gefälschtem rejectedAt', X, X, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { rejectedBy: 'bob', rejectedByName: 'Bob', rejectedAt: Timestamp.fromMillis(1) })],
+  ['mon9', 'Ablehnung im Namen von Dave', X, X, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { rejectedBy: 'dave', rejectedByName: 'Dave', rejectedAt: serverTimestamp() })],
+  ['mon9', 'Ablehnung: Grund 141 Zeichen', X, X, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { rejectedBy: 'bob', rejectedByName: 'Bob', rejectedAt: serverTimestamp(), rejectReason: 'x'.repeat(141) })],
+  ['mon9', 'Ausgestiegene lehnt ab', X, X, () => updateDoc(doc(db('carol'), 'taskDone/e1_bob_alice'), { rejectedBy: 'carol', rejectedByName: 'Carol', rejectedAt: serverTimestamp() })],
+  ['mon9', 'Bestätigen nach einer Ablehnung', X, X, async () => { await rejected(); return updateDoc(doc(db('dave'), 'taskDone/e1_bob_alice'), { confirmedBy: 'dave', confirmedByName: 'Dave', confirmedAt: serverTimestamp() }); }],
+  ['mon9', 'Ablehnen, nachdem schon bestätigt ist', X, X, async () => { await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'taskDone/e1_bob_alice'), { confirmedBy: 'dave', confirmedByName: 'Dave' })); return updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { rejectedBy: 'bob', rejectedByName: 'Bob', rejectedAt: serverTimestamp() }); }],
+  ['mon9', 'Nach Ablehnung neu melden mit neuem Foto', A, A, async () => { await rejected(); return report(db('alice'), 'alice', 'e1_bob', { again: true, note: 'jetzt mit Uhr' }); }],
+  ['mon9', 'Nach Ablehnung neu melden ohne neues Foto', X, X, async () => { await rejected(); await proofSeed('alice'); return updateDoc(doc(db('alice'), 'taskDone/e1_bob_alice'), { rejectedBy: null, rejectedByName: null, rejectedAt: null, rejectReason: null, ts: serverTimestamp() }); }],
+  ['mon9', 'Nach Ablehnung: Meldung selbst bestätigen', X, X, async () => { await rejected(); return updateDoc(doc(db('alice'), 'taskDone/e1_bob_alice'), { rejectedBy: null, confirmedBy: 'alice' }); }],
+  ['mon9', 'Meldung + Foto zurückziehen (unbestätigt)', A, A, async () => { await proofSeed('alice'); const f = db('alice'), b = writeBatch(f); b.delete(doc(f, 'taskDone/e1_bob_alice')); b.delete(doc(f, 'proofs/e1_bob_alice')); return b.commit(); }],
+  ['mon9', 'Foto löschen nach der Bestätigung', X, X, async () => { await proofSeed('alice'); await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'taskDone/e1_bob_alice'), { confirmedBy: 'bob', confirmedByName: 'Bob' })); return deleteDoc(doc(db('alice'), 'proofs/e1_bob_alice')); }],
+  ['mon9', 'Foto austauschen nach der Bestätigung', X, X, async () => { await proofSeed('alice'); await env.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), 'taskDone/e1_bob_alice'), { confirmedBy: 'bob', confirmedByName: 'Bob' })); return setDoc(doc(db('alice'), 'proofs/e1_bob_alice'), { uid: 'alice', taskId: 'e1_bob', img: IMG(100), w: 1, h: 1, ts: serverTimestamp() }); }],
   ['mon9', 'Aufgabe gleich bestätigt melden', X, X, () => setDoc(doc(db('bob'), 'taskDone/e1_bob_bob'), { uid: 'bob', taskId: 'e1_bob', confirmedBy: 'bob' })],
   ['mon9', 'eigene Aufgabe selbst bestätigen', X, X, () => updateDoc(doc(db('alice'), 'taskDone/e1_bob_alice'), { confirmedBy: 'alice', confirmedByName: 'Alice', confirmedAt: serverTimestamp() })],
   ['mon9', 'Bob bestätigt Alice (mit confirmedAt)', A, A, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { confirmedBy: 'bob', confirmedByName: 'Bob', confirmedAt: serverTimestamp() })],
   ['mon9', 'Bob bestätigt mit falschem confirmedAt', X, X, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { confirmedBy: 'bob', confirmedByName: 'Bob', confirmedAt: Timestamp.fromMillis(1) })],
   ['mon9', 'Bob bestätigt im Namen von Dave', X, X, () => updateDoc(doc(db('bob'), 'taskDone/e1_bob_alice'), { confirmedBy: 'dave', confirmedByName: 'Dave' })],
-  ['e2tue', 'Aufgabe für Etappe 1 erst in Etappe 2 erledigt melden (früher Lücke)', X, A, () => setDoc(doc(db('bob'), 'taskDone/e1_bob_bob'), { uid: 'bob', taskId: 'e1_bob', confirmedBy: null })],
+  ['e2tue', 'Aufgabe für Etappe 1 erst in Etappe 2 erledigt melden (früher Lücke)', X, A, () => report(db('bob'), 'bob', 'e1_bob')],
   // --- Team-Monat ---
   ['mon9', 'Vorschlag Etappe 2 (Fenster offen)', A, A, () => setDoc(doc(db('alice'), 'teamideas/e2_alice'), { text: 'Schritte', kind: 'sum', per: 8000, period: 'day', unit: 'Schritte', etappe: 2, setBy: 'alice', setByName: 'Alice', ts: serverTimestamp() })],
   ['mon9', 'Vorschlag Etappe 1 nach der Ziehung', X, A, () => setDoc(doc(db('alice'), 'teamideas/e1_alice'), { text: 'x', kind: 'count', per: 3, period: 'week', unit: '', etappe: 1, setBy: 'alice', setByName: 'Alice' })],

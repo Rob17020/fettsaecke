@@ -165,6 +165,103 @@ console.log('\n5) Habit-Karte: Extra-Habit direkt anlegen, abhaken, bearbeiten, 
   await ctx.close();
 }
 
+console.log('\n6) Extra-Aufgabe mit Foto: verkleinern, melden, prüfen, ablehnen, neu melden, Galerie');
+{
+  // Tag 12 (Etappe 1): Siggis Aufgabe ist bestätigt, Julians wartet (Demo-Bots)
+  const m6 = me(); m6.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m6.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(12, 18), mine: m6, tab: 'challenges' });
+  // großes, verrauschtes Foto (schwer zu komprimieren) als Datei in das Galerie-Feld
+  const pick = sel => page.evaluate(async sel => {
+    const c = document.createElement('canvas'); c.width = 3000; c.height = 2000; const g = c.getContext('2d'), d = g.createImageData(3000, 2000);
+    for (let i = 0; i < d.data.length; i += 4) { d.data[i] = Math.random() * 255; d.data[i + 1] = Math.random() * 255; d.data[i + 2] = Math.random() * 255; d.data[i + 3] = 255; }
+    g.putImageData(d, 0, 0);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png')), dt = new DataTransfer(); dt.items.add(new File([blob], 'beweis.png', { type: 'image/png' }));
+    const inp = document.querySelector(sel); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true })); return blob.size;
+  }, sel);
+  await clk(page, '[data-act=report][data-id="e1_bot-siggi"]'); await page.waitForTimeout(200);
+  ok('Meldeformular: Kamera + Galerie, Melden gesperrt ohne Foto', await page.evaluate(() => !!document.querySelector('[data-proofin][capture=environment]') && !!document.querySelector('[data-proofin]:not([capture])') && document.querySelector('[data-act=reportSend]').disabled));
+  const raw = await pick('[data-proofin]:not([capture])'); await page.waitForFunction(() => !!document.querySelector('.report .proofbox.prev img'), null, { timeout: 15000 });
+  await page.fill('#tdNote-e1_bot-siggi', '5,1 km in 29 Min');
+  await storm(page);
+  ok('Vorschau + Notiz überleben das Neuzeichnen', await page.evaluate(() => !!document.querySelector('.report .proofbox.prev img') && document.getElementById('tdNote-e1_bot-siggi')?.value === '5,1 km in 29 Min'));
+  await clk(page, '[data-act=reportSend]'); await page.waitForTimeout(400);
+  let st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  const pr = st.proofs['e1_bot-siggi_demo-me'];
+  ok(`verkleinert: ${Math.round(raw / 1024)} KB PNG -> ${Math.round(pr.img.length / 1024)} KB, ${pr.w}×${pr.h}`, pr.img.length <= 200000 && Math.max(pr.w, pr.h) <= 1080 && /^data:image\/(webp|jpeg);base64,/.test(pr.img));
+  ok('Meldung mit Foto und Notiz', st.taskDone['e1_bot-siggi_demo-me']?.proof === true && st.taskDone['e1_bot-siggi_demo-me'].note === '5,1 km in 29 Min');
+  ok('Status „Wartet auf Bestätigung“', /Wartet auf Bestätigung/.test(await page.evaluate(() => document.querySelector('[data-form=tasks]').innerText)));
+  // Julians Meldung prüfen: Foto wird erst jetzt geladen, dann ablehnen mit Grund
+  ok('Fotos vorher nicht geladen', await page.evaluate(() => !document.querySelector('img[data-proof="e1_bot-julian_bot-julian"]')));
+  await clk(page, '[data-act=proofOpen][data-id="e1_bot-julian_bot-julian"]');
+  await page.waitForFunction(() => document.querySelector('img[data-proof="e1_bot-julian_bot-julian"]')?.naturalWidth > 0, null, { timeout: 5000 });
+  ok('Foto geladen, Bestätigen und Ablehnen da', await page.evaluate(() => !!document.querySelector('[data-act=confirm][data-id="e1_bot-julian_bot-julian"]') && !!document.querySelector('[data-act=rejectTd]')));
+  ok('eigene Meldung: kein Bestätigen-Knopf', await page.evaluate(() => !document.querySelector('[data-act=confirm][data-id="e1_bot-siggi_demo-me"]')));
+  await page.fill('#rjReason-e1_bot-julian_bot-julian', 'Man sieht nur das Dach'); await clk(page, '[data-act=rejectTd]'); await page.waitForTimeout(300);
+  st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('abgelehnt mit Grund', st.taskDone['e1_bot-julian_bot-julian']?.rejectedBy === 'demo-me' && st.taskDone['e1_bot-julian_bot-julian'].rejectReason === 'Man sieht nur das Dach');
+  ok('Liveticker zeigt die Ablehnung', await page.evaluate(() => { window.location.hash = '#heute'; return true; }) && await page.waitForTimeout(300).then(() => page.evaluate(() => /hat die Aufgabe von Julian abgelehnt/.test(document.body.innerText))));
+  // Julian hat meine Aufgabe inzwischen bestätigt (Demo) -> Galerie mit 3 Fotos, Großansicht
+  await page.waitForTimeout(2500); await clk(page, '[data-tab=challenges]'); await page.waitForTimeout(300);
+  ok('meine Aufgabe bestätigt', /\+10 · bestätigt von Julian/.test(await page.evaluate(() => document.querySelector('[data-form=tasks]').innerText)));
+  await page.evaluate(() => { const d = document.querySelector('details[data-gal]'); d.open = true; }); await page.waitForTimeout(400);
+  await page.waitForFunction(() => [...document.querySelectorAll('.galg img[data-proof]')].every(i => i.naturalWidth > 0), null, { timeout: 5000 });
+  ok('Galerie: alle Fotos der Etappe geladen', await page.evaluate(() => document.querySelectorAll('.galg .galitem').length) >= 3);
+  await clk(page, '.galitem'); await page.waitForTimeout(400);
+  ok('Großansicht', await page.evaluate(() => document.querySelector('#modal .sheet.photo img[data-proof]')?.naturalWidth > 0));
+  await page.screenshot({ path: new URL('./shots/forms-proof-photo-390.png', import.meta.url).pathname.replace(/%20/g, ' ') });
+  await page.keyboard.press('Escape');
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+{
+  // abgelehnte eigene Meldung: Grund sehen, neu melden
+  const m7 = me(); m7.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m7.myWeights[0] = 98;
+  m7.taskDone['e1_bot-siggi_demo-me'] = { uid: 'demo-me', taskId: 'e1_bot-siggi', confirmedBy: null, ts: at(11, 9), proof: true, note: 'alt', rejectedBy: 'bot-julian', rejectedByName: 'Julian', rejectedAt: at(11, 12), rejectReason: 'Datum fehlt' };
+  m7.proofs = { 'e1_bot-siggi_demo-me': { uid: 'demo-me', taskId: 'e1_bot-siggi', img: 'data:image/jpeg;base64,/9j/', w: 1, h: 1, ts: at(11, 9) } };
+  const { page, ctx, errs } = await open({ now: at(12, 18), mine: m7, tab: 'challenges' });
+  ok('abgelehnt: Grund sichtbar', /Abgelehnt von Julian: „Datum fehlt“/.test(await page.evaluate(() => document.querySelector('[data-form=tasks]').innerText)));
+  await clk(page, '[data-act=report][data-id="e1_bot-siggi"]'); await page.waitForTimeout(200);
+  await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = 800; c.height = 600; c.getContext('2d').fillRect(0, 0, 400, 300); const b = await new Promise(r => c.toBlob(r, 'image/jpeg')), dt = new DataTransfer(); dt.items.add(new File([b], 'x.jpg', { type: 'image/jpeg' })); const i = document.querySelector('[data-proofin][capture]'); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForFunction(() => !document.querySelector('[data-act=reportSend]')?.disabled, null, { timeout: 10000 });
+  await clk(page, '[data-act=reportSend]'); await page.waitForTimeout(300);
+  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('neu gemeldet: Ablehnung weg, neues Foto', !st.taskDone['e1_bot-siggi_demo-me'].rejectedBy && st.proofs['e1_bot-siggi_demo-me'].img.length > 100);
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+{
+  // Heute: offene Prüfungen in der Bestätigen-Karte, „Prüfen“ springt zur Aufgabe mit offenem Foto
+  const m8 = me(); m8.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m8.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(12, 18), mine: m8 });
+  ok('Bestätigen-Karte nennt Julians Aufgabe', await page.evaluate(() => /Julian.*1 Stunde schwimmen/.test(document.querySelector('.okc')?.innerText.replace(/\n/g, ' ') || '')));
+  await clk(page, '.okc [data-act=toProof]'); await page.waitForTimeout(400);
+  ok('springt zu Challenges, Foto offen', await page.evaluate(() => location.hash === '#challenges' && !!document.querySelector('.proofp img[data-proof="e1_bot-julian_bot-julian"]')));
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+{
+  // Firebase-Mock: Foto und Meldung in einem Batch, Foto per getDoc erst beim Ansehen
+  const HSx = HS.map(h => ({ ...h, confirm: false }));
+  const pl = n => ({ name: n, habits: HSx, habitSets: { 1: HSx }, extraHabits: [], maxLossPct: 8, joinedSlot: 0, joinedAt: 1, lastActive: Date.now(), invite: 'X', onboardingDone: true });
+  const store = { 'players/me': pl('Robbi'), 'players/sig': pl('Siggi'), 'weighins/me_0': { uid: 'me', slot: 0, lossPct: 0 }, 'weighins/sig_0': { uid: 'sig', slot: 0, lossPct: 0 }, 'players/me/private/weights': { slots: { 0: 98 } },
+    'tasks/e1_sig': { etappe: 1, text: 'Schwimmen', createdBy: 'sig', createdByName: 'Siggi', ts: 1 }, 'taskDone/e1_sig_sig': { uid: 'sig', taskId: 'e1_sig', confirmedBy: null, ts: 2, proof: true, note: 'Bahn 3' },
+    'proofs/e1_sig_sig': { uid: 'sig', taskId: 'e1_sig', img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', w: 1, h: 1, ts: 2 } };
+  const { page, ctx, errs } = await open({ fb: { user: { uid: 'me', displayName: 'Robbi' }, store }, tab: 'challenges', w: 1440 });
+  await clk(page, '[data-act=proofOpen][data-id="e1_sig_sig"]');
+  await page.waitForFunction(() => document.querySelector('img[data-proof="e1_sig_sig"]')?.naturalWidth > 0, null, { timeout: 5000 });
+  ok('Foto per getDoc geladen', true);
+  await clk(page, '[data-act=report][data-id="e1_sig"]');
+  await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = 1600; c.height = 1200; c.getContext('2d').fillRect(0, 0, 800, 600); const b = await new Promise(r => c.toBlob(r, 'image/png')), dt = new DataTransfer(); dt.items.add(new File([b], 'x.png', { type: 'image/png' })); const i = document.querySelector('[data-proofin]:not([capture])'); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForFunction(() => !document.querySelector('[data-act=reportSend]')?.disabled, null, { timeout: 10000 });
+  await clk(page, '[data-act=reportSend]'); await page.waitForTimeout(400);
+  const w = await page.evaluate(() => window.__FBM.writes.filter(x => /proofs|taskDone/.test(x.path)).map(x => ({ op: x.op, path: x.path, len: x.data?.img?.length, proof: x.data?.proof })));
+  ok('Batch: proofs + taskDone', w.length === 2 && w[0].path === 'proofs/e1_sig_me' && w[0].len < 200000 && w[1].path === 'taskDone/e1_sig_me' && w[1].proof === true, JSON.stringify(w));
+  await clk(page, '[data-act=proofOpen][data-id="e1_sig_sig"]'); await clk(page, '[data-act=confirm][data-id="e1_sig_sig"]'); await page.waitForTimeout(300);
+  ok('Bestätigen schreibt confirmedBy', await page.evaluate(() => window.__FBM.store['taskDone/e1_sig_sig'].confirmedBy === 'me'));
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${oks} ok, ${fails} FAIL`);
 process.exit(fails ? 1 : 0);
