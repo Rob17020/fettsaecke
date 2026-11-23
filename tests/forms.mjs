@@ -262,6 +262,49 @@ console.log('\n6) Extra-Aufgabe mit Foto: verkleinern, melden, prüfen, ablehnen
   await ctx.close();
 }
 
+console.log('\n7) Erklärungen: ?-Knöpfe, Bottom Sheet (Handy), Popover (Desktop), Regeln aus denselben Texten');
+{
+  const m9 = me({ extraHabits: [{ name: '10 Min lesen', target: 5 }] }); m9.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m9.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(9, 18), mine: m9 });
+  const qs = await page.evaluate(() => [...document.querySelectorAll('#app .qbtn')].map(b => b.getAttribute('aria-label')));
+  ok(`Heute: ${qs.length} ?-Knöpfe, alle mit „Erklärung: …“`, qs.length >= 6 && qs.every(l => /^Erklärung: \S/.test(l)), qs.join(' | '));
+  await clk(page, '[data-form=habits] .hd .qbtn'); await page.waitForTimeout(200);
+  ok('Handy: Bottom Sheet mit Titel', await page.evaluate(() => !!document.querySelector('#help.sheetm .helpbox[role=dialog]') && document.getElementById('helpT')?.textContent === 'Habits und Wochenziele'));
+  ok('Fokus im Sheet', await page.evaluate(() => !!document.activeElement?.closest('#help')));
+  await storm(page);
+  ok('bleibt beim Neuzeichnen offen', await page.evaluate(() => !!document.querySelector('#help .helpbox')));
+  await page.keyboard.press('Escape');
+  ok('Escape schließt, Fokus zurück auf ?', await page.evaluate(() => !document.querySelector('#help .helpbox') && document.activeElement?.classList.contains('qbtn')));
+  await clk(page, '[data-act=profile]'); await page.waitForTimeout(300);
+  await clk(page, '#modal .qbtn[data-k=pause]'); await page.waitForTimeout(200);
+  ok('im Profil: Pause erklärt, über dem Profil', await page.evaluate(() => document.getElementById('helpT')?.textContent === 'Pause' && !!document.querySelector('#modal .sheet')));
+  await page.keyboard.press('Escape');
+  ok('Escape schließt nur die Erklärung', await page.evaluate(() => !document.querySelector('#help .helpbox') && !!document.querySelector('#modal .sheet')));
+  await page.keyboard.press('Escape');
+  // Regeln: jeder Eintrag 2–5 Sätze + Beispiel mit Zahlen
+  await clk(page, '[data-tab=regeln]'); await page.waitForTimeout(300);
+  const secs = await page.evaluate(() => [...document.querySelectorAll('.rules .rs[id^=r-]')].map(r => ({ k: r.id, n: r.querySelectorAll('.hl > li').length, ex: r.querySelector('.hx')?.textContent || '' })));
+  const bad = secs.filter(x => x.n < 2 || x.n > 5 || !/^Beispiel: .*\d/.test(x.ex));
+  ok(`Regeln: ${secs.length} Abschnitte aus HELP, je 2–5 Sätze + Beispiel mit Zahlen`, secs.length >= 19 && !bad.length, JSON.stringify(bad));
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+{
+  const m10 = me(); m10.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m10.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(9, 18), mine: m10, w: 1440 });
+  await clk(page, '[data-form=weekly] .qbtn'); await page.waitForTimeout(200);
+  const r = await page.evaluate(() => { const b = document.querySelector('#help.pop .helpbox')?.getBoundingClientRect(); return b && { l: b.left, r: b.right, t: b.top, b: b.bottom, w: innerWidth, h: innerHeight }; });
+  ok('Desktop: Popover im Fenster', !!r && r.l >= 0 && r.r <= r.w && r.t >= 0 && r.b <= r.h, JSON.stringify(r));
+  ok('Popover-Text aus CONFIG (Wochenletzter, 12 Std.)', /Wochenletzte 12 Stunden lang allein/.test(await page.evaluate(() => document.querySelector('#help').innerText)));
+  await page.mouse.click(700, 120); await page.waitForTimeout(150);
+  ok('Klick daneben schließt', await page.evaluate(() => !document.querySelector('#help .helpbox')));
+  // Einführung nutzt dieselben Texte
+  await clk(page, '[data-tab=regeln]'); await clk(page, '[data-act=obOpen]'); await page.waitForTimeout(300);
+  ok('Einführung: Punkte-Text aus HELP', /Jede Woche zählt neu: Waage bis/.test(await page.evaluate(() => document.querySelector('#modal').innerText)));
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${oks} ok, ${fails} FAIL`);
 process.exit(fails ? 1 : 0);

@@ -465,10 +465,6 @@ code.uid{font:500 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var
 .expl summary::after{content:"";width:6px;height:6px;margin-top:-3px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .25s var(--spring)}
 .expl[open] summary::after{margin-top:3px;transform:rotate(-135deg)}
 .expl summary:focus-visible{outline:2px solid var(--lime);outline-offset:2px;border-radius:var(--r-sm)}
-.expl dl{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 16px;margin-top:4px;padding:12px;border-radius:var(--r-sm);background:var(--card-2);font-size:13px;line-height:1.45}
-.expl dt{color:var(--muted);font-weight:700}
-.expl dd{color:var(--text-2)}
-.expl dd+dt{margin-top:6px}
 @container (min-width:26rem){.expl dl{grid-template-columns:auto minmax(0,1fr);gap:8px 16px}.expl dd+dt{margin-top:0}}
 .task .tt{font-weight:800}
 .task .who{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
@@ -915,3 +911,31 @@ p.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch} /* nur der Absatz auf d
 .galitem i.ok{color:var(--lime)}.galitem i.rej{color:var(--blood)}
 .galitem:hover .proofbox,.galitem:focus-visible .proofbox{box-shadow:0 0 0 2px var(--cyan)}
 .sheet.photo{display:grid;gap:12px}
+
+/* ---------- Erklärungen: ?-Knopf, Popover (Desktop), Bottom Sheet (Handy/Tablet) ---------- */
+.qbtn{position:relative;display:inline-grid;place-items:center;width:22px;height:22px;flex:none;padding:0;border:1px solid var(--line-3);border-radius:var(--r-xs);background:transparent;color:var(--text-2);font:800 12px/1 var(--font);cursor:pointer;vertical-align:middle;transition:color .15s,border-color .15s,background .15s}
+.qbtn::after{content:"";position:absolute;inset:-8px}
+.qbtn:hover,.qbtn[aria-expanded=true]{color:var(--text);border-color:var(--text-2);background:var(--card-2)}
+.qbtn.inl{display:inline-grid;width:18px;height:18px;font-size:11px;cursor:default}
+.hd>.qbtn{margin-right:auto;margin-left:-4px}
+.hd>h2+.qbtn:last-child{margin-right:auto}
+.rlegend li>.qbtn{width:18px;height:18px;font-size:11px;align-self:center}
+.streak>.qbtn{margin-left:4px;width:18px;height:18px;font-size:11px}
+.help{position:fixed;inset:0;z-index:40;pointer-events:none}
+.help:empty{display:none}
+.helpbox{pointer-events:auto;display:grid;gap:10px;padding:16px;background:var(--card);border:1px solid var(--line-3);border-radius:var(--r);box-shadow:0 20px 60px rgba(0,0,0,.6);color:var(--text);font-size:14px;line-height:1.5}
+.helpbox:focus{outline:none}
+.helpbox .hd h2{color:var(--text);font-size:15px}
+.help.pop .helpbox{position:fixed;max-height:min(70vh,560px);overflow:auto;animation:helpIn .18s var(--out) both}
+.help.sheetm{pointer-events:auto;display:flex;align-items:flex-end;justify-content:center}
+.helpbg{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.help.sheetm .helpbox{position:relative;width:100%;max-width:640px;max-height:80vh;max-height:80dvh;overflow:auto;padding:var(--pad) var(--pad) calc(20px + env(safe-area-inset-bottom));border-bottom:0;border-radius:var(--r) var(--r) 0 0;animation:sheetUp .35s var(--out) both}
+@keyframes helpIn{from{opacity:0;transform:translateY(-4px)}}
+.hl{display:grid;gap:6px;margin:0;padding-left:18px;color:var(--text-2)}
+.hl b{color:var(--text)}
+.hx{padding:10px 12px;border-radius:var(--r-sm);background:var(--card-2);color:var(--text-2);font-size:13px}
+.hx b{color:var(--text)}
+.rs .hl{font-size:14px}.rs .hx{margin-top:8px}
+.expl .hl{margin-top:8px;font-size:14px}.expl .hx{margin-top:8px}
+.obh .hl{font-size:15px}.obh .hx{margin-top:10px}
+.obh.noex .hx{display:none} /* Einführung: das Beispiel steht dort als Balken */

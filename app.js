@@ -1047,11 +1047,11 @@ function viewRegister() {
     <p class="t2 small">Dein Start: <b>${fmtD(slotStart(k))}</b>, Startgewicht zwischen ${weighHours} eintragen. Einsatz: <b>${eur(CONFIG.einsatz)}</b>.</p>
     <label class="f" for="rName">Dein Name</label><input class="inp" id="rName" maxlength="20" placeholder="z. B. Robbi" value="${esc(S.displayName?.split(' ')[0] || '')}">
     ${goalPicker('r', { askStart: true })}
-    <p class="small muted">${goalHint}</p>
-    <label class="f">Deine 3 Habits und wie oft pro Woche</label>
+    <p class="small muted">${goalHint} ${helpBtn('goal')}</p>
+    <label class="f">Deine 3 Habits und wie oft pro Woche ${helpBtn('habits')}</label>
     <p class="small muted">Muss nicht Sport sein, z. B. „Kochen statt Lieferdienst“ oder „1× 10 km laufen“. Jedes bringt bis zu ${CONFIG.habitMaxPts} Punkte pro Woche, egal wie oft. Zu leichte Habits darf die Gruppe ablehnen.</p>
     ${habitInputs('r', null, false)}
-    <label class="f">Extra-Habits <span class="muted">(optional, ohne Punkte)</span></label>
+    <label class="f">Extra-Habits <span class="muted">(optional, ohne Punkte)</span> ${helpBtn('extras')}</label>
     <p class="small muted">Für alles, wobei dir die Gruppe Druck machen soll, z. B. Wohnung sauber halten. Bringt keine Punkte und kostet nichts. Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.</p>
     ${extraInputs('r', [])}
     ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
@@ -1191,10 +1191,10 @@ function goalBar(me) {
   const g = me.goal, cur = Math.max(0, me.latest), done = me.goalWeek !== null;
   if (me.hold) {
     const inb = me.latest >= g - CONFIG.holdBand - 1e-9;
-    return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))}&nbsp;%</b></div>
+    return `<div class="goalbar"><div class="row"><b class="small grow">${HOLD_LBL} ${helpBtn('hold')}</b><b class="small ${inb ? 'ok' : 'bad'}">${tn(fmt1(me.latest))}&nbsp;%</b></div>
       <p class="small t2">Bleib unter deinem Zielgewicht (mindestens −${tn(pct(g - CONFIG.holdBand))}&nbsp;%, also ${tn(pct(CONFIG.holdBand))}&nbsp;Prozentpunkt Puffer): jede Woche die vollen ${CONFIG.weighMaxTenths * CONFIG.weighPerTenth} Waage-Punkte. Darüber 0. Habits und Challenge laufen normal weiter, inklusive Strafe.</p>${exitBtn(me)}</div>`;
   }
-  return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
+  return `<div class="goalbar"><div class="row"><span class="small t2 grow">Dein Ziel ${helpBtn('goal')}</span><b class="small">${tn(fmt1(cur))} % von ${tn(pct(g))} %</b></div>
     <div class="bar pk${done ? ' done' : ''}" role="progressbar" aria-label="Dein Ziel" aria-valuemin="0" aria-valuemax="${g}" aria-valuenow="${fmt1(cur)}"><i style="width:${(clamp(cur / g, 0, 1) * 100).toFixed(1)}%"></i></div>${exitBtn(me)}</div>`;
 }
 
@@ -1330,7 +1330,7 @@ function viewHeute() {
 }
 function finishedCard(me) {
   const f = fees(me, null);
-  return `<section class="card fin" data-k="me"><div class="hd"><h2>Ziel erreicht · ausgestiegen</h2></div>
+  return `<section class="card fin" data-k="me"><div class="hd"><h2>Ziel erreicht · ausgestiegen</h2>${helpBtn('exit')}</div>
     <p class="finbig num">${tn(lossStr(me.wb[me.fw] ?? me.latest))}</p>
     <p class="t2">Ziel −${tn(pct(me.goal))} % nach ${wochen(me.goalWeek - me.js)}, ausgestiegen nach Woche ${me.fw}. Du bekommst deinen Einsatz zurück (${eur(f.refund)})${f.strafen ? `, deine Strafen (${eur(f.strafen)}) bleiben im Topf` : ''}.</p>
     <p class="small muted">Keine Punkte, Strafen oder Erinnerungen mehr. Dein Ergebnis steht eingefroren unter Ranking → Gesamt → Ziel erreicht.</p></section>`;
@@ -1359,17 +1359,17 @@ function weighCard(me, p) {
     const goal = me.goal && tk ? `<p class="small t2">Zielgewicht <b>${tn(fmt1(tk))} kg</b> <span id="goalLive"></span> · ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : me.goal ? `<p class="small t2">Dein Ziel: <b>−${tn(pct(me.goal))} %</b> vom Startgewicht, ab dem Startgewicht fest. <button class="link" data-tab="ich">Ändern</button></p>`
       : `<label class="f" for="mlp">Dein Ziel: so viel willst du abnehmen <span class="muted">(in %)</span></label>${goalInput('mlp', null)}<p class="small muted">${goalHint}</p>`;
-    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? 'Startgewicht nachtragen' : `Startgewicht bis ${dl}`}</h2></div>
+    if (os === js) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? 'Startgewicht nachtragen' : `Startgewicht bis ${dl}`}</h2>${helpBtn(late ? 'late' : 'weigh')}</div>
       ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · andere sehen nur Prozente</p>`}${me.goal ? '' : goal}${weighInput(js, 'Speichern', '', true)}${me.goal ? goal : ''}</section>` };
-    return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2></div>
+    return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Startgewicht am ${fmtD(slotStart(js))}</h2>${helpBtn('weigh')}</div>
       <p class="when">${weighHours} · in <b class="cd">${countdown(slotOpen(js))}</b></p>${me.goal ? goal : '<p class="small t2">Noch kein Ziel. <button class="link" data-tab="ich">Ziel festlegen</button></p>'}</section>` };
   }
   if (os === null || os < js || me.finished) return { due: false, html: '' };
-  if (me.weeks[os]?.paused) return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Heute kein Wiegen</h2><span class="aside">Woche ${os}</span></div><p class="small t2">Woche ${os} ist pausiert, das Wiegen heute fällt weg. Nächste Woche vergleicht die Waage wie immer mit deinem Tiefstwert.</p></section>` };
-  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? `Wiegen nachtragen` : `Wiegen bis ${dl}`}</h2><span class="aside">Woche ${os}</span></div>
+  if (me.weeks[os]?.paused) return { due: false, html: `<section class="card" data-k="weigh"><div class="hd"><h2>Heute kein Wiegen</h2>${helpBtn('pause')}<span class="aside">Woche ${os}</span></div><p class="small t2">Woche ${os} ist pausiert, das Wiegen heute fällt weg. Nächste Woche vergleicht die Waage wie immer mit deinem Tiefstwert.</p></section>` };
+  if (os > js && me.wb[os] === undefined) return { due: true, html: `<section class="card due" data-k="weigh" data-form="weigh"><div class="hd"><h2>${late ? `Wiegen nachtragen` : `Wiegen bis ${dl}`}</h2>${helpBtn(late ? 'late' : 'weigh')}<span class="aside">Woche ${os}</span></div>
     ${late ? lateLine : `<p class="when">Noch ${cdHtml(until)} · verpasst = 0 Waage-Punkte und ${eur(CONFIG.strafe)}</p>`}${weighInput(os, 'Eintragen', '', true)}</section>` };
   const msg = os === js ? 'Startgewicht gespeichert.' : `Woche ${os} gewogen: <b>+${ptsStr(me.weeks[os]?.weigh ?? 0)}</b>.`;
-  return { due: false, html: `<section class="card" data-k="weigh" data-form="weigh"><div class="hd"><h2>Waage</h2><span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
+  return { due: false, html: `<section class="card" data-k="weigh" data-form="weigh"><div class="hd"><h2>Waage</h2>${helpBtn('weigh')}<span class="aside"><b>${tn(lossStr(me.latest))}</b> seit Start</span></div>
     <p class="okline">${msg} <span class="muted">Korrigieren bis ${dl}.</span></p>${weighInput(os, 'Korrigieren', S.myWeights[os], false)}</section>` };
 }
 // Bei vielen Spielern: Top 3, du mit Nachbarn und der Letzte; dazwischen eine Lücke
@@ -1419,7 +1419,7 @@ function statusCard(me) {
       { c: 'var(--pink)', v: wk.weigh || 0, max: CONFIG.weighMaxTenths * CONFIG.weighPerTenth, l: 'Waage', off: !wk.weighed && !closed && (w === cw ? 'ab ' + fmtD(slotStart(w)) : 'offen') },
     ];
     const rk = 'wk' + w, ringsHtml = ringSvg(defs.map(x => ({ p: x.off ? 0 : x.v / x.max, c: x.c })), 96, 11, 3, rk);
-    const legend = defs.map((x, i) => `<li style="--c:${x.c}"><b${ringMoving(rk + ':' + i) ? ' class="bump"' : ''}>${x.off ? '–' : x.v}<small>/${x.max}</small></b>${x.l}${x.off ? `<span>${x.off}</span>` : ''}</li>`).join('');
+    const legend = defs.map((x, i) => `<li style="--c:${x.c}"><b${ringMoving(rk + ':' + i) ? ' class="bump"' : ''}>${x.off ? '–' : x.v}<small>/${x.max}</small></b>${x.l}${i === 2 ? helpBtn('cap') : ''}${x.off ? `<span>${x.off}</span>` : ''}</li>`).join('');
     const pos = 1 + r.filter(x => x.total > mine.total).length;
     rank = `<div class="sthero"><div class="stleft"><div class="rankbig num"><small>#</small>${pos}</div><p class="small t2">von ${r.length} · <b>${ptsStr(mine.total)}</b></p></div>
       ${ringsHtml}</div><ul class="rlegend">${legend}</ul>`;
@@ -1446,7 +1446,7 @@ function statusCard(me) {
   if (last > me.js && me.weeks[last]) kv.push(['Letztes Wiegen', `+${me.weeks[last].weigh} P. (Woche ${last})`]);
   if (me.missed) kv.push(['Wiegen verpasst', `<span class="bad">${me.missed}× · ${eur(me.missed * CONFIG.strafe)}</span>`]);
   if (me.missedHabitWeeks.length) kv.push(['Wochenziele verfehlt', `<span class="bad">${me.missedHabitWeeks.length}× · ${eur(me.missedHabitWeeks.length * CONFIG.habitFee)}</span>`]);
-  return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2></div>${rank}${gb}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
+  return `<section class="card status" data-k="rank"><div class="hd"><h2>${head}</h2>${helpBtn('points')}</div>${rank}${gb}<dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></section>`;
 }
 // Ziel erreicht: die zwei Wege nebeneinander (bis man eins gewählt hat; Weitermachen ist der Normalfall)
 function goalChoiceCard(me) {
@@ -1455,9 +1455,9 @@ function goalChoiceCard(me) {
   return `<section class="card gchoice" data-k="weigh"><div class="hd"><h2>Ziel erreicht</h2><span class="aside">−${tn(pct(me.goal))} % in ${wochen(me.goalWeek - me.js)}</span></div>
     <p class="t2">Stark. Du hast zwei Möglichkeiten:</p>
     <div class="gopts">
-      <div class="gopt"><h3>Aussteigen</h3><p class="small t2"><b>${eur(CONFIG.einsatz)} Einsatz zurück</b>, danach musst du nichts mehr machen. Dein Ergebnis wird eingefroren. Frühere Strafen bleiben im Topf. Geht nicht rückgängig.</p>
+      <div class="gopt"><h3>Aussteigen ${helpBtn('exit')}</h3><p class="small t2"><b>${eur(CONFIG.einsatz)} Einsatz zurück</b>, danach musst du nichts mehr machen. Dein Ergebnis wird eingefroren. Frühere Strafen bleiben im Topf. Geht nicht rückgängig.</p>
         <button class="btn ghost danger full" data-act="exitAsk">Aussteigen</button></div>
-      <div class="gopt on"><h3>Weitermachen</h3><p class="small t2">Alles läuft weiter wie bisher, auch Habits und Strafen. Bleibst du unter deinem Zielgewicht, gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Du spielst weiter um den Topf.</p>
+      <div class="gopt on"><h3>Weitermachen ${helpBtn('hold')}</h3><p class="small t2">Alles läuft weiter wie bisher, auch Habits und Strafen. Bleibst du unter deinem Zielgewicht, gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Du spielst weiter um den Topf.</p>
         <button class="btn full" data-act="goalStay" data-w="${me.goalWeek}">Weitermachen</button></div>
     </div></section>`;
 }
@@ -1478,7 +1478,7 @@ function potCard(me, where) {
   const mine = fees(me, null), lead = curWeek() >= 2 ? rankTotal(C)[0] : null;
   const bar = parts.map(x => `<i style="flex:${x.v};background:${x.c}" title="${x.l}: ${eur(x.v)}"></i>`).join('');
   const legend = parts.map(x => `<li style="--c:${x.c}"><span>${x.l}${x.n ? ` <span class="muted">${x.n}×</span>` : ''}</span><b>${tn(eur(x.v))}</b></li>`).join('');
-  return `<section class="card pot ${where}" data-k="pot"><div class="hd"><h2>Topf</h2><button class="link" data-act="toKasse">Kasse</button></div>
+  return `<section class="card pot ${where}" data-k="pot"><div class="hd"><h2>Topf</h2>${helpBtn('pot')}<button class="link" data-act="toKasse">Kasse</button></div>
     <div class="potrow"><p class="potbig num" data-pot="${po.total}" data-from="${from}">${tn(eur(from))}</p>
     ${delta > 0 ? `<p class="potd">+${tn(eur(delta))}<small>seit deinem letzten Besuch</small></p>` : ''}</div>
     <div class="potbar" aria-hidden="true">${bar}</div><ul class="potleg">${legend}</ul>
@@ -1552,7 +1552,7 @@ function habitsCard(me, p, focus) {
   let g = `<div class="hgrid${focus && !xEdit ? ' focus' : ''}"><div class="hrow hhead"><span class="hname"></span><div class="hcells">${dayHeads(d0, today)}</div></div>`;
   // Trenner zu den Extras (ohne Punkte): immer da, mit Hinzufügen/Bearbeiten direkt in der Karte
   const xActs = xEdit ? '' : `${X.length < EXTRA_MAX ? `<button class="link" data-act="xOpen" data-new="1">+ Extra-Habit</button>` : ''}${X.length ? `<button class="link" data-act="xOpen">Bearbeiten</button>` : ''}`;
-  const sep = `<div class="hsep"><span>Extra, ohne Punkte</span><span class="hsepa">${xActs}</span></div>`;
+  const sep = `<div class="hsep"><span>Extra, ohne Punkte ${helpBtn('extras')}</span><span class="hsepa">${xActs}</span></div>`;
   let sepDone = false;
   for (const r of rows) {
     if (r.key?.[0] === 'x' && !sepDone) { g += sep; sepDone = true; }
@@ -1574,7 +1574,7 @@ function habitsCard(me, p, focus) {
     ${extraInputs('h', X)}<div class="row xbtns"><button class="btn ghost" data-act="xCancel">Abbrechen</button><button class="btn" data-act="xSave">Speichern</button></div></div>` : '';
   const st = me.streak;
   const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Habits laufen normal weiter, mit Punkten und Strafe.</p>` : '';
-  const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span></p>` : '';
+  const streak = me.active ? `<p class="streak">${svg('flame')}<span class="m">Streak <b>${wochen(st.cur)}</b></span><span class="m muted">Rekord ${st.best}</span><span class="m muted">${st.joker ? 'Joker frei' : `Joker verbraucht (Woche ${st.jokerWeek})`}</span>${helpBtn('streak')}</p>` : '';
   const hv = wk ? Math.min(habitMax(), wk.habits + (wk.bonus || 0)) : 0;
   const score = `<span class="aside hscore">${ringSvg([{ p: hv / habitMax(), c: 'var(--lime)' }], 26, 5, 0, 'hb' + w)}<b${ringMoving('hb' + w + ':0') ? ' class="bump"' : ''}>${wk ? wk.habits : 0}</b>/${habitMax()}${ch ? ` · Challenge <b>${wk ? wk.weekly : 0}</b>/${CONFIG.challengePts}` : ''}</span>`;
   // Warnung: Vorwoche kann noch nachgetragen werden, aber nicht alle Wochenziele sind erreicht (sonst Strafe)
@@ -1591,8 +1591,8 @@ function habitsCard(me, p, focus) {
   else if (today - d0 >= 5 && !wk?.paused) lockNote = `Nachtragen für diese Woche geht nur bis ${fmtD(slotStart(w))} ${CONFIG.deadlineHour}:00 Uhr, dann ist sie abgeschlossen.`;
   const lockP = lockNote && !warn ? `<p class="small muted">${lockNote}</p>` : '';
   let waitN = 0; for (const r of rows) if (r.need) for (let d = d0; d < d0 + 7; d++) if (r.on(d) && !isOk(me.uid, d, r.key)) waitN++;
-  const waitP = waitN ? `<p class="small t2">${waitN === 1 ? '1 Haken wartet' : `${waitN} Haken warten`} auf Bestätigung aus der Gruppe (gestrichelt). Zählt erst danach.</p>` : '';
-  return `<section class="card" data-k="habits" data-form="habits"><div class="hd"><h2>Habits</h2>${score}</div>${streak}${hold}
+  const waitP = waitN ? `<p class="small t2">${waitN === 1 ? '1 Haken wartet' : `${waitN} Haken warten`} auf Bestätigung aus der Gruppe (gestrichelt). Zählt erst danach. ${helpBtn('confirm')}</p>` : '';
+  return `<section class="card" data-k="habits" data-form="habits"><div class="hd"><h2>Habits</h2>${helpBtn('habits')}${score}</div>${streak}${hold}
     ${navBar('hw', w, minW, cur, `${w === cur ? 'Diese Woche' : 'Woche ' + w} · ${shortRange(w)}`)}${g}${xForm}${waitP}${warn}${lockP}
     ${prevEditable ? `<button class="link" data-act="hw" data-d="-1">Vorwoche nachtragen (bis ${CONFIG.deadlineHour}:00 Uhr)</button>` : ''}</section>`;
 }
@@ -1612,7 +1612,8 @@ function confirmCard(me) {
     }
   }
   // Extra-Aufgaben, die jemand anderes mit Foto gemeldet hat und die noch warten
-  const tasks = Object.entries(S.taskDone).filter(([, d]) => d.uid !== S.me && tdState(d) === 'wait' && C[d.uid]?.active && !C[d.uid].finished && S.tasks[d.taskId]);
+  // nur Aufgaben, deren Etappe noch läuft (bis zum Montag danach, 14 Uhr); ältere stehen weiter unter Challenges
+  const tasks = Object.entries(S.taskDone).filter(([, d]) => d.uid !== S.me && tdState(d) === 'wait' && C[d.uid]?.active && !C[d.uid].finished && S.tasks[d.taskId] && now() < slotDeadline(etEndWeek(S.tasks[d.taskId].etappe)));
   const tli = tasks.map(([id, d]) => `<li><i style="background:${C[d.uid].color}"></i><span><b>${esc(C[d.uid].name)}</b> ${esc(S.tasks[d.taskId].text)} <span class="muted">Aufgabe${d.proof ? ', mit Foto' : ''}</span></span>
     <button class="btn ghost sm" data-act="toProof" data-id="${esc(id)}">Prüfen</button></li>`).join('');
   const open = items.filter(x => !isOk(x.o.uid, x.d, x.k)), done = items.filter(x => isOk(x.o.uid, x.d, x.k) && S.habitok[`${x.o.uid}_${x.d}_${x.k}`]?.by === S.me);
@@ -1621,7 +1622,7 @@ function confirmCard(me) {
   const li = (x, on) => `<li><i style="background:${x.o.color}"></i><span><b>${esc(x.o.name)}</b> ${esc(x.name)} <span class="muted">${day(x.d)}</span></span>
     <button class="btn ${on ? 'sm' : 'ghost sm'}" data-act="hok" data-u="${x.o.uid}" data-d="${x.d}" data-k="${x.k}" data-on="${on ? 1 : 0}">${on ? 'Bestätigen' : 'Zurücknehmen'}</button></li>`;
   const nOpen = open.length + tasks.length;
-  return `<section class="card okc" data-k="habits"><div class="hd"><h2>Bestätigen</h2>${nOpen ? `<span class="aside"><b>${nOpen}</b> offen</span>` : ''}</div>
+  return `<section class="card okc" data-k="habits"><div class="hd"><h2>Bestätigen</h2>${helpBtn('confirm')}${nOpen ? `<span class="aside"><b>${nOpen}</b> offen</span>` : ''}</div>
     <p class="small t2">Hat das wirklich geklappt? Nur bestätigen, wenn du es gesehen hast oder ein Beweis da ist.</p>
     <ul class="oklist">${tli}${open.map(x => li(x, true)).join('')}${done.slice(-3).map(x => li(x, false)).join('')}</ul></section>`;
 }
@@ -1662,7 +1663,7 @@ function weeklyCard(me) {
   let team = '';
   const ne = nextDrawE();
   if (ne && canSuggest(ne)) team = `<p class="small t2 sep">Team-Monat Etappe ${ne}: Dein Vorschlag fehlt noch, gezogen wird ${fmtDT(drawTime(ne))}. <button class="link" data-tab="challenges">Vorschlagen</button></p>`;
-  return `<section class="card" data-k="challenge" data-form="weekly"><div class="hd"><h2>Wochen-Challenge</h2>${aside}</div>${inner}${team}</section>`;
+  return `<section class="card" data-k="challenge" data-form="weekly"><div class="hd"><h2>Wochen-Challenge</h2>${helpBtn('weekly')}${aside}</div>${inner}${team}</section>`;
 }
 function teamCard(me) {
   const cw = curWeek(); if (cw < 1 || cw > CONFIG.weeks) return '';
@@ -1678,7 +1679,7 @@ function teamHead(t, hd) {
   const items = t.items.map(i => `<div class="tmi"><div class="row top"><div class="grow"><div class="tt">${esc(i.text)}</div><div class="small muted">${ideaRate(i)} · von ${esc(i.setByName)}</div></div><span class="aside"><b>${nf(i.sum)}</b> / ${teamFmt(i, i.target)}</span></div>
     <div class="bar${i.reached ? ' done' : ''}" role="progressbar" aria-label="${esc(i.text)}" aria-valuemin="0" aria-valuemax="${i.target}" aria-valuenow="${Math.round(i.sum)}"><i style="width:${(clamp(i.sum / i.target, 0, 1) * 100).toFixed(1)}%"></i></div></div>`).join('');
   const who = Object.values(C).filter(p => t.by[p.uid]).map(p => esc(p.name));
-  return `${hd ? `<div class="hd"><h2>Team-Monat · Etappe ${t.e}</h2><span class="aside"><b>${done}</b>/${t.items.length} erreicht</span></div>` : ''}${items}
+  return `${hd ? `<div class="hd"><h2>Team-Monat · Etappe ${t.e}</h2>${helpBtn('team')}<span class="aside"><b>${done}</b>/${t.items.length} erreicht</span></div>` : ''}${items}
     <p class="small t2">${state}</p>${who.length ? `<p class="small muted">Dabei: ${andJoin(who)}</p>` : ''}`;
 }
 function teamEntry(t, me) {
@@ -1818,7 +1819,7 @@ function rankCards(mode) { // Liste (Woche/Etappe/Gesamt) und Diagramm "Punkte, 
     list = rankEtappe(C, UI.rankEtappe ?? etappeOf(cwc)); title = etNav(UI.rankEtappe ?? etappeOf(cwc));
   } else {
     list = rankTotal(C);
-    title = `<div class="hd"><h2>Gesamtwertung</h2><span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
+    title = `<div class="hd"><h2>Gesamtwertung</h2>${helpBtn('points')}<span class="aside">Topf <b>${eur(pot(C).total)}</b></span></div>`;
   }
   const cols = [['Waage', 'weigh'], ['Habits', 'habits'], ['Chal&shy;lenge', 'weekly']];
   if (mode !== 'woche') cols.push(['Auf&shy;gaben', 'tasks'], ['Team', 'team']);
@@ -1869,16 +1870,16 @@ function viewKasse() {
   return `<section class="card">${etNav(e)}
     ${ps.length ? `<div class="tscroll"><table class="t"><tr><th>Name</th><th>Einsatz</th>${ref ? '<th>Einsatz zurück</th>' : ''}<th>Wiegen verpasst</th><th>Wochenziele verfehlt</th><th>Letzter</th><th>Etappe</th><th>Gesamt</th></tr>${rows}
     <tr class="sum"><td>Summe</td><td></td>${ref ? '<td></td>' : ''}<td></td><td></td><td></td><td>${tn(eur(sumE))}</td><td>${tn(eur(sumG))}</td></tr></table></div>` : '<p class="muted">Noch keine Daten.</p>'}
-    <p class="small t2">Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz${ref ? `, ${po.refunds}× Einsatz zurück (Ziel erreicht, ausgestiegen)` : ''}, ${po.missed}× Wiegen verpasst, ${po.habitWeeks}× Wochenziele verfehlt, ${po.losers}× Letzter).</p></section>`;
+    <p class="small t2">${helpBtn('pot')} Topf gesamt: <b>${eur(po.total)}</b> (${po.players} × ${eur(CONFIG.einsatz)} Einsatz${ref ? `, ${po.refunds}× Einsatz zurück (Ziel erreicht, ausgestiegen)` : ''}, ${po.missed}× Wiegen verpasst, ${po.habitWeeks}× Wochenziele verfehlt, ${po.losers}× Letzter).</p></section>`;
 }
 
 /* ---------- CHALLENGES ---------- */
 // Erklärung oben in den Challenges-Karten: ein Satz immer sichtbar, Details aufklappbar (offen, bis man sie einmal zuklappt)
 const EXPL_KEY = 'cdf-expl-closed';
 function explClosed() { try { return JSON.parse(LS.getItem(EXPL_KEY)) || []; } catch { return []; } }
-function explain(key, intro, rows) {
+function explain(key, intro, html) { // html = Eintrag aus HELP
   const open = !explClosed().includes(key);
-  return `<p class="intro">${intro}</p><details class="expl" data-expl="${key}"${open ? ' open' : ''}><summary>So läuft's</summary><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></details>`;
+  return `<p class="intro">${intro}</p><details class="expl" data-expl="${key}"${open ? ' open' : ''}><summary>So läuft's</summary>${html}</details>`;
 }
 document.addEventListener('toggle', ev => {
   const g = ev.target; if (g.matches?.('details[data-gal]')) { const e = +g.dataset.gal; if (g.open !== (UI.galOpen === e)) { UI.galOpen = g.open ? e : null; UI.force.add('tasks'); render(); } return; }
@@ -1886,24 +1887,9 @@ document.addEventListener('toggle', ev => {
   const s = new Set(explClosed()); d.open ? s.delete(d.dataset.expl) : s.add(d.dataset.expl);
   LS.setItem(EXPL_KEY, JSON.stringify([...s]));
 }, true);
-const explTask = () => explain('task', 'Einmal-Aufgaben raus aus der Komfortzone: etwas Größeres, das du sonst nicht machen würdest. Jede gilt eine ganze Etappe lang.', [
-  ['Wer stellt sie?', 'Jeder stellt <b>1 Aufgabe pro Etappe</b>, z. B. „2× 5 km laufen“ oder „1 Stunde schwimmen“. Je mehr Leute, desto mehr Aufgaben.'],
-  ['Wer macht mit?', 'Jeder darf jede Aufgabe machen, auch die eigene. Jede zählt pro Person einmal.'],
-  ['Wie melde ich?', '„Erledigt melden“ und ein <b>Foto als Beweis</b> aufnehmen oder aus der Galerie wählen, dazu eine kurze Notiz, wenn du willst. Zählt als Beweis: alles, woran man sieht, dass du es gemacht hast, z. B. Screenshot der Laufuhr, Foto vor Ort, Eintrittskarte.'],
-  ['Wer bestätigt?', 'Jeder außer dir. Die anderen sehen dein Foto in der Aufgabe und tippen auf <b>Bestätigen</b> oder <b>Ablehnen</b> (mit Grund). Erst nach der Bestätigung gibt es die Punkte.'],
-  ['Abgelehnt?', 'Dann siehst du den Grund und kannst mit einem neuen Foto noch einmal melden, bis zum Ende der Etappe.'],
-  ['Punkte', `+${CONFIG.taskPts} pro geschaffter Aufgabe. Zählt in Etappe und Gesamt, nicht in der Woche.`],
-  ['Bis wann?', `Bis zum Ende der Etappe (Montag danach, ${CONFIG.deadlineHour} Uhr).`]]);
-const explTeam = () => explain('team', `Ein gemeinsames Ziel für die ganze Gruppe, eine Etappe lang (${CONFIG.etappeWeeks} Wochen). Alle zusammen oder keiner.`, [
-  ['Vorschlagen', 'Jeder schlägt <b>1 Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“ oder „3× Sport pro Woche“. Für die nächste Etappe geht das, sobald die aktuelle läuft.'],
-  ['Ziehung', `Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge gezogen</b> und hochgerechnet: Satz pro Person × alle Spieler × Wochen.`],
-  ['Mitmachen', `Auf Heute eintragen: eine Zahl (Menge) oder ein Haken (Anzahl), bis zu ${CONFIG.backfillDays} Tage rückwirkend. Alles landet in einem gemeinsamen Topf.`],
-  ['Punkte', `Sind am Ende <b>alle ${CONFIG.teamDraw} Ziele</b> erreicht: +${CONFIG.teamPts} für jeden mit Eintrag. Fehlt eins, bekommt niemand etwas. Zählt in Etappe und Gesamt, nicht in der Woche.`]]);
-const explWeekly = () => explain('weekly', 'Jede Woche eine kleine Aufgabe für alle, z. B. „Treppe statt Aufzug“. Abgehakt wird in der Challenge-Zeile unter deinen Habits auf Heute.', [
-  ['Wer wählt?', `Montag nach dem Wiegen der <b>Wochenletzte</b>, ${CONFIG.chooseHours} Std. lang. Danach jeder, wer zuerst kommt.`],
-  ['Wie oft?', `Täglich (1 P. pro Tag) oder 1× bzw. 2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} P.).`],
-  ['Punkte', `Max. ${CONFIG.challengePts} pro Woche, zählt in Woche, Etappe und Gesamt. Auslassen kostet nichts und bricht keine Streak.`],
-  ['Hier', 'Die Challenges dieser Etappe und wer wie viele Punkte geholt hat.']]);
+const explTask = () => explain('task', 'Einmal-Aufgaben raus aus der Komfortzone: etwas Größeres, das du sonst nicht machen würdest. Jede gilt eine ganze Etappe lang.', HELP.tasks());
+const explTeam = () => explain('team', `Ein gemeinsames Ziel für die ganze Gruppe, eine Etappe lang (${CONFIG.etappeWeeks} Wochen). Alle zusammen oder keiner.`, HELP.team());
+const explWeekly = () => explain('weekly', 'Jede Woche eine kleine Aufgabe für alle, z. B. „Treppe statt Aufzug“. Hier stehen die Challenges dieser Etappe und wer wie viele Punkte geholt hat.', HELP.weekly());
 /* ---------- Extra-Aufgaben: Meldung mit Foto, Prüfung durch die anderen ----------
    Status einer Meldung (taskDone): bestätigt (confirmedBy) · abgelehnt (rejectedBy, mit Grund) · wartet.
    Fotos liegen in proofs/<taskDone-ID> (base64, verkleinert) und werden erst geladen, wenn jemand sie ansieht. */
@@ -1966,7 +1952,7 @@ const proofImg = (id, alt, cls = '') => `<div class="proofbox ${cls}"><img data-
 const RSN_MAX = 140;
 function reportForm(id, again) {
   const img = UI.reportImg?.[id];
-  return `<div class="report"><p class="small t2">${again ? 'Neues Foto als Beweis' : 'Foto als Beweis'}, z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Alle in der Gruppe sehen es.</p>
+  return `<div class="report"><p class="small t2">${again ? 'Neues Foto als Beweis' : 'Foto als Beweis'}, z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Alle in der Gruppe sehen es. ${helpBtn('tasks')}</p>
     ${img ? `<div class="proofbox prev"><img src="${img.prev}" alt="Dein Beweisfoto"></div>` : ''}
     <div class="row wrapr"><label class="btn ghost sm filebtn">${svg('camera')}${img ? 'Neu aufnehmen' : 'Foto aufnehmen'}<input class="sr" type="file" accept="image/*" capture="environment" data-proofin="${esc(id)}"></label>
       <label class="btn ghost sm filebtn">${svg('image')}Aus Galerie<input class="sr" type="file" accept="image/*" data-proofin="${esc(id)}"></label></div>
@@ -1982,7 +1968,7 @@ function proofPanel(tdId, td) {
     ${td.note ? `<p class="small"><b>${n}:</b> ${esc(td.note)}</p>` : ''}${status}
     ${canDecide ? `<input class="inp" id="rjReason-${esc(tdId)}" maxlength="${RSN_MAX}" placeholder="Grund, falls du ablehnst (optional)" aria-label="Grund für die Ablehnung">
       <div class="row xbtns"><button class="btn ghost danger" data-act="rejectTd" data-id="${esc(tdId)}">Ablehnen</button><button class="btn" data-act="confirm" data-id="${esc(tdId)}">Bestätigen</button></div>` : ''}
-    <button class="link" data-act="proofClose">Schließen</button></div>`;
+    <div class="row"><button class="link" data-act="proofClose">Schließen</button><span class="grow"></span>${helpBtn('tasks')}</div></div>`;
 }
 function taskItem(id, t, canReport) {
   const tds = Object.entries(S.taskDone).filter(([, d]) => d.taskId === id), mineId = id + '_' + S.me, mine = S.taskDone[mineId], ms = tdState(mine);
@@ -2207,7 +2193,7 @@ function goalCard(me) {
   const form = ed ? `${goalPicker('goal', { start: st0, target: S.myPlan?.targetKg ?? (g && st0 ? st0 * (1 - g / 100) : null), askStart: kg.start === undefined })}
     <button class="btn full${g ? ' ghost' : ''}" data-act="setGoal">${g ? 'Ziel ändern' : 'Ziel festlegen'}</button>`
     : g ? `<p class="small muted row">${svg('lock')}Fest seit deinem Startgewicht.</p>` : '';
-  return `<section class="card goal${done ? ' done' : ''}" data-k="me" data-form="goal"><div class="hd"><h2>Dein Ziel</h2><span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
+  return `<section class="card goal${done ? ' done' : ''}" data-k="me" data-form="goal"><div class="hd"><h2>Dein Ziel</h2>${helpBtn('goal')}<span class="aside privnote">${svg('lock')}kg nur für dich</span></div>
     ${ed ? '' : `<div class="goalring">${ringSvg([{ p: Math.min(prog, 1), c: 'var(--pink)' }], 184, 18, 0, 'goal')}<div class="ringc"><b class="num">${act ? tn(lossStr(cur)) : '–'}</b><small>${g ? `Ziel −${tn(pct(g))} %${goalKg ? ` · ${tn(fmt1(goalKg))} kg` : ''}` : 'noch kein Ziel'}</small></div></div>`}
     <p class="small t2">${txt}</p>
     ${form}${exitBtn(me)}${tiles}
@@ -2262,7 +2248,7 @@ function msCard(me) {
   const next = me.active ? ['g', 'l', 'w', 's'].map(c => MILESTONES.find(x => x.cat === c && !me.ms.includes(x.id))).filter(Boolean).map(x =>
     x.cat === 'g' ? (me.goal ? `${x.label} (noch ${rest(me.goal - me.latest)})` : null) : x.cat === 'l' ? `${x.label} (noch ${rest(x.n - me.bestLoss)})` : x.cat === 'w' ? `${x.label} (bisher ${me.weighRun})` : `${x.label} (Rekord ${wochen(me.streak.best)})`) : [];
   const nx = next.filter(Boolean);
-  return `<section class="card msc" data-k="rank"><div class="hd"><h2>Meilensteine</h2><span class="aside"><b>${me.ms.length}</b>/${MILESTONES.length}</span></div><div class="msg">${groups}</div>
+  return `<section class="card msc" data-k="rank"><div class="hd"><h2>Meilensteine</h2>${helpBtn('ms')}<span class="aside"><b>${me.ms.length}</b>/${MILESTONES.length}</span></div><div class="msg">${groups}</div>
     ${nx.length ? `<p class="small muted">Als Nächstes: ${nx.join(' · ')}</p>` : ''}</section>`;
 }
 
@@ -2329,56 +2315,165 @@ function runCountUps(root) {
   requestAnimationFrame(step);
 }
 
+/* ---------- ERKLÄRUNGEN ("Was bedeutet das?") ----------
+   Alle Erklärtexte an einer Stelle, Zahlen immer aus CONFIG. Genutzt von den ?-Knöpfen (helpBtn → Popover bzw. Bottom Sheet),
+   vom Regeln-Tab, von der Einführung und von „So läuft's“ in den Challenges-Karten.
+   Jeder Eintrag: 2–5 kurze Sätze und ein Beispiel mit echten Zahlen. */
+const exWeek = () => { // eine realistische Woche (Einführung, Punkte-Erklärung)
+  const tenths = Math.min(6, CONFIG.weighMaxTenths), weigh = tenths * CONFIG.weighPerTenth;
+  const hs = [['Kochen statt Lieferdienst', 3, 4], ['Keine Softdrinks', 6, 7], ['1× 10 km laufen', 1, 1]];
+  const habits = hs.reduce((a, [, d, t]) => a + habitPts(d, t), 0), ch = challengePoints({ kind: 'daily' }, 3);
+  return { tenths, weigh, hs, habits, ch, total: weigh + habits + ch };
+};
+const nbPct = t => t.replace(/(\d) %/g, '$1&nbsp;%').replace(/(\d) €/g, '$1&nbsp;€'); // kein Umbruch vor % und €
+const hx = (items, ex) => nbPct(`<ul class="hl">${items.map(x => `<li>${x}</li>`).join('')}</ul>${ex ? `<p class="hx"><b>Beispiel:</b> ${ex}</p>` : ''}`);
+const HELP_T = {
+  points: 'So kommen die Punkte zusammen', weigh: 'Waage-Punkte und Tiefstwert', cap: 'Deckel: höchstens 1 % pro Woche', habits: 'Habits und Wochenziele',
+  confirm: 'Gruppe bestätigt', extras: 'Extra-Habits', weekly: 'Wochen-Challenge', tasks: 'Extra-Aufgaben mit Foto-Beweis', team: 'Team-Monat',
+  goal: 'Dein Ziel', hold: 'Haltephase', exit: 'Aussteigen', pause: 'Pause', streak: 'Streak und Joker', ms: 'Meilensteine', pot: 'Topf und Kasse',
+  join: 'Später einsteigen', push: 'Erinnerungen', late: 'Nachtrag',
+};
+const HELP = {
+  points: () => { const x = exWeek(), wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth; return hx([
+    `Jede Woche zählt neu: Waage bis <b>${wMax}</b>, Habits bis <b>${habitMax()}</b>, Wochen-Challenge bis <b>${CONFIG.challengePts}</b> Punkte.`,
+    `Pro Etappe kommen dazu: <b>+${CONFIG.taskPts}</b> für jede bestätigte Extra-Aufgabe und <b>+${CONFIG.teamPts}</b>, wenn der Team-Monat klappt.`,
+    `Alles zählt in Prozent vom eigenen Startgewicht, damit es für jede Größe fair ist.`],
+    `${fmt1(x.tenths / 10)} % unter dem Tiefstwert (${x.weigh}), Habits ${x.hs.map(([, d, t]) => `${d}/${t}`).join(', ')} (${x.habits}), Challenge an 3 Tagen (${x.ch}): <b>${x.total} Punkte</b>.`); },
+  weigh: () => { const t = 6, p = t * CONFIG.weighPerTenth; return hx([
+    `Jeden <b>Montag ${weighHours}</b> wiegen: morgens, nüchtern, gleiche Waage. Gezählt wird in Prozent von deinem Startgewicht, die anderen sehen nie deine kg.`,
+    `Punkte gibt es nur für den Teil <b>unter deinem bisherigen Tiefstwert</b>: ${CONFIG.weighPerTenth} pro 0,1 %.`,
+    `Zunehmen kostet keine Punkte. Bis du wieder unter dem alten Tiefstwert bist, gibt die Waage aber 0.`,
+    `Nicht gewogen = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf.`],
+    `Tiefstwert −2,0 %, heute −${fmt1(2 + t / 10)} %: ${t} × 0,1 % = <b>${p} Punkte</b>. Nächste Woche −2,3 %: 0 Punkte, der Tiefstwert bleibt −${fmt1(2 + t / 10)} %.`); },
+  cap: () => { const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, c = CONFIG.weighMaxTenths / 10; return hx([
+    `Pro Woche zählen höchstens <b>${fmt1(c)} %</b> unter dem Tiefstwert, also maximal <b>${wMax} Waage-Punkte</b>.`,
+    `Was darüber hinausgeht, bringt nichts, auch nicht später. Crash-Diäten lohnen sich also nicht.`,
+    `Gesund sind etwa 0,5–1 % pro Woche.`],
+    `Tiefstwert −3,0 %, heute −${fmt1(3 + c + 0.5)} %: gezählt wird ${fmt1(c)} %, also ${wMax} Punkte. Dein neuer Tiefstwert ist trotzdem −${fmt1(3 + c + 0.5)} %.`); },
+  habits: () => hx([
+    `Du hast <b>3 eigene Habits</b>, jedes mit einem Wochenziel von 1× bis 7×. Muss nicht Sport sein.`,
+    `Jedes bringt bis zu <b>${CONFIG.habitMaxPts} Punkte</b> pro Woche, anteilig: ${CONFIG.habitMaxPts} × geschafft ÷ Ziel, gerundet. Mehr als das Ziel zählt nicht.`,
+    `Abhaken geht bis zu ${CONFIG.backfillDays} Tage rückwirkend, die Vorwoche aber nur bis Montag ${CONFIG.deadlineHour}:00 Uhr.`,
+    `Eine Woche ohne alle 3 Wochenziele kostet <b>${eur(CONFIG.habitFee)}</b>.`,
+    `Ändern geht vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Habits darf die Gruppe per Veto ablehnen.`],
+    `„Kochen“ mit Ziel 4×, geschafft 3×: ${CONFIG.habitMaxPts} × 3 ÷ 4 = <b>${habitPts(3, 4)} Punkte</b>. Mit 5× wären es ${habitPts(5, 4)}, nicht mehr.`),
+  confirm: () => hx([
+    `Bei Habits mit „Gruppe bestätigt“ zählt ein Haken erst, wenn <b>jemand anderes</b> ihn bestätigt. Bis dahin ist er gestrichelt.`,
+    `Bestätigen geht wie Abhaken bis zu ${CONFIG.backfillDays} Tage danach, für die Vorwoche nur bis Montag ${CONFIG.deadlineHour}:00 Uhr.`,
+    `Nur bestätigen, wenn du es gesehen hast oder ein Beweis da ist. Hier stehen auch Extra-Aufgaben, die auf eine Prüfung warten.`],
+    `Siggi hakt am Dienstag „Wohnung aufräumen“ ab. Bestätigst du bis Donnerstag (${CONFIG.backfillDays} Tage danach), zählt der Haken, am Freitag ginge es nicht mehr.`),
+  extras: () => hx([
+    `Für alles, wobei die Gruppe dir Druck machen soll, z. B. Wohnung aufräumen.`,
+    `Extra-Habits bringen <b>keine Punkte</b>, kosten keine Strafe und schicken keine Erinnerung.`,
+    `Bis zu ${EXTRA_MAX} Stück, jederzeit änderbar: direkt in der Habit-Karte oder im Profil.`,
+    `Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.`],
+    `„Wohnung aufräumen“ 3× pro Woche, 2 Haken: die Zeile zeigt 2/3, an deinen Punkten und am Topf ändert sich nichts.`),
+  weekly: () => { const end = CONFIG.deadlineHour + CONFIG.chooseHours, n = Math.min(5, 7); return hx([
+    `Jede Woche eine kleine Aufgabe für alle, abgehakt in der Challenge-Zeile unter deinen Habits.`,
+    `Montag nach dem Wiegeschluss (${CONFIG.deadlineHour}:00 Uhr) darf der <b>Wochenletzte ${CONFIG.chooseHours} Stunden lang allein</b> wählen, danach jeder, wer zuerst kommt.`,
+    `Täglich: 1 Punkt pro Tag, höchstens ${CONFIG.challengePts}. 1× pro Woche: ${CONFIG.challengePts} Punkte, 2×: je ${Math.round(CONFIG.challengePts / 2)}.`,
+    `Auslassen kostet nichts und bricht keine Streak.`],
+    `Siggi war Letzter und wählt bis ${end >= 24 ? 'Dienstag' : 'Montag'} ${end % 24}:00 Uhr „Treppe statt Aufzug, täglich“. Wer es an ${n} Tagen schafft, bekommt <b>${challengePoints({ kind: 'daily' }, n)} Punkte</b>.`); },
+  tasks: () => hx([
+    `Jeder stellt <b>1 Aufgabe pro Etappe</b>, die raus aus der Komfortzone führt. Jeder darf jede machen, auch die eigene.`,
+    `Gemeldet wird mit einem <b>Foto als Beweis</b> (Kamera oder Galerie), z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Alle in der Gruppe sehen es.`,
+    `<b>Jemand anderes</b> bestätigt oder lehnt mit Grund ab. Abgelehnt? Mit einem neuen Foto noch einmal melden, bis zum Ende der Etappe.`,
+    `Bestätigt = <b>+${CONFIG.taskPts} Punkte</b>, zählt in Etappe und Gesamt, nicht in der Woche.`],
+    `Siggi stellt „2× 5 km laufen“. Du meldest mit dem Screenshot deiner Uhr, Julian bestätigt: +${CONFIG.taskPts} Punkte.`),
+  team: () => { const n = 3, per = 8000; return hx([
+    `Jeder schlägt pro Etappe ein Ziel pro Person vor. Am ersten Montag der Etappe um ${CONFIG.deadlineHour}:00 Uhr werden <b>${CONFIG.teamDraw} gezogen</b>.`,
+    `Hochgerechnet wird aufs Team: Satz pro Person × Spieler × Wochen. Pausen und Spätstarter zählen nur ihre Wochen.`,
+    `Jeder trägt auf Heute bei. Sind am Ende <b>alle ${CONFIG.teamDraw} Ziele</b> erreicht, bekommt jeder mit Eintrag <b>+${CONFIG.teamPts}</b>. Fehlt eins, bekommt keiner etwas.`],
+    `„${nf(per)} Schritte pro Tag“ bei ${n} Spielern und ${CONFIG.etappeWeeks} Wochen: ${nf(per)} × 7 × ${n} × ${CONFIG.etappeWeeks} = <b>${nf(per * 7 * n * CONFIG.etappeWeeks)} Schritte</b> fürs Team.`); },
+  goal: () => hx([
+    `Beim Beitreten stellst du dein Zielgewicht ein, die App rechnet es in Prozent um (${GOAL_MIN}–${GOAL_MAX} %).`,
+    `Mit dem echten Startgewicht am ersten Montag wird es endgültig, <b>danach ist es fest</b>. Alle sehen nur den Prozentwert, die kg nur du.`,
+    `Erreichst du es, wählst du: <b>weitermachen</b> (Haltephase) oder <b>aussteigen</b> und ${eur(CONFIG.einsatz)} Einsatz zurück.`],
+    `Startgewicht 100 kg, Zielgewicht 90 kg: dein Ziel ist −10 %. Ab einem Wiegen mit −10,0 % ist es erreicht.`),
+  hold: () => { const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, hb = CONFIG.holdBand; return hx([
+    `Ziel erreicht und du bleibst dabei: ab der nächsten Woche beginnt die Haltephase.`,
+    `Alles läuft weiter wie vorher, auch Habits mit Strafe und die Challenge. Nur die Waage zählt anders:`,
+    `Liegst du höchstens <b>${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'}</b> über deinem Ziel, gibt es jede Woche die vollen <b>${wMax} Waage-Punkte</b>, sonst 0.`],
+    `Ziel −10 %: bei −${fmt1(10 - hb + 0.4)} % gibt es ${wMax} Punkte, bei −${fmt1(10 - hb - 0.2)} % gibt es 0.`); },
+  exit: () => { const f = 2 * CONFIG.strafe + 3 * CONFIG.habitFee; return hx([
+    `Aussteigen geht, wenn du dein Ziel erreicht hast und dein <b>aktuelles Wiegen</b> im Ziel-Band liegt (höchstens ${pct(CONFIG.holdBand)} Prozentpunkt darüber).`,
+    `Du bekommst deinen <b>Einsatz von ${eur(CONFIG.einsatz)} zurück</b>, frühere Strafen bleiben im Topf.`,
+    `Danach keine Punkte, Strafen oder Erinnerungen mehr, dein Ergebnis wird eingefroren. Den Topf kannst du nicht mehr gewinnen. <b>Geht nicht rückgängig.</b>`],
+    `Ziel −8 % nach 14 Wochen, bisher 2× Wiegen verpasst und 3 Wochen ohne alle Ziele: du bekommst ${eur(CONFIG.einsatz)} zurück, die ${eur(f)} Strafen bleiben drin.`); },
+  pause: () => hx([
+    `Krank oder im Urlaub? Bis zu <b>${CONFIG.pauseWeeks} Wochen</b> pro Saison kannst du im Profil pausieren.`,
+    `Eine Pause gilt für eine ganze Woche (Mo–So) und das Wiegen am Montag danach. Die laufende Woche geht bis Mittwoch 23:59.`,
+    `In der Pause: keine Punkte, keine Strafen, nicht Wochenletzter, keine Erinnerungen. Die Streak bleibt stehen.`],
+    `Pause in Woche 6: Haken zählen nicht, das Wiegen am Montag danach fällt weg, keine ${eur(CONFIG.strafe)}. Danach vergleicht die Waage wie immer mit deinem Tiefstwert.`),
+  streak: () => hx([
+    `Die Streak zählt <b>Wochen am Stück mit allen 3 Wochenzielen</b>. Punkte gibt es dafür nicht, nur Ehre und Meilensteine.`,
+    `Die laufende Woche zählt, sobald sie geschafft ist. Pause und Haltephase unterbrechen nicht, die Challenge zählt nicht mit.`,
+    `Pro Etappe hast du <b>1 Joker</b>: Er rettet automatisch die erste verpasste Woche, solange eine Streak läuft.`],
+    `5 Wochen geschafft, Woche 6 verpasst: der Joker springt ein, die Streak läuft weiter. Verpasst du in derselben Etappe noch eine, fängt sie bei 0 an.`),
+  ms: () => hx([
+    `Ziel erreicht · −2, −5, −7,5 und −10 % vom Startgewicht (bester Wert) · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 4 und 12 Wochen.`,
+    `Sie bringen keine Punkte, stehen aber im Ranking und im Tab Ich.`],
+    `Bester Wert −5,3 %: „−2 %“ und „−5 %“ sind erreicht, als Nächstes kommt „−7,5 %“ (noch 2,2 %).`),
+  pot: () => { const f = CONFIG.strafe + 2 * CONFIG.habitFee + CONFIG.loserFee; return hx([
+    `Jeder zahlt einmal <b>${eur(CONFIG.einsatz)} Einsatz</b>.`,
+    `Dazu <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen, <b>${eur(CONFIG.habitFee)}</b> pro Woche ohne alle 3 Wochenziele und <b>${eur(CONFIG.loserFee)}</b> für den Wochenletzten (nur wenn nicht alle gleich viele Punkte haben).`,
+    `Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} bekommt alles. Wer was zahlt, steht unter Ranking → Kasse, nach Etappe.`],
+    `1× Wiegen verpasst, 2 Wochen ohne alle Ziele, 1× Letzter: ${eur(CONFIG.strafe)} + ${eur(2 * CONFIG.habitFee)} + ${eur(CONFIG.loserFee)} = <b>${eur(f)}</b> zusätzlich zum Einsatz.`); },
+  join: () => hx([
+    `Neue Leute können jederzeit einsteigen und starten am nächsten Montag mit ihrem Startgewicht.`,
+    `Verpasst jemand sein Startgewicht, rutscht sein Start automatisch eine Woche weiter.`,
+    `Für Spätstarter ist die Etappenwertung die faire Chance.`],
+    `Einstieg am Mittwoch in Woche 3: Startgewicht am Montag danach, gezählt wird ab Woche 4.`),
+  push: () => hx([
+    `Im Profil einschalten: <b>Montag 8:00 Uhr</b>, wenn du noch nicht gewogen hast, und <b>täglich 21:00 Uhr</b>, wenn ein Wochenziel offen ist und das Habit heute noch nicht abgehakt ist.`,
+    `Auch in der Haltephase, aber nicht in Pausenwochen und nicht nach dem Ausstieg.`,
+    `Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).`],
+    `Donnerstag 21:00 Uhr, „Kochen“ steht bei 2/4 und ist heute nicht abgehakt: du bekommst „Kochen 2/4“.`),
+  late: () => hx([
+    `Wer das Wiegefenster am Montag (${weighHours}) verpasst hat, kann einen Admin um einen Nachtrag bitten.`,
+    `Der Admin erlaubt das Wiegen dieses Montags bis zu einer Frist, höchstens ${CONFIG.lateMaxDays} Tage. Auf Heute steht dann „Nachtrag erlaubt bis …“.`,
+    `Fehlt noch dein Startgewicht, beginnt dein Start wieder an diesem Montag, dann zählen auch die Haken dieser Woche. Nach der Frist gilt das Wiegen als verpasst wie immer.`],
+    `Julian hat am Montag um 15 Uhr noch nicht gewogen. Der Admin erlaubt den Nachtrag bis 23:59 Uhr, Julian trägt um 18 Uhr ein: kein verpasstes Wiegen, keine ${eur(CONFIG.strafe)}.`),
+};
+const helpBtn = k => `<button type="button" class="qbtn" data-act="help" data-k="${k}" aria-label="Erklärung: ${HELP_T[k]}" aria-haspopup="dialog">?</button>`;
+// Popover (Desktop) bzw. Bottom Sheet (Handy/Tablet). Eigene Ebene außerhalb von #app und #modal: Neuzeichnen schließt sie nicht.
+let HELP_OPEN = null;
+function openHelp(k, btn) {
+  closeHelp(false);
+  let box = document.getElementById('help');
+  if (!box) { box = document.createElement('div'); box.id = 'help'; document.body.appendChild(box); }
+  const pop = isDesk();
+  box.className = pop ? 'help pop' : 'help sheetm';
+  box.innerHTML = `${pop ? '' : '<div class="helpbg" data-act="helpClose"></div>'}<div class="helpbox" role="dialog" aria-modal="${pop ? 'false' : 'true'}" aria-labelledby="helpT" tabindex="-1">
+    <div class="hd"><h2 id="helpT">${HELP_T[k]}</h2><button class="iconbtn" data-act="helpClose" aria-label="Erklärung schließen">${svg('close')}</button></div>${HELP[k]()}</div>`;
+  HELP_OPEN = { k, btn }; btn?.setAttribute('aria-expanded', 'true');
+  const hb = box.querySelector('.helpbox');
+  if (pop && btn) { // unter (oder über) dem Knopf, im Fenster halten
+    const r = btn.getBoundingClientRect(), w = Math.min(380, innerWidth - 32);
+    hb.style.width = w + 'px'; hb.style.left = clamp(r.left + r.width / 2 - w / 2, 16, innerWidth - w - 16) + 'px';
+    const h = hb.offsetHeight, below = r.bottom + 8 + h <= innerHeight - 16;
+    hb.style.top = (below ? r.bottom + 8 : Math.max(16, r.top - 8 - h)) + 'px';
+  }
+  hb.focus({ preventScroll: true });
+}
+function closeHelp(refocus = true) {
+  const box = document.getElementById('help'); if (!box || !HELP_OPEN) return;
+  const { k, btn } = HELP_OPEN; HELP_OPEN = null; box.innerHTML = ''; box.className = ''; btn?.removeAttribute('aria-expanded');
+  if (refocus) (btn?.isConnected ? btn : document.querySelector(`.qbtn[data-k="${k}"]`))?.focus({ preventScroll: true });
+}
+window.addEventListener('resize', () => { if (HELP_OPEN && isDesk()) closeHelp(false); });
+
 /* ---------- REGELN ---------- */
 // compact (Anmeldung): Abschnitte als aufklappbare Liste statt Textwand
 function viewRegeln(compact) {
   const end = dayDate(CONFIG.weeks * 7 - 1);
-  const wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, hb = CONFIG.holdBand;
-  const sec = (h, items) => compact ? `<details class="rs"><summary>${h}</summary><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></details>`
-    : `<div class="rs"><h3>${h}</h3><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+  // Abschnitte = Einträge aus HELP (dieselben Texte wie hinter den ?-Knöpfen)
+  const sec = k => compact ? `<details class="rs" id="r-${k}"><summary>${HELP_T[k]}</summary>${HELP[k]()}</details>`
+    : `<div class="rs" id="r-${k}"><h3>${HELP_T[k]}</h3>${HELP[k]()}</div>`;
+  const keys = ['points', 'weigh', 'cap', 'habits', 'confirm', 'extras', 'weekly', 'tasks', 'team', 'goal', 'hold', 'exit', 'pause', 'streak', 'ms', 'pot', 'join', 'push', 'late'];
   return `<section class="card rules${compact ? ' compact' : ''}"><div class="hd"><h2>${compact ? 'Alle Regeln' : 'Regeln'}</h2>${S.member ? '<button class="link" data-act="obOpen">Einführung nochmal ansehen</button>' : ''}</div><div class="rcols">
   <div class="rs"><p><b>${CONFIG.weeks} Wochen</b> (${fmtD(START)}${START.getFullYear()} bis ${fmtD(end)}${end.getFullYear()}), aufgeteilt in <b>${NUM_ETAPPEN} Etappen</b> à ${CONFIG.etappeWeeks} Wochen. Alles wird in <b>Prozent vom eigenen Startgewicht</b> gerechnet, damit es für jede Größe fair ist. In einer normalen Woche kommt gut die Hälfte der Punkte von der Waage.</p></div>
-  ${sec(`Wiegen (max. ${wMax} P./Woche)`, [
-    `Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, nach dem Klo, gleiche Waage. Foto in die Gruppe. Andere sehen nur deine Prozente, nie die kg.`,
-    `<b>${CONFIG.weighPerTenth} Punkte pro 0,1 %</b> unter deinem bisherigen Tiefstwert, maximal ${wMax} Punkte (= ${fmt1(CONFIG.weighMaxTenths / 10)} %) pro Woche. Mehr bringt nichts, Crash-Diäten lohnen sich also nicht.`,
-    `Zunehmen kostet keine Punkte. Waage-Punkte gibt's aber erst wieder, wenn du unter deinem alten Tiefstwert bist.`,
-    `Verpasst = 0 Waage-Punkte + <b>${eur(CONFIG.strafe)}</b> in den Topf.`])}
-  ${sec(`Habits (max. ${habitMax()} P./Woche)`, [
-    `Jeder wählt <b>3 eigene</b>, jede mit einem <b>Wochenziel von 1× bis 7×</b>. Muss nicht Sport sein: „Kochen statt Lieferdienst“, „Keine Softdrinks“, „Vor 0 Uhr ins Bett“ oder „1× 10 km laufen“.`,
-    `Jedes Habit bringt bis zu <b>${CONFIG.habitMaxPts} Punkte</b> pro Woche, egal wie hoch das Ziel ist: Punkte = ${CONFIG.habitMaxPts} × geschafft ÷ Ziel (gerundet, mehr als das Ziel zählt nicht). Abgehakt wird pro Tag, bis zu ${CONFIG.backfillDays} Tage rückwirkend. Die Vorwoche aber <b>nur bis Montag ${CONFIG.deadlineHour} Uhr</b>: Mit dem Wiegeschluss ist sie abgeschlossen.`,
-    `Habits mit „Gruppe bestätigt“ zählen erst, wenn jemand anderes den Haken bestätigt, ebenfalls bis zu ${CONFIG.backfillDays} Tage danach und für die Vorwoche nur bis Montag ${CONFIG.deadlineHour} Uhr.`,
-    `Eine Woche, in der nicht alle 3 Wochenziele geschafft sind, kostet <b>${eur(CONFIG.habitFee)}</b>, sobald sie abgeschlossen ist (Montag ${CONFIG.deadlineHour} Uhr). Die Challenge zählt dabei nicht mit.`,
-    `Namen und Ziele ändern nur vor dem Start und in der 1. Woche jeder Etappe, die Änderung gilt ab dieser Etappe. <b>Zu leichte Habits darf die Gruppe per Veto ablehnen</b>, dann muss eine härtere her.`])}
-  ${sec(`Wochen-Challenge (max. ${CONFIG.challengePts} P.)`, [
-    `Montag nach dem Wiegen hat der <b>Wochenletzte ${CONFIG.chooseHours} Std. Zeit</b>, die Challenge zu wählen. Danach darf jeder, wer zuerst kommt, entscheidet.`,
-    `Täglich (1 Punkt pro Tag, max. ${CONFIG.challengePts}) oder 1–2× pro Woche (${CONFIG.challengePts} bzw. je ${Math.round(CONFIG.challengePts / 2)} Punkte). Abhaken in der Challenge-Zeile unter den Habits.`])}
-  ${sec(`Extra-Aufgaben (+${CONFIG.taskPts} P. pro Aufgabe)`, [
-    `<b>Jeder stellt 1 Komfortzonen-Aufgabe pro Etappe</b> (z. B. 2× 5 km laufen, 1 h schwimmen). Je mehr Leute, desto mehr Aufgaben. Alle dürfen jede Aufgabe machen.`,
-    `„Erledigt melden“ geht nur mit <b>Foto als Beweis</b> (Kamera oder Galerie, dazu eine Notiz, wenn du willst), z. B. Screenshot der Laufuhr oder ein Foto vor Ort. Die Fotos sehen alle in der Gruppe.`,
-    `Zählt erst, wenn <b>jemand anderes bestätigt</b>. Wer ablehnt, schreibt einen Grund dazu. Abgelehnt? Mit einem neuen Foto noch einmal melden, bis zum Ende der Etappe.`])}
-  ${sec(`Team-Monat (+${CONFIG.teamPts} P. pro Etappe)`, [
-    `Jeder schlägt pro Etappe <b>ein Ziel pro Person</b> vor, z. B. „8.000 Schritte pro Tag“, „3× Sport pro Woche“ oder „20 km laufen pro Monat“. Vorschläge für die nächste Etappe gehen, sobald die aktuelle läuft.`,
-    `Am ersten Montag der Etappe um ${CONFIG.deadlineHour} Uhr werden <b>${CONFIG.teamDraw} Vorschläge zufällig gezogen</b> und aufs Team hochgerechnet: Satz pro Person × alle Spieler × Wochen (Spätstarter und Pausen zählen nur ihre Wochen).`,
-    `Jeder trägt täglich bei (Zahl oder Haken, bis zu ${CONFIG.backfillDays} Tage rückwirkend). Sind am Ende der Etappe <b>alle Ziele erreicht</b>, bekommt jeder mit Eintrag +${CONFIG.teamPts} Punkte. <b>Fehlt auch nur eins, bekommt niemand etwas.</b>`])}
-  ${sec('Dein Ziel, Haltephase und Ausstieg', [
-    `Beim Beitreten stellst du dein <b>Zielgewicht</b> ein, die App rechnet daraus dein Ziel in Prozent (${GOAL_MIN}–${GOAL_MAX} %). Mit dem echten Startgewicht am ersten Montag wird es endgültig, <b>danach ist es fest</b>. Alle sehen den Prozentwert, die kg-Umrechnung nur du. Bis zum Ziel zählt alles wie oben.`,
-    `<b>Haltephase</b> (Ziel erreicht, du bleibst): alles läuft weiter wie vorher: montags wiegen, Habits mit Wochenzielen und Strafe, Challenge. Nur die Waage zählt anders: Bleibst du <b>unter deinem Zielgewicht</b> (${pct(hb)} Prozentpunkt${hb === 1 ? '' : 'e'} Puffer nach oben), gibt es jede Woche die <b>vollen ${wMax} Waage-Punkte</b>. Darüber: 0 Waage-Punkte.`,
-    `<b>Aussteigen</b> (Ziel erreicht, du gehst): Du bekommst deine <b>${eur(CONFIG.einsatz)} Einsatz zurück</b> und musst nichts mehr machen. Knopf „Ziel erreicht – aussteigen“. Dein Ergebnis wird eingefroren (z. B. „−15,2 % · Ziel nach 18 Wochen“) und steht in der Gesamtwertung unter „Ziel erreicht“. Frühere Strafen bleiben im Topf. Danach keine Punkte, Strafen oder Erinnerungen mehr, nicht mehr im Wochen- und Etappenranking. Geht nicht rückgängig.`])}
-  ${sec(`Pause (bis zu ${CONFIG.pauseWeeks} Wochen pro Saison)`, [
-    `Krank oder im Urlaub? Im Profil eine ganze Woche (Mo–So) pausieren: die laufende bis <b>Mittwoch 23:59</b>, spätere jederzeit. Das Wiegen am Montag danach fällt mit weg.`,
-    `In der Pausenwoche: keine Punkte, kein verpasstes Wiegen, keine Habit-Strafe, nicht im Wochenranking und nicht Wochenletzter, keine Erinnerungen. Die Streak bleibt stehen. Das nächste Wiegen vergleicht wie immer mit deinem Tiefstwert.`])}
-  ${sec('Streak und Joker (keine Punkte)', [
-    `Streak = <b>Wochen am Stück mit allen 3 Wochenzielen</b>. Die Challenge zählt nicht mit, Pause und Haltephase unterbrechen nicht.`,
-    `Pro Etappe gibt es <b>1 Joker</b>: Er rettet automatisch die erste verpasste Woche, in der gerade eine Streak läuft.`])}
-  ${sec('Meilensteine', [
-    `Ziel erreicht · −2 %, −5 %, −7,5 % und −10 % vom Startgewicht · 4, 10 und 20 Wochen ohne verpasstes Wiegen · Streak 4 und 12 Wochen.`])}
-  ${sec('Topf', [
-    `<b>${eur(CONFIG.einsatz)} Einsatz</b> (einmalig) + <b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen + <b>${eur(CONFIG.habitFee)}</b> pro Woche ohne alle 3 Wochenziele + <b>${eur(CONFIG.loserFee)} für den Letzten jeder Woche</b> (nur wenn nicht alle gleich viele Punkte haben).`,
-    `Wer was zahlt, steht unter Ranking → Kasse, aufgeteilt nach Etappe. Am besten am Ende jeder Etappe einsammeln. Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} kassiert alles.`,
-    `Neue Leute können jederzeit einsteigen und starten am nächsten Montag. Für Spätstarter ist die Etappenwertung die faire Chance.`])}
-  ${sec('Erinnerungen', [
-    `Im Profil einschalten: montags 8:00 Uhr, wenn du noch nicht gewogen hast, und täglich 21:00 Uhr, wenn ein Wochenziel noch offen ist und du das Habit heute noch nicht abgehakt hast. Auch in der Haltephase, aber nicht in Pausenwochen und nicht nach dem Ausstieg.`,
-    `Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).`])}
+  ${keys.map(sec).join('')}
   </div></section>`;
 }
 
@@ -2397,7 +2492,7 @@ function pauseBlock() {
   const me = C[S.me]; if (!me || me.finished) return '';
   const left = CONFIG.pauseWeeks - me.paused.length, opts = pauseOptions(me);
   const list = me.paused.map(w => `<div class="row"><span class="small grow">${pauseLbl(w)}</span>${canUnpause(w) ? `<button class="link" data-act="unpause" data-w="${w}">Zurücknehmen</button>` : ''}</div>`).join('');
-  return `<h3>Pause (krank, Urlaub)</h3>
+  return `<h3>Pause (krank, Urlaub) ${helpBtn('pause')}</h3>
     <p class="small t2">Noch <b>${left}</b> von ${CONFIG.pauseWeeks} Pausenwochen. Eine Pause gilt für eine ganze Woche (Mo–So) und das Wiegen am Montag danach: keine Punkte, keine Strafen, Streak bleibt stehen. Die laufende Woche geht bis Mittwoch 23:59.</p>
     ${list}${opts.length ? `<div class="row"><select class="inp grow" id="pWeek" aria-label="Woche pausieren">${opts.map(w => `<option value="${w}">${pauseLbl(w)}</option>`).join('')}</select><button class="btn ghost" data-act="pause">Pausieren</button></div>` : ''}`;
 }
@@ -2416,7 +2511,7 @@ function adminBlock() {
     <label class="f" for="aS">Wiegen</label><select class="inp" id="aS">${slots.map(k => `<option value="${k}"${k === lc ? ' selected' : ''}>${slotLbl(k)}</option>`).join('')}</select>
     <label class="f" for="aU">Nachtrag erlaubt bis</label><div class="row"><input class="inp grow" type="datetime-local" id="aU" value="${toLocalInput(def)}"><button class="btn ghost" data-act="grantLate">Nachtrag erlauben</button></div>`
     : '<p class="small muted">Noch ist kein Wiegefenster vorbei.</p>';
-  return `<h3>Admin: Nachtrag erlauben</h3>
+  return `<h3>Admin: Nachtrag erlauben ${helpBtn('late')}</h3>
     <p class="small t2">Für Notfälle, wenn jemand das Wiegefenster verpasst hat. Bis zur gewählten Zeit darf er das Wiegen dieses Montags eintragen. Fehlt noch sein Startgewicht, beginnt er wieder an diesem Montag, dann gehen auch die Haken dieser Woche.</p>
     ${list}${form}`;
 }
@@ -2434,24 +2529,22 @@ function profileHtml(fresh) {
   return `<div class="modal${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet" data-stop data-form="profile" role="dialog" aria-modal="true" aria-labelledby="pTitle" tabindex="-1">
     <div class="hd"><h2 id="pTitle">Profil</h2><button class="iconbtn" data-act="closeModal" aria-label="Schließen">${svg('close')}</button></div>
     <label class="f" for="pName">Name</label><input class="inp" id="pName" maxlength="20" value="${esc(p.name)}">
-    <label class="f">Habits ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'}</label>
+    <label class="f">Habits ${he ? '' : '<span class="muted">(gesperrt bis zur 1. Woche der nächsten Etappe)</span>'} ${helpBtn('habits')}</label>
     ${habitInputs('p', normHabits(p.habits), !he)}
     <p class="small muted">Jedes bringt bis zu ${CONFIG.habitMaxPts} Punkte pro Woche, anteilig zum Wochenziel. Änderungen gelten ab der laufenden Etappe.</p>
-    <label class="f">Extra-Habits <span class="muted">(ohne Punkte, jederzeit änderbar)</span></label>
+    <label class="f">Extra-Habits <span class="muted">(ohne Punkte, jederzeit änderbar)</span> ${helpBtn('extras')}</label>
     ${extraInputs('p', extrasOf(p))}
     <button class="btn full" data-act="saveProfile">Speichern</button>
     ${pauseBlock()}
-    <h3>Erinnerungen</h3>${push}
+    <h3>Erinnerungen ${helpBtn('push')}</h3>${push}
     <h3>Dein Fortschritt</h3><p class="small t2">Ziel, Gewichtsverlauf in kg, Heatmap und Meilensteine stehen im Tab <button class="link" data-tab="ich">Ich</button>.</p>
     ${code}
     ${adminBlock()}
     ${DEMO ? '' : `<h3>Konto</h3><p class="small muted">Deine Nutzer-ID: <code class="uid">${esc(S.me)}</code></p><button class="link" data-act="signout">Abmelden</button>`}</div></div>`;
 }
 /* Einführung: 3 Screens, alle Zahlen aus CONFIG */
-function exampleWeek() { // eine realistische Woche: 0,6 % runter, Habits fast geschafft, Challenge 3×
-  const tenths = Math.min(6, CONFIG.weighMaxTenths), weigh = tenths * CONFIG.weighPerTenth;
-  const hs = [['Kochen statt Lieferdienst', 3, 4], ['Keine Softdrinks', 6, 7], ['1× 10 km laufen', 1, 1]];
-  const habits = hs.reduce((a, [, d, t]) => a + habitPts(d, t), 0), ch = challengePoints({ kind: 'daily' }, 3), total = weigh + habits + ch;
+function exampleWeek() { // eine realistische Woche: 0,6 % runter, Habits fast geschafft, Challenge 3× (Zahlen aus exWeek, wie in HELP.points)
+  const { tenths, weigh, hs, habits, ch, total } = exWeek();
   const seg = (v, c, l) => `<i style="flex:${v};background:${c}" title="${l} ${v}"></i>`;
   return `<div class="obex"><div class="obbar">${seg(weigh, 'var(--pink)', 'Waage')}${seg(habits, 'var(--lime)', 'Habits')}${seg(ch, 'var(--cyan)', 'Challenge')}</div>
     <ul class="rlegend obleg"><li style="--c:var(--pink)"><b>${weigh}</b>Waage: −${fmt1(tenths / 10)} % unter dem Tiefstwert</li>
@@ -2460,20 +2553,13 @@ function exampleWeek() { // eine realistische Woche: 0,6 % runter, Habits fast g
     <li class="obsum"><b>${total}</b>Punkte, davon ${Math.round(weigh / total * 100)} % von der Waage</li></ul></div>`;
 }
 function onboardingHtml(fresh) {
-  const n = 3, st = clamp(UI.obStep, 0, n - 1), wMax = CONFIG.weighMaxTenths * CONFIG.weighPerTenth, me = C[S.me];
+  const n = 3, st = clamp(UI.obStep, 0, n - 1), me = C[S.me];
   const screens = [
-    ['Punkte', `<p class="t2">Jede Woche zählt neu. So kommen die Punkte zusammen:</p>
-      <ul class="small t2 xlist"><li><b>Waage:</b> ${CONFIG.weighPerTenth} Punkte pro 0,1 % unter deinem bisherigen Tiefstwert, max. ${wMax} pro Woche.</li>
-      <li><b>Habits:</b> 3 eigene mit eigenem Wochenziel (1–7×), je bis zu ${CONFIG.habitMaxPts} Punkte, anteilig. Mehr gehen als Extra-Habits, ohne Punkte. Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.</li>
-      <li><b>Wochen-Challenge:</b> bis zu ${CONFIG.challengePts} Punkte, der Wochenletzte sucht sie aus.</li>
-      <li><b>Extra-Aufgaben:</b> +${CONFIG.taskPts} pro geschaffter Aufgabe. Du meldest sie mit einem Foto, ein anderer bestätigt. Team-Monat: +${CONFIG.teamPts}, wenn alle Ziele klappen.</li></ul>
-      <h3>Eine realistische Woche</h3>${exampleWeek()}`],
-    ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<p class="t2">Jeden <b>Montag ${weighHours}</b>: morgens, nüchtern, gleiche Waage, Foto in die Gruppe. Die anderen sehen nur Prozente, nie deine kg.</p>
-      <p class="t2">Verpasst = 0 Waage-Punkte und <b>${eur(CONFIG.strafe)}</b> in den Topf. Krank oder im Urlaub? Bis zu ${CONFIG.pauseWeeks} Wochen pro Saison pausieren, im Profil.</p>
-      <p class="t2">Dein Ziel${me?.goal ? ` (−${tn(pct(me.goal))} %)` : ''} ist ab dem Startgewicht fest: Erreichst du es, hast du die Wahl: <b>aussteigen</b> und ${eur(CONFIG.einsatz)} Einsatz zurück, dann musst du nichts mehr machen, oder <b>weitermachen</b>: alles läuft weiter wie bisher, und solange du unter deinem Zielgewicht bleibst, gibt es jede Woche die vollen ${wMax} Waage-Punkte.</p>`],
-    ['Kasse', `<p class="t2"><b>${eur(CONFIG.einsatz)} Einsatz</b> zahlt jeder einmal. Dazu kommen:</p>
-      <ul class="small t2 xlist"><li><b>${eur(CONFIG.strafe)}</b> pro verpasstem Wiegen</li><li><b>${eur(CONFIG.habitFee)}</b> pro Woche, in der nicht alle 3 Wochenziele geschafft sind</li><li><b>${eur(CONFIG.loserFee)}</b> für den Wochenletzten</li></ul>
-      <p class="t2">Der <b>Gesamtsieger</b> nach Woche ${CONFIG.weeks} bekommt den ganzen Topf. Wer was zahlt, steht unter <b>Ranking → Kasse</b>.</p>`],
+    // Texte aus HELP (wie hinter den ?-Knöpfen und im Regeln-Tab)
+    ['Punkte', `<div class="obh noex">${HELP.points()}</div><h3>Eine realistische Woche</h3>${exampleWeek()}<p class="small muted">Wo etwas nicht klar ist, steht ein <span class="qbtn inl" aria-hidden="true">?</span><span class="sr">Fragezeichen</span> daneben: antippen erklärt es.</p>`],
+    ['Wiegen', `${me && !me.active ? `<p class="t2">Dein Startgewicht: <b>${fmtLong(slotStart(me.js))}</b>, ${weighHours}.</p>` : ''}<div class="obh">${HELP.weigh()}</div>
+      <h3>${HELP_T.goal}${me?.goal ? ` · −${tn(pct(me.goal))} %` : ''}</h3><div class="obh">${HELP.goal()}</div>`],
+    ['Kasse', `<div class="obh">${HELP.pot()}</div>`],
   ];
   const [title, body] = screens[st];
   return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet ob" data-stop role="dialog" aria-modal="true" aria-labelledby="obTitle" tabindex="-1">
@@ -2486,7 +2572,7 @@ function exitHtml(fresh) {
   const me = C[S.me]; if (!canExit(me)) return '';
   const f = fees(me, null), fw = exitSlot(me);
   return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet confirm" data-stop role="alertdialog" aria-modal="true" aria-labelledby="xTitle" tabindex="-1">
-    <div class="hd"><h2 id="xTitle">Wirklich aussteigen?</h2><button class="iconbtn" data-act="closeModal" aria-label="Abbrechen">${svg('close')}</button></div>
+    <div class="hd"><h2 id="xTitle">Wirklich aussteigen?</h2>${helpBtn('exit')}<button class="iconbtn" data-act="closeModal" aria-label="Abbrechen">${svg('close')}</button></div>
     <p class="t2">Ziel −${tn(pct(me.goal))} % erreicht nach ${wochen(me.goalWeek - me.js)}, aktuell <b>${tn(lossStr(me.latest))}</b>.</p>
     <ul class="small t2 xlist">
       <li>Dein Ergebnis wird nach Woche ${fw} eingefroren und steht in der Gesamtwertung unter „Ziel erreicht“.</li>
@@ -2527,6 +2613,7 @@ function tapStart(el, key) { // Federn sofort starten, render() übernimmt den S
   el.classList.remove('tap'); el.style.removeProperty('--tapd'); void el.offsetWidth; el.classList.add('tap');
 }
 document.addEventListener('click', async ev => {
+  if (HELP_OPEN && !ev.target.closest('#help .helpbox, .qbtn')) { const bg = ev.target.closest('#help'); closeHelp(!!bg); if (bg) return; }
   const tab = ev.target.closest('[data-tab]');
   if (tab) { go(tab.dataset.tab); return; }
   const el = ev.target.closest('[data-act]'); if (!el) return;
@@ -2741,6 +2828,8 @@ document.addEventListener('click', async ev => {
         toast(`${pl.name} darf bis ${fmtDT(until)} nachtragen.`); break;
       }
       case 'revokeLate': { if (!isAdmin()) return; await DB.setLate(el.dataset.u, { lateUntil: realNow().getTime() - 1000 }); renderModal(); toast('Nachtrag aufgehoben.'); break; }
+      case 'help': if (HELP_OPEN?.k === el.dataset.k) closeHelp(); else openHelp(el.dataset.k, el); break;
+      case 'helpClose': closeHelp(); break;
       case 'closeModal': closeModal(); break;
       case 'obNav': UI.obStep = clamp(UI.obStep + +el.dataset.d, 0, 2); renderModal(); document.querySelector('#modal .sheet')?.scrollTo(0, 0); break;
       case 'obOpen': UI.modal = 'onboarding'; UI.obStep = 0; renderModal(); break;
@@ -2788,6 +2877,7 @@ function setNow(t) {
   UI.rankWeek = UI.rankEtappe = UI.etView = UI.habitWeek = null; DB.refresh();
 }
 document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && HELP_OPEN) { closeHelp(); return; }
   if (ev.key === 'Escape' && UI.modal) { closeModal(); return; }
   if (ev.key === 'Enter' && ev.target.matches('#app input')) { const b = ev.target.closest('.row, .tmentry, .idea')?.querySelector('.btn'); if (b) b.click(); }
 });
