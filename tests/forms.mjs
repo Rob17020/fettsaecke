@@ -305,6 +305,45 @@ console.log('\n7) Erklärungen: ?-Knöpfe, Bottom Sheet (Handy), Popover (Deskto
   await ctx.close();
 }
 
+console.log('\n8) Gruppe bestätigt: Abhaken nur mit Foto, Bestätigen nach dem Ansehen');
+{
+  const m = me({ extraHabits: [{ name: 'Wohnung aufräumen', target: 3, confirm: true }] }); m.weighins['demo-me_0'] = { uid: 'demo-me', slot: 0, lossPct: 0, ts: at(0, 8) }; m.myWeights[0] = 98;
+  const { page, ctx, errs } = await open({ now: at(3, 19), mine: m }); // Do: Siggi hat gestern und heute mit Foto abgehakt
+  const cell = '.hc[data-act=habitx][data-x="0"][data-day="2"]';
+  await clk(page, cell); await page.waitForTimeout(250);
+  ok('Abhaken öffnet das Foto-Fenster mit Hinweis', await page.evaluate(() => /Jeder Haken braucht ein Foto/.test(document.querySelector('#modal .hpsheet')?.innerText || '') && document.querySelector('[data-act=hpSend]').disabled));
+  ok('noch kein Haken gesetzt', await page.evaluate(() => !JSON.parse(localStorage.getItem('cdf-demo-v1')).habitlogs['demo-me_2']?.extra?.[0]));
+  await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = 1200; c.height = 900; c.getContext('2d').fillRect(0, 0, 600, 450); const b = await new Promise(r => c.toBlob(r, 'image/png')), dt = new DataTransfer(); dt.items.add(new File([b], 'x.png', { type: 'image/png' })); const i = document.querySelector('[data-proofin=hp][capture]'); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForFunction(() => !document.querySelector('[data-act=hpSend]')?.disabled, null, { timeout: 10000 });
+  await clk(page, '[data-act=hpSend]'); await page.waitForTimeout(300);
+  let st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('Haken mit Foto gespeichert (pf + habitproof)', st.habitlogs['demo-me_2']?.extra?.[0] === true && st.habitlogs['demo-me_2'].pf?.x0 === true && st.hproofs['demo-me_2_x0']?.img?.length > 100);
+  ok('Haken wartet (gestrichelt)', await page.evaluate(c => document.querySelector(c)?.classList.contains('wait'), cell));
+  await page.waitForTimeout(3300);
+  ok('Demo: Julian bestätigt', await page.evaluate(c => !document.querySelector(c)?.classList.contains('wait') && document.querySelector(c)?.classList.contains('on'), cell));
+  await clk(page, cell); await page.waitForTimeout(300);
+  st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+  ok('Haken zurück: Foto gelöscht', !st.habitlogs['demo-me_2']?.extra?.[0] && !st.hproofs['demo-me_2_x0'] && !st.habitlogs['demo-me_2']?.pf);
+  // Siggis Haken (mit Foto) in der Bestätigen-Karte: erst ansehen, dann bestätigen
+  const n = await page.evaluate(() => document.querySelectorAll('.okc [data-act=hview]').length);
+  ok(`Bestätigen-Karte: ${n}× „Ansehen“ statt direkt bestätigen`, n > 0 && await page.evaluate(() => !document.querySelector('.okc [data-act=hok][data-on="1"]')));
+  if (n) {
+    const id = await page.evaluate(() => document.querySelector('.okc [data-act=hview]').dataset.id);
+    await clk(page, '.okc [data-act=hview]');
+    await page.waitForFunction(() => document.querySelector('#modal .sheet.photo img[data-proof]')?.naturalWidth > 0, null, { timeout: 5000 });
+    ok('Foto geladen, Bestätigen im Fenster', await page.evaluate(() => !!document.querySelector('#modal [data-act=hok][data-on="1"]')));
+    await clk(page, '#modal [data-act=hok]'); await page.waitForTimeout(300);
+    st = await page.evaluate(() => JSON.parse(localStorage.getItem('cdf-demo-v1')));
+    ok('bestätigt, Fenster zu', st.habitok[id]?.by === 'demo-me' && await page.evaluate(() => !document.querySelector('#modal .sheet')));
+  }
+  // Hinweis beim Einschalten von „Gruppe bestätigt“
+  await clk(page, '[data-act=profile]'); await page.waitForTimeout(300);
+  await page.evaluate(() => { const c = document.querySelector('#pX .hconf input') || document.querySelector('.hconf input:not(:disabled):not(:checked)'); if (c.checked) c.click(); c.click(); });
+  ok('Hinweis beim Einschalten', /braucht ein Foto als Beweis/.test(await page.evaluate(() => document.getElementById('toast').textContent)));
+  ok('keine Skriptfehler', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${oks} ok, ${fails} FAIL`);
 process.exit(fails ? 1 : 0);

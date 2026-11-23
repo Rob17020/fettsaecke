@@ -17,7 +17,7 @@ Die Screenshots zeigen den Demo-Modus mit erfundenen Daten.
 ## Funktionen
 
 - **Wiegen und Punkte:** montags wiegen, Punkte nur für neue Tiefstwerte, Deckel pro Woche gegen Crash-Diäten. Andere sehen nur Prozente.
-- **Habits:** 3 eigene mit Wochenziel (1–7×), auf Wunsch mit Bestätigung durch die Gruppe; dazu bis zu 5 Extra-Habits ohne Punkte.
+- **Habits:** 3 eigene mit Wochenziel (1–7×), auf Wunsch „Gruppe bestätigt“: jeder Haken mit Foto, jemand anderes bestätigt; dazu bis zu 5 Extra-Habits ohne Punkte.
 - **Wochen-Challenge:** der Wochenletzte wählt, alle machen mit.
 - **Extra-Aufgaben mit Foto-Beweis:** jeder stellt eine pro Etappe, gemeldet wird mit Foto, jemand anderes bestätigt oder lehnt ab.
 - **Team-Monat:** gezogene Gruppenziele, die nur alle zusammen schaffen.
@@ -145,7 +145,7 @@ docs/                       ausführliche Einrichtung, Screenshots für diese Se
 ## Datenschutz
 
 - Gewichte in kg liegen in `players/{uid}/private/weights` und sind nur für die Person selbst lesbar. Alle anderen sehen nur Prozente vom Startgewicht, auch beim Ziel.
-- Beweisfotos für Extra-Aufgaben sehen alle Mitglieder der Gruppe. Beim Verkleinern fallen Metadaten wie der Aufnahmeort weg.
+- Beweisfotos (Extra-Aufgaben und Habits mit „Gruppe bestätigt“) sehen alle Mitglieder der Gruppe. Beim Verkleinern fallen Metadaten wie der Aufnahmeort weg.
 - Die Logs der Erinnerungen enthalten nur Zahlen, keine Namen. Backups werden vor dem Hochladen verschlüsselt, weil Artefakte öffentlicher Repos für alle angemeldeten GitHub-Nutzer abrufbar sind.
 
 ## Lizenz

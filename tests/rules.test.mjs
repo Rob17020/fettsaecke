@@ -47,6 +47,8 @@ async function seed(started = true) {
     await setDoc(doc(f, 'tasks/e1_bob'), { etappe: 1, text: 'Schwimmen', createdBy: 'bob', createdByName: 'Bob', ts: Timestamp.fromMillis(Date.now() - 2 * D) });
     await setDoc(doc(f, 'taskDone/e1_bob_alice'), { uid: 'alice', taskId: 'e1_bob', confirmedBy: null, confirmedByName: null });
     await setDoc(doc(f, 'habitok/alice_6_0'), { uid: 'alice', day: 6, h: '0', by: 'bob', byName: 'Bob' });
+    // Beweisfotos für Alices Haken (Bestätigen braucht eins); alice_7_2 hat absichtlich keins
+    for (const k of ['7_0', '7_1', '6_1', '4_x1', '2_0']) { const [d, key] = k.split('_'); await setDoc(doc(f, `habitproofs/alice_${k}`), { uid: 'alice', day: +d, key, img: 'data:image/jpeg;base64,AAAA', w: 1, h: 1, ts: Timestamp.fromMillis(1) }); }
     await setDoc(doc(f, 'weekly/1'), { text: 'Treppe', kind: 'daily', target: 7, setBy: 'bob', setByName: 'Bob' });
   });
 }
@@ -234,6 +236,20 @@ const T = [
   ['mon20', 'Bestätiger nimmt Bestätigung zurück (Tag 6, Vorwoche, nach 14 Uhr)', X, A, () => deleteDoc(doc(db('bob'), 'habitok/alice_6_0'))],
   ['mon9', 'Alice löscht Bestätigung von Bob', X, X, () => deleteDoc(doc(db('alice'), 'habitok/alice_6_0'))],
   ['e2tue', 'Bestätiger nimmt Bestätigung nach Wochen zurück (Tag 6, jetzt Tag 29) (früher Lücke)', X, A, () => deleteDoc(doc(db('bob'), 'habitok/alice_6_0'))],
+  // --- Habit-Fotos (Gruppe bestätigt) ---
+  ['mon9', 'Bob bestätigt Alice ohne Foto (alice_7_2)', X, X, () => setDoc(doc(db('bob'), 'habitok/alice_7_2'), { uid: 'alice', day: 7, h: '2', by: 'bob', byName: 'Bob', ts: serverTimestamp() })],
+  ['mon9', 'Haken + Foto im Batch (heute)', A, A, () => { const f = db('bob'), b = writeBatch(f); b.set(doc(f, 'habitlogs/bob_7'), { uid: 'bob', day: 7, done: [true, false, false, false], pf: { '0': true }, ts: serverTimestamp() }); b.set(doc(f, 'habitproofs/bob_7_0'), { uid: 'bob', day: 7, key: '0', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() }); return b.commit(); }],
+  ['mon9', 'Habit-Foto Extra x3 (heute)', A, A, () => setDoc(doc(db('bob'), 'habitproofs/bob_7_x3'), { uid: 'bob', day: 7, key: 'x3', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'Habit-Foto für jemand anderen', X, X, () => setDoc(doc(db('bob'), 'habitproofs/alice_7_2'), { uid: 'alice', day: 7, key: '2', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'Habit-Foto zu groß (400.000 Zeichen)', X, X, () => setDoc(doc(db('bob'), 'habitproofs/bob_7_0'), { uid: 'bob', day: 7, key: '0', img: IMG(400000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'Habit-Foto mit falschem Schlüssel (3 = Challenge)', X, X, () => setDoc(doc(db('bob'), 'habitproofs/bob_7_3'), { uid: 'bob', day: 7, key: '3', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'Habit-Foto für Tag 4 (3 Tage her)', X, A, () => setDoc(doc(db('bob'), 'habitproofs/bob_4_0'), { uid: 'bob', day: 4, key: '0', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon20', 'Habit-Foto für Tag 6 (Vorwoche) nach 14 Uhr', X, A, () => setDoc(doc(db('bob'), 'habitproofs/bob_6_0'), { uid: 'bob', day: 6, key: '0', img: IMG(5000), w: 1, h: 1, ts: serverTimestamp() })],
+  ['mon9', 'eigenes Habit-Foto löschen (Haken zurück, heute)', A, A, () => deleteDoc(doc(db('alice'), 'habitproofs/alice_7_0'))],
+  ['mon9', 'Haken zurück ohne vorhandenes Foto (alter Haken)', A, A, () => deleteDoc(doc(db('alice'), 'habitproofs/alice_7_2'))],
+  ['mon9', 'fremdes Habit-Foto löschen', X, X, () => deleteDoc(doc(db('bob'), 'habitproofs/alice_7_0'))],
+  ['mon9', 'Mitglied liest fremdes Habit-Foto', A, A, () => getDoc(doc(db('bob'), 'habitproofs/alice_7_0'))],
+  ['mon9', 'Nicht-Mitglied liest Habit-Foto', X, X, () => getDoc(doc(db('eve'), 'habitproofs/alice_7_0'))],
   // --- Wochen-Challenge ---
   ['mon9', 'Challenge Woche 2 vor dem Wiegeschluss (App erlaubt es nicht)', X, A, () => setDoc(doc(db('alice'), 'weekly/2'), { text: 'Treppe', kind: 'daily', target: 7, setBy: 'alice', setByName: 'Alice', ts: serverTimestamp() })],
   ['mon20', 'Challenge Woche 2 nach dem Wiegen', A, A, () => setDoc(doc(db('alice'), 'weekly/2'), { text: 'Treppe', kind: 'daily', target: 7, setBy: 'alice', setByName: 'Alice', ts: serverTimestamp() })],

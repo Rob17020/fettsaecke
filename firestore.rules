@@ -179,12 +179,34 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/players/$(request.resource.data.uid))
         && request.resource.data.day is int && request.resource.data.h in ['0', '1', '2', 'x0', 'x1', 'x2', 'x3', 'x4']
         && id == request.resource.data.uid + '_' + string(request.resource.data.day) + '_' + request.resource.data.h
+        // nur mit Foto: der Haken hat ein Beweisfoto unter habitproofs/<gleiche ID>
+        && exists(/databases/$(database)/documents/habitproofs/$(id))
         && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
         && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())
         && request.time <= at(CLOSE(dayWeek(request.resource.data.day)))));
       allow delete: if member() && resource.data.by == me()
         && (TESTMODE() || (request.time <= at(START_MS() + (resource.data.day + 3) * DAY() + 2 * HOUR())
         && request.time <= at(CLOSE(dayWeek(resource.data.day)))));
+    }
+
+    // ---------- Beweisfoto zu einem Haken mit „Gruppe bestätigt“ (ID = <uid>_<Tag>_<Schlüssel> wie habitok) ----------
+    // Nur eigene, im selben Zeitfenster wie das Abhaken; < 400.000 Zeichen. Löschen (Haken zurück) über die ID, damit es auch
+    // geht, wenn es kein Foto gibt (alte Haken).
+    match /habitproofs/{id} {
+      allow read: if member();
+      allow create, update: if member() && notFinished() && ownNew()
+        && request.resource.data.keys().hasOnly(['uid', 'day', 'key', 'img', 'w', 'h', 'ts'])
+        && request.resource.data.day is int && request.resource.data.key in ['0', '1', '2', 'x0', 'x1', 'x2', 'x3', 'x4']
+        && id == me() + '_' + string(request.resource.data.day) + '_' + request.resource.data.key
+        && request.resource.data.img is string && request.resource.data.img.size() < 400000
+        && request.resource.data.img.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+')
+        && request.resource.data.ts == request.time
+        && (TESTMODE() || (request.time >= at(START_MS() + request.resource.data.day * DAY() - 2 * HOUR())
+        && request.time <= at(START_MS() + (request.resource.data.day + 3) * DAY() + 2 * HOUR())
+        && request.time <= at(CLOSE(dayWeek(request.resource.data.day)))));
+      allow delete: if member() && id.matches(me() + '_[0-9]+_x?[0-9]')
+        && (TESTMODE() || (request.time <= at(START_MS() + (int(id.split('_')[1]) + 3) * DAY() + 2 * HOUR())
+        && request.time <= at(CLOSE(dayWeek(int(id.split('_')[1]))))));
     }
 
     // ---------- Wochen-Challenge (einmal festlegen, wer zuerst kommt – nicht überschreibbar) ----------

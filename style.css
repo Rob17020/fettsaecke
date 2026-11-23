@@ -939,3 +939,7 @@ p.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch} /* nur der Absatz auf d
 .expl .hl{margin-top:8px;font-size:14px}.expl .hx{margin-top:8px}
 .obh .hl{font-size:15px}.obh .hx{margin-top:10px}
 .obh.noex .hx{display:none} /* Einführung: das Beispiel steht dort als Balken */
+
+/* Abhaken mit Foto (Gruppe bestätigt) */
+.sheet.hpsheet{display:grid;gap:12px}
+.oklist .btn .ico{width:16px;height:16px}

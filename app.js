@@ -417,7 +417,7 @@ function rng(seed) { let h = 1779033703 ^ seed.length; for (let i = 0; i < seed.
 function makeDemoDB(emit) {
   const KEY = 'cdf-demo-v1';
   const ME = 'demo-me';
-  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false, botPatch: {}, proofs: {} });
+  const blank = () => ({ player: null, weighins: {}, habitlogs: {}, weekly: {}, weeklyDone: {}, tasks: {}, taskDone: {}, teamideas: {}, teamlogs: {}, habitok: {}, myWeights: {}, plan: {}, push: false, botPatch: {}, proofs: {}, hproofs: {} });
   let mine; try { mine = JSON.parse(LS.getItem(KEY)) || null; } catch { mine = null; }
   mine = { ...blank(), ...(mine || {}) };
   const save = () => LS.setItem(KEY, JSON.stringify(mine));
@@ -467,6 +467,7 @@ function makeDemoDB(emit) {
         S.habitlogs[b.uid + '_' + d] = { uid: b.uid, day: d, done, ts };
         if (b.uid === 'bot-siggi') {
           S.habitlogs[b.uid + '_' + d].extra = [rr() < .5, rr() < .7];
+          if (S.habitlogs[b.uid + '_' + d].extra[0]) S.habitlogs[b.uid + '_' + d].pf = { x0: true }; // mit Foto (Gruppe bestätigt)
           // ältere Tage hat Julian schon bestätigt, die letzten 2 Tage warten noch
           if (S.habitlogs[b.uid + '_' + d].extra[0] && d < today - 1) S.habitok[`${b.uid}_${d}_x0`] = { uid: b.uid, day: d, h: 'x0', by: 'bot-julian', byName: 'Julian', ts };
         }
@@ -544,7 +545,14 @@ function makeDemoDB(emit) {
     // Admin: Nachtrag erlauben (lateUntil in ms, lateSlot, ggf. joinedSlot zurück)
     async setLate(uid, d) { if (uid === ME) Object.assign(mine.player, d); else mine.botPatch = { ...(mine.botPatch || {}), [uid]: { ...(mine.botPatch?.[uid] || {}), ...d } }; commit(); },
     async saveWeigh(slot, kg, lossPct, player) { mine.weighins[ME + '_' + slot] = { uid: ME, slot, lossPct, ts: ts() }; mine.myWeights[slot] = kg; if (player) Object.assign(mine.player, player); commit(); },
-    async setHabit(day, done, extra) { mine.habitlogs[ME + '_' + day] = { uid: ME, day, done, ...(extra ? { extra } : {}), ts: ts() }; commit(); },
+    // proof: { key, img } = Haken mit Foto (Gruppe bestätigt), { key, del: true } = Haken zurück, Foto weg
+    async setHabit(day, done, extra, proof) {
+      const id = ME + '_' + day, pf = { ...(mine.habitlogs[id]?.pf || {}) };
+      mine.hproofs ||= {};
+      if (proof?.img) { pf[proof.key] = true; mine.hproofs[id + '_' + proof.key] = { uid: ME, day, key: proof.key, img: proof.img.url, w: proof.img.w, h: proof.img.h, ts: ts() }; }
+      else if (proof?.del) { delete pf[proof.key]; delete mine.hproofs[id + '_' + proof.key]; }
+      mine.habitlogs[id] = { uid: ME, day, done, ...(extra ? { extra } : {}), ...(Object.keys(pf).length ? { pf } : {}), ts: ts() }; commit();
+    },
     // Haken eines anderen bestätigen (on) oder Bestätigung zurücknehmen
     async confirmHabit(uid, day, h, on) { const id = `${uid}_${day}_${h}`; if (on) mine.habitok[id] = { uid, day, h, by: ME, byName: mine.player.name, ts: ts() }; else delete mine.habitok[id]; commit(); },
     // Demo: Julian bestätigt eigene Haken mit Bestätigungspflicht nach ein paar Sekunden
@@ -567,7 +575,10 @@ function makeDemoDB(emit) {
       commit();
     },
     // Foto laden (Bots: erzeugtes Platzhalterbild, keine echten Fotos)
-    async loadProof(tdId) { const m = mine.proofs?.[tdId]; if (m) return m; const td = S0().taskDone[tdId]; return td?.proof ? demoProof(tdId, td) : null; },
+    async loadProof(tdId) {
+      if (tdId.startsWith('h:')) { const k = tdId.slice(2), m = mine.hproofs?.[k]; if (m) return m; const p = parseHp(k); return p && S0().habitlogs[p.uid + '_' + p.day]?.pf?.[p.key] ? demoProof(k, 'Demo-Beweisfoto') : null; }
+      const m = mine.proofs?.[tdId]; if (m) return m; const td = S0().taskDone[tdId]; return td?.proof ? demoProof(tdId, S.tasks[td.taskId]?.text || '') : null;
+    },
     async confirmTask(tdId) {
       const td = mine.taskDone[tdId] || null;
       const c = { confirmedBy: ME, confirmedByName: mine.player.name, confirmedAt: ts() };
@@ -689,7 +700,15 @@ async function makeFirebaseDB(cfg, emit) {
       return wrap(b.commit());
     },
     // ts nur für die Reihenfolge im Liveticker (die Regeln prüfen nur uid/day/done)
-    setHabit: (day, done, extra) => wrap(F.setDoc(F.doc(db, 'habitlogs', me() + '_' + day), { uid: me(), day, done, ...(extra ? { extra } : {}), ts: F.serverTimestamp() })),
+    // proof: { key, img } = Haken mit Foto (habitproofs/<uid>_<Tag>_<Schlüssel>), { key, del: true } = Haken zurück, Foto weg.
+    // pf im Tages-Dokument merkt sich, zu welchen Haken es ein Foto gibt (Fotos selbst werden nicht abonniert).
+    setHabit(day, done, extra, proof) {
+      const id = me() + '_' + day, pf = { ...(S.habitlogs[id]?.pf || {}) }, b = F.writeBatch(db);
+      if (proof?.img) { pf[proof.key] = true; b.set(F.doc(db, 'habitproofs', id + '_' + proof.key), { uid: me(), day, key: proof.key, img: proof.img.url, w: proof.img.w, h: proof.img.h, ts: F.serverTimestamp() }); }
+      else if (proof?.del) { delete pf[proof.key]; b.delete(F.doc(db, 'habitproofs', id + '_' + proof.key)); }
+      b.set(F.doc(db, 'habitlogs', id), { uid: me(), day, done, ...(extra ? { extra } : {}), ...(Object.keys(pf).length ? { pf } : {}), ts: F.serverTimestamp() });
+      return wrap(b.commit());
+    },
     confirmHabit: (uid, day, h, on) => wrap(on ? F.setDoc(F.doc(db, 'habitok', `${uid}_${day}_${h}`), { uid, day, h, by: me(), byName: S.players[me()]?.name || '', ts: F.serverTimestamp() })
       : F.deleteDoc(F.doc(db, 'habitok', `${uid}_${day}_${h}`))),
     setWeekly: (w, text, kind, target) => F.setDoc(F.doc(db, 'weekly', String(w)), { text, kind, target, setBy: me(), setByName: S.players[me()]?.name || '', ts: F.serverTimestamp() }).then(touch, e => { toast(e.code === 'permission-denied' ? 'Zu spät, jemand anderes war schneller.' : 'Fehler: ' + e.message); throw e; }),
@@ -710,7 +729,7 @@ async function makeFirebaseDB(cfg, emit) {
     },
     rejectTask: (tdId, reason) => wrap(F.updateDoc(F.doc(db, 'taskDone', tdId), { rejectedBy: me(), rejectedByName: S.players[me()]?.name || '', rejectedAt: F.serverTimestamp(), rejectReason: reason || '' })),
     // Fotos werden nicht abonniert (groß), sondern erst geladen, wenn jemand sie ansieht
-    async loadProof(tdId) { const d = await F.getDoc(F.doc(db, 'proofs', tdId)); return d.exists() ? d.data() : null; },
+    async loadProof(id) { const h = id.startsWith('h:'), d = await F.getDoc(F.doc(db, h ? 'habitproofs' : 'proofs', h ? id.slice(2) : id)); return d.exists() ? d.data() : null; },
     async confirmTask(tdId) {
       const ref = F.doc(db, 'taskDone', tdId), d = { confirmedBy: me(), confirmedByName: S.players[me()]?.name || '' };
       // confirmedAt (Zeitpunkt für den Liveticker) braucht die aktuellen Regeln.
@@ -1052,7 +1071,7 @@ function viewRegister() {
     <p class="small muted">Muss nicht Sport sein, z. B. „Kochen statt Lieferdienst“ oder „1× 10 km laufen“. Jedes bringt bis zu ${CONFIG.habitMaxPts} Punkte pro Woche, egal wie oft. Zu leichte Habits darf die Gruppe ablehnen.</p>
     ${habitInputs('r', null, false)}
     <label class="f">Extra-Habits <span class="muted">(optional, ohne Punkte)</span> ${helpBtn('extras')}</label>
-    <p class="small muted">Für alles, wobei dir die Gruppe Druck machen soll, z. B. Wohnung sauber halten. Bringt keine Punkte und kostet nichts. Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.</p>
+    <p class="small muted">Für alles, wobei dir die Gruppe Druck machen soll, z. B. Wohnung sauber halten. Bringt keine Punkte und kostet nichts. Mit „Gruppe bestätigt“ braucht jeder Haken ein Foto als Beweis und zählt erst, wenn jemand anderes ihn bestätigt.</p>
     ${extraInputs('r', [])}
     ${DEMO ? '' : `<label class="f" for="rCode">Einladungscode</label><input class="inp" id="rCode" placeholder="Code aus der Gruppe">`}
     <button class="btn full" data-act="register">Beitreten</button>
@@ -1201,7 +1220,7 @@ function goalBar(me) {
 // Habit + Wochenziel (Anmeldung und Profil)
 const targetLbl = n => n === 7 ? '7× (täglich)' : n + '× pro Woche';
 // Schalter "Gruppe muss bestätigen": Haken zählt erst, wenn jemand anderes ihn bestätigt
-const confirmToggle = (id, on, dis, lbl) => `<label class="hconf" title="Der Haken zählt erst, wenn jemand aus der Gruppe ihn bestätigt"><input type="checkbox" id="${id}"${on ? ' checked' : ''}${dis ? ' disabled' : ''}><span>${svg('team')}Gruppe bestätigt</span><span class="sr">${lbl}</span></label>`;
+const confirmToggle = (id, on, dis, lbl) => `<label class="hconf" title="Jeder Haken braucht ein Foto als Beweis und zählt erst, wenn jemand aus der Gruppe ihn bestätigt"><input type="checkbox" id="${id}"${on ? ' checked' : ''}${dis ? ' disabled' : ''}><span>${svg('team')}Gruppe bestätigt</span><span class="sr">${lbl}</span></label>`;
 const targetSel = (id, v, dis, lbl) => `<select class="inp auto" id="${id}"${dis ? ' disabled' : ''} aria-label="${lbl}">${[1, 2, 3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === v ? ' selected' : ''}>${targetLbl(n)}</option>`).join('')}</select>`;
 function habitInputs(pre, hs, dis) {
   const ph = ['z. B. Kochen statt Lieferdienst', 'z. B. Keine Softdrinks', 'z. B. Vor 0 Uhr ins Bett'], def = [4, 7, 5];
@@ -1570,7 +1589,7 @@ function habitsCard(me, p, focus) {
   if (!sepDone) g += sep;
   g += '</div>';
   // Extras direkt hier anlegen, ändern, entfernen (wie im Profil)
-  const xForm = xEdit ? `<div class="xedit"><p class="small t2">Für alles, wobei die Gruppe Druck machen soll. Bringt keine Punkte und kostet nichts, auch nicht, wenn das Wochenziel fehlt. Das Wochenziel ist nur die Anzeige „2/3“.</p>
+  const xForm = xEdit ? `<div class="xedit"><p class="small t2">Für alles, wobei die Gruppe Druck machen soll. Bringt keine Punkte und kostet nichts, auch nicht, wenn das Wochenziel fehlt. Das Wochenziel ist nur die Anzeige „2/3“. Mit „Gruppe bestätigt“ braucht jeder Haken ein Foto.</p>
     ${extraInputs('h', X)}<div class="row xbtns"><button class="btn ghost" data-act="xCancel">Abbrechen</button><button class="btn" data-act="xSave">Speichern</button></div></div>` : '';
   const st = me.streak;
   const hold = wk?.paused ? `<p class="small t2"><b>Pause:</b> Woche ${w} zählt nicht, Haken bringen hier nichts.</p>` : me.hold && w > me.goalWeek ? `<p class="small t2"><b>${HOLD_LBL}.</b> Habits laufen normal weiter, mit Punkten und Strafe.</p>` : '';
@@ -1619,8 +1638,11 @@ function confirmCard(me) {
   const open = items.filter(x => !isOk(x.o.uid, x.d, x.k)), done = items.filter(x => isOk(x.o.uid, x.d, x.k) && S.habitok[`${x.o.uid}_${x.d}_${x.k}`]?.by === S.me);
   if (!open.length && !done.length && !tasks.length) return '';
   const day = d => d === today ? 'heute' : d === today - 1 ? 'gestern' : fmtD(dayDate(d));
-  const li = (x, on) => `<li><i style="background:${x.o.color}"></i><span><b>${esc(x.o.name)}</b> ${esc(x.name)} <span class="muted">${day(x.d)}</span></span>
-    <button class="btn ${on ? 'sm' : 'ghost sm'}" data-act="hok" data-u="${x.o.uid}" data-d="${x.d}" data-k="${x.k}" data-on="${on ? 1 : 0}">${on ? 'Bestätigen' : 'Zurücknehmen'}</button></li>`;
+  // offen: erst das Foto ansehen, dort bestätigen. Haken ohne Foto (vor der Foto-Pflicht) lassen sich nicht bestätigen.
+  const hasPf = x => !!S.habitlogs[`${x.o.uid}_${x.d}`]?.pf?.[x.k];
+  const li = (x, on) => `<li><i style="background:${x.o.color}"></i><span><b>${esc(x.o.name)}</b> ${esc(x.name)} <span class="muted">${day(x.d)}${on && !hasPf(x) ? ', ohne Foto: neu abhaken' : ''}</span></span>
+    ${on ? (hasPf(x) ? `<button class="btn sm" data-act="hview" data-id="${esc(`${x.o.uid}_${x.d}_${x.k}`)}">${svg('image')}Ansehen</button>` : '')
+      : `<button class="btn ghost sm" data-act="hok" data-u="${x.o.uid}" data-d="${x.d}" data-k="${x.k}" data-on="0">Zurücknehmen</button>`}</li>`;
   const nOpen = open.length + tasks.length;
   return `<section class="card okc" data-k="habits"><div class="hd"><h2>Bestätigen</h2>${helpBtn('confirm')}${nOpen ? `<span class="aside"><b>${nOpen}</b> offen</span>` : ''}</div>
     <p class="small t2">Hat das wirklich geklappt? Nur bestätigen, wenn du es gesehen hast oder ein Beweis da ist.</p>
@@ -1926,18 +1948,19 @@ function blobUrl(dataUrl) { // data:… -> Objekt-URL (das große base64 steht d
   return URL.createObjectURL(new Blob([a], { type }));
 }
 // Demo: erzeugtes Platzhalterbild statt eines echten Fotos
-function demoProof(tdId, td) {
+const parseHp = id => { const m = /^(.+)_(\d+)_(x?\d)$/.exec(id); return m ? { uid: m[1], day: +m[2], key: m[3] } : null; }; // Habit-Foto-ID
+function demoProof(tdId, label) {
   const c = document.createElement('canvas'); c.width = 720; c.height = 960; const g = c.getContext('2d'), r = rng(tdId);
   const gr = g.createLinearGradient(0, 0, 720, 960); gr.addColorStop(0, '#111'); gr.addColorStop(1, '#2c2c2e'); g.fillStyle = gr; g.fillRect(0, 0, 720, 960);
   g.strokeStyle = ['#b6ff3c', '#2de2ff', '#ff2d78'][Math.floor(r() * 3)]; g.lineWidth = 10; g.beginPath(); g.arc(360, 420, 200, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (0.55 + r() * 0.45)); g.stroke();
   g.fillStyle = '#fff'; g.font = '900 96px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText((3 + r() * 9).toFixed(1).replace('.', ','), 360, 450);
   g.font = '600 34px system-ui, sans-serif'; g.fillStyle = '#a1a1a6'; g.fillText('km · Demo-Beweisfoto', 360, 510);
-  g.fillText(S.tasks[td.taskId]?.text?.slice(0, 32) || '', 360, 820);
+  g.fillText(String(label || '').slice(0, 32), 360, 820);
   return { img: c.toDataURL('image/jpeg', 0.7), w: 720, h: 960 };
 }
 // Geladene Fotos: tdId -> { key, url } (key = Meldung + Zeitpunkt, nach einer neuen Meldung wird neu geladen)
 const PROOF = {};
-const proofKey = id => id + '|' + tsNum(S.taskDone[id]?.ts);
+const proofKey = id => { if (id.startsWith('h:')) { const p = parseHp(id.slice(2)); return id + '|' + tsNum(S.habitlogs[p?.uid + '_' + p?.day]?.ts); } return id + '|' + tsNum(S.taskDone[id]?.ts); };
 function hydrateProofs() {
   for (const el of document.querySelectorAll('img[data-proof]')) {
     const id = el.dataset.proof, k = proofKey(id), c = PROOF[id];
@@ -1998,7 +2021,30 @@ function proofGallery(e) {
     <span><b>${esc(C[d.uid].name)}</b> ${esc(S.tasks[d.taskId].text)}<i class="${tdState(d)}">${{ ok: 'bestätigt', rej: 'abgelehnt', wait: 'wartet' }[tdState(d)]}</i></span></button>`).join('') : '';
   return `<details class="gal" data-gal="${e}"${open ? ' open' : ''}><summary>Beweisfotos · Etappe ${e} <span class="muted">(${list.length})</span></summary>${open ? `<div class="galg">${items}</div>` : ''}</details>`;
 }
+const habitName = (uid, day, key) => { const pl = S.players[uid]; return key[0] === 'x' ? extraSlots(pl)[+key.slice(1)]?.name : habitsFor(pl, weekOfDay(day))[+key]?.name; };
+// Abhaken mit Foto (Habits mit „Gruppe bestätigt“): erst Foto, dann Haken
+function hproofHtml(fresh) {
+  const t = UI.hp; if (!t) return '';
+  const img = UI.reportImg?.hp, dl = t.d === dayIdx() ? 'heute' : fmtD(dayDate(t.d));
+  return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet hpsheet" data-stop role="dialog" aria-modal="true" aria-labelledby="hpT" tabindex="-1">
+    <div class="hd"><h2 id="hpT">${esc(t.name)} · ${dl}</h2>${helpBtn('confirm')}<button class="iconbtn" data-act="closeModal" aria-label="Abbrechen">${svg('close')}</button></div>
+    <p class="t2"><b>Gruppe bestätigt:</b> Zeig, dass du es gemacht hast. Jeder Haken braucht ein Foto, erst wenn jemand anderes es bestätigt, zählt er.</p>
+    ${img ? `<div class="proofbox prev"><img src="${img.prev}" alt="Dein Beweisfoto"></div>` : ''}
+    <div class="row wrapr"><label class="btn ghost sm filebtn">${svg('camera')}${img ? 'Neu aufnehmen' : 'Foto aufnehmen'}<input class="sr" type="file" accept="image/*" capture="environment" data-proofin="hp"></label>
+      <label class="btn ghost sm filebtn">${svg('image')}Aus Galerie<input class="sr" type="file" accept="image/*" data-proofin="hp"></label></div>
+    <div class="row xbtns"><button class="btn ghost" data-act="closeModal">Abbrechen</button><button class="btn" data-act="hpSend"${img ? '' : ' disabled'}>Abhaken</button></div></div></div>`;
+}
 function photoHtml(fresh) {
+  if (String(UI.photo).startsWith('h:')) { // Habit mit „Gruppe bestätigt“
+    const p = parseHp(UI.photo.slice(2)); if (!p) return '';
+    const n = esc(C[p.uid]?.name || '?'), ok = isOk(p.uid, p.day, p.key), canOk = !ok && p.uid !== S.me && dayOpen(p.day) && !C[S.me]?.finished;
+    const dl = p.day === dayIdx() ? 'heute' : p.day === dayIdx() - 1 ? 'gestern' : fmtD(dayDate(p.day));
+    return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet photo" data-stop role="dialog" aria-modal="true" aria-label="Beweisfoto von ${n}" tabindex="-1">
+      <div class="hd"><h2>${n} · ${esc(habitName(p.uid, p.day, p.key) || '')}</h2>${helpBtn('confirm')}<button class="iconbtn" data-act="closeModal" aria-label="Schließen">${svg('close')}</button></div>
+      ${proofImg(UI.photo, `Beweisfoto von ${C[p.uid]?.name || ''}`, 'big')}
+      <p class="small ${ok ? 'ok' : 't2'}">${dl} · ${ok ? `bestätigt von ${esc(S.habitok[`${p.uid}_${p.day}_${p.key}`]?.byName || '')}` : 'wartet auf Bestätigung'}</p>
+      ${canOk ? `<div class="row xbtns"><button class="btn ghost" data-act="closeModal">Später</button><button class="btn" data-act="hok" data-u="${esc(p.uid)}" data-d="${p.day}" data-k="${p.key}" data-on="1">Bestätigen</button></div>` : ''}</div></div>`;
+  }
   const id = UI.photo, td = S.taskDone[id]; if (!td) return '';
   const n = esc(C[td.uid]?.name || '?'), t = S.tasks[td.taskId];
   return `<div class="modal mid${fresh ? ' fresh' : ''}" data-act="closeModal"><div class="sheet photo" data-stop role="dialog" aria-modal="true" aria-label="Beweisfoto von ${n}" tabindex="-1">
@@ -2358,15 +2404,15 @@ const HELP = {
     `Ändern geht vor dem Start und in der 1. Woche jeder Etappe. Zu leichte Habits darf die Gruppe per Veto ablehnen.`],
     `„Kochen“ mit Ziel 4×, geschafft 3×: ${CONFIG.habitMaxPts} × 3 ÷ 4 = <b>${habitPts(3, 4)} Punkte</b>. Mit 5× wären es ${habitPts(5, 4)}, nicht mehr.`),
   confirm: () => hx([
-    `Bei Habits mit „Gruppe bestätigt“ zählt ein Haken erst, wenn <b>jemand anderes</b> ihn bestätigt. Bis dahin ist er gestrichelt.`,
+    `Bei Habits mit „Gruppe bestätigt“ braucht <b>jeder Haken ein Foto</b> als Beweis. Er zählt erst, wenn <b>jemand anderes</b> das Foto ansieht und bestätigt, bis dahin ist er gestrichelt.`,
     `Bestätigen geht wie Abhaken bis zu ${CONFIG.backfillDays} Tage danach, für die Vorwoche nur bis Montag ${CONFIG.deadlineHour}:00 Uhr.`,
     `Nur bestätigen, wenn du es gesehen hast oder ein Beweis da ist. Hier stehen auch Extra-Aufgaben, die auf eine Prüfung warten.`],
-    `Siggi hakt am Dienstag „Wohnung aufräumen“ ab. Bestätigst du bis Donnerstag (${CONFIG.backfillDays} Tage danach), zählt der Haken, am Freitag ginge es nicht mehr.`),
+    `Siggi hakt am Dienstag „Wohnung aufräumen“ mit einem Foto der aufgeräumten Küche ab. Bestätigst du bis Donnerstag (${CONFIG.backfillDays} Tage danach), zählt der Haken, am Freitag ginge es nicht mehr.`),
   extras: () => hx([
     `Für alles, wobei die Gruppe dir Druck machen soll, z. B. Wohnung aufräumen.`,
     `Extra-Habits bringen <b>keine Punkte</b>, kosten keine Strafe und schicken keine Erinnerung.`,
     `Bis zu ${EXTRA_MAX} Stück, jederzeit änderbar: direkt in der Habit-Karte oder im Profil.`,
-    `Mit „Gruppe bestätigt“ zählt ein Haken erst, wenn jemand anderes ihn bestätigt.`],
+    `Mit „Gruppe bestätigt“ braucht jeder Haken ein Foto und zählt erst, wenn jemand anderes ihn bestätigt.`],
     `„Wohnung aufräumen“ 3× pro Woche, 2 Haken: die Zeile zeigt 2/3, an deinen Punkten und am Topf ändert sich nichts.`),
   weekly: () => { const end = CONFIG.deadlineHour + CONFIG.chooseHours, n = Math.min(5, 7); return hx([
     `Jede Woche eine kleine Aufgabe für alle, abgehakt in der Challenge-Zeile unter deinen Habits.`,
@@ -2588,7 +2634,7 @@ function renderModal() {
   const fresh = m.dataset.k !== k;
   if (k === 'wrapped' && !fresh) return; // nicht neu zeichnen, sonst laufen Animationen und Zähler erneut
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
-  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : k === 'feed' ? feedHtml(fresh) : k === 'photo' ? photoHtml(fresh) : profileHtml(fresh);
+  const html = k === 'wrapped' ? wrappedHtml(fresh) : k === 'exit' ? exitHtml(fresh) : k === 'onboarding' ? onboardingHtml(fresh) : k === 'feed' ? feedHtml(fresh) : k === 'photo' ? photoHtml(fresh) : k === 'hproof' ? hproofHtml(fresh) : profileHtml(fresh);
   if (!html) { UI.modal = null; renderModal(); return; }
   if (fresh) { m.innerHTML = html; restoreDrafts(m); } else paint(m, html);
   m.dataset.k = k; document.body.classList.add('locked'); hydrateProofs();
@@ -2599,6 +2645,15 @@ function renderModal() {
 }
 
 /* ---------- EVENTS ---------- */
+// Haken setzen/entfernen (alle 3 Habits + Challenge bzw. alle Extra-Plätze mitschreiben), proof siehe DB.setHabit
+async function tickHabit(d, x, i, on, proof) {
+  const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean); while (cur.length < (x ? 3 : 4)) cur.push(false);
+  let ex = C[S.me].xl[d] ? [...C[S.me].xl[d]] : undefined;
+  if (x) { const X = extraSlots(S.players[S.me]); ex = Array.from({ length: Math.min(EXTRA_MAX, Math.max(X.length, i + 1)) }, (_, j) => !!C[S.me].xl[d]?.[j]); ex[i] = on; }
+  else cur[i] = on;
+  await DB.setHabit(d, cur, ex, proof);
+  const hr = now().getHours(); if (on && !x && hr >= 1 && hr < 5) toast('Geh schlafen. Schlaf ist auch ein Habit.'); // nachts abgehakt
+}
 const val = id => (document.getElementById(id)?.value || '').trim();
 const intVal = id => parseInt(val(id).replace(/[^\d]/g, ''), 10);
 function setTab(tab) { UI.tab = TAB_KEYS.includes(tab) ? tab : 'heute'; window.scrollTo(0, 0); render(); }
@@ -2654,33 +2709,34 @@ document.addEventListener('click', async ev => {
         await DB.saveWeigh(slot, Math.round(kg * 10) / 10, loss, extra); formSaved(form);
         toast(slot === js ? `Startgewicht gespeichert${extra?.maxLossPct ? `. Dein Ziel: −${pct(extra.maxLossPct)} %` : ''}.` : `Gespeichert: ${lossStr(loss)} seit Start`); break;
       }
-      case 'habit': {
-        if (!dayOpen(+el.dataset.day)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
-        tapStart(el, `h${el.dataset.day}_${el.dataset.h}`);
+      case 'habit': case 'habitx': { // Punkte-Habit (data-h) bzw. Extra-Habit ohne Punkte (data-x)
+        const d = +el.dataset.day, x = a === 'habitx', i = +(x ? el.dataset.x : el.dataset.h), key = x ? 'x' + i : String(i);
+        if (!dayOpen(d)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
+        const h = x ? extraSlots(S.players[S.me])[i] : i < 3 ? habitsFor(S.players[S.me], weekOfDay(d))[i] : null;
+        if (x && (!h || h.off || d < h.from)) { render(); return; }
+        const on = x ? !!C[S.me].xl[d]?.[i] : !!C[S.me].hl[d]?.[i];
+        // Gruppe bestätigt: Abhaken nur mit Foto
+        if (!on && h?.confirm) { UI.hp = { d, i, x, key, name: h.name }; if (UI.reportImg?.hp?.prev) URL.revokeObjectURL(UI.reportImg.hp.prev); delete (UI.reportImg ||= {}).hp; UI.modal = 'hproof'; renderModal(); break; }
+        tapStart(el, `${x ? 'x' : 'h'}${d}_${i}`);
         el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); // sofortiges Feedback
-        const d = +el.dataset.day, i = +el.dataset.h; const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean);
-        while (cur.length < 4) cur.push(false); cur[i] = !cur[i];
-        const ex = C[S.me].xl[d]; await DB.setHabit(d, cur, ex ? [...ex] : undefined);
-        if (cur[i] && i < 3 && habitsFor(S.players[S.me], weekOfDay(d))[i]?.confirm) { toast('Wartet auf Bestätigung aus der Gruppe.'); DB.autoConfirm?.(d, String(i)); }
-        const hr = now().getHours(); if (cur[i] && hr >= 1 && hr < 5) toast('Geh schlafen. Schlaf ist auch ein Habit.'); // nachts abgehakt
+        await tickHabit(d, x, i, !on, h?.confirm ? { key, del: true } : null);
         break;
       }
-      case 'habitx': { // Extra-Habit (ohne Punkte)
-        if (!dayOpen(+el.dataset.day)) { render(); return toast(`Die Woche ist seit Montag ${CONFIG.deadlineHour}:00 Uhr abgeschlossen.`); }
-        tapStart(el, `x${el.dataset.day}_${el.dataset.x}`);
-        el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on'));
-        const d = +el.dataset.day, i = +el.dataset.x, X = extraSlots(S.players[S.me]);
-        if (!X[i] || X[i].off || d < X[i].from) { render(); return; }
-        const cur = (C[S.me].hl[d] || []).slice(0, 4).map(Boolean); while (cur.length < 3) cur.push(false);
-        const ex = Array.from({ length: Math.min(EXTRA_MAX, Math.max(X.length, i + 1)) }, (_, j) => !!C[S.me].xl[d]?.[j]); ex[i] = !ex[i];
-        await DB.setHabit(d, cur, ex);
-        if (ex[i] && X[i]?.confirm) { toast('Wartet auf Bestätigung aus der Gruppe.'); DB.autoConfirm?.(d, 'x' + i); }
+      case 'hpSend': {
+        const t = UI.hp, img = UI.reportImg?.hp; if (!t || !img) return toast('Erst ein Foto aufnehmen oder auswählen.');
+        if (!dayOpen(t.d)) { UI.modal = null; renderModal(); return toast('Dieser Tag ist schon abgeschlossen.'); }
+        el.disabled = true;
+        await tickHabit(t.d, t.x, t.i, true, { key: t.key, img });
+        URL.revokeObjectURL(img.prev); delete UI.reportImg.hp; UI.hp = null; UI.modal = null; renderModal();
+        TAP.k = `${t.x ? 'x' : 'h'}${t.d}_${t.i}`; TAP.t = performance.now(); render();
+        toast('Abgehakt. Wartet jetzt auf Bestätigung aus der Gruppe.'); DB.autoConfirm?.(t.d, t.key);
         break;
       }
       case 'hok': { // Haken eines anderen bestätigen / zurücknehmen
         if (!dayOpen(+el.dataset.d)) { render(); return toast('Dieser Tag kann nicht mehr bestätigt werden.'); }
         const on = el.dataset.on !== '0';
         el.disabled = true; await DB.confirmHabit(el.dataset.u, +el.dataset.d, el.dataset.k, on);
+        if (UI.modal === 'photo') { UI.modal = null; renderModal(); }
         if (on) toast(`Bestätigt. ${S.players[el.dataset.u]?.name || ''} bekommt den Haken.`); // toast() setzt textContent, kein esc()
         break;
       }
@@ -2775,6 +2831,7 @@ document.addEventListener('click', async ev => {
         toast(`Abgelehnt. ${C[td.uid]?.name || ''} kann mit einem neuen Foto noch einmal melden.`); break;
       }
       case 'photo': UI.photo = el.dataset.id; UI.modal = 'photo'; renderModal(); break;
+      case 'hview': UI.photo = 'h:' + el.dataset.id; UI.modal = 'photo'; renderModal(); break;
       case 'toProof': { const td = S.taskDone[el.dataset.id]; UI.proofOpen = el.dataset.id; UI.etView = S.tasks[td?.taskId]?.etappe ?? UI.etView; go('challenges'); break; }
       case 'rmode': UI.rankMode = el.dataset.m; render(); break;
       case 'rw': UI.rankWeek = clamp(UI.rankWeek + +el.dataset.d, 1, CONFIG.weeks); render(); break;
@@ -2855,6 +2912,7 @@ document.addEventListener('click', async ev => {
   } catch (e) { console.warn(e); /* Fehler wurde schon angezeigt */ }
 });
 document.addEventListener('change', async ev => {
+  if (ev.target.closest?.('.hconf') && ev.target.checked) toast('Gruppe bestätigt: Jeder Haken braucht ein Foto als Beweis. Er zählt erst, wenn jemand anderes ihn bestätigt.');
   const pin = ev.target.dataset?.proofin;
   if (pin && ev.target.files?.[0]) {
     const f = ev.target.files[0]; ev.target.value = '';
@@ -2862,7 +2920,8 @@ document.addEventListener('change', async ev => {
       toast('Foto wird verkleinert…');
       const img = await compressImage(f); img.prev = blobUrl(img.url);
       const old = (UI.reportImg ||= {})[pin]; if (old?.prev) URL.revokeObjectURL(old.prev);
-      UI.reportImg[pin] = img; UI.force.add('tasks'); render();
+      UI.reportImg[pin] = img;
+      if (pin === 'hp') renderModal(); else { UI.force.add('tasks'); render(); }
       toast(`Foto bereit (${Math.round(img.url.length * 0.75 / 1024)} KB).`);
     } catch (e) { toast(e.message || 'Das Foto ging nicht.'); }
     return;
