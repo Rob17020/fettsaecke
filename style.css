@@ -985,3 +985,15 @@ p.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch} /* nur der Absatz auf d
 /* Habits der anderen: ab 4 Spalten links (Pane a), sonst unter dem eigenen Raster */
 .dash .ohc.oa{display:none}
 @container page (min-width:92rem){.dash .ohc.oa{display:block}.dash .ohc.ob{display:none}}
+
+/* Hinweis oben ohne Push (newsHint) */
+.nhint{display:flex;align-items:center;gap:10px;margin-bottom:var(--gap);padding:8px 8px 8px 10px;background:color-mix(in srgb,var(--cyan) 8%,var(--card));border:1px solid color-mix(in srgb,var(--cyan) 40%,transparent);border-radius:var(--r-sm);animation:nhIn .5s var(--spring) both}
+@keyframes nhIn{from{opacity:0;transform:translateY(-8px)}}
+.nhint .fi{width:28px;height:28px;flex:none}
+.nhint p{flex:1;min-width:0;font-size:14px;color:var(--text-2)}
+.nhint p b{color:var(--text)}
+.nhint small{display:block;overflow:hidden;font-size:12px;white-space:nowrap;text-overflow:ellipsis;color:var(--text-2)}
+.nhact{display:flex;align-items:center;gap:6px;flex:none}
+.nhact .iconbtn{width:32px;height:32px}
+.nh-push{font-size:12px;white-space:nowrap}
+@media (max-width:520px){.nhint{flex-wrap:wrap}.nhint p{flex-basis:calc(100% - 40px)}.nhact{margin-left:38px}}

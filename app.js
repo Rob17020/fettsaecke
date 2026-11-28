@@ -960,7 +960,7 @@ function render() {
   // Einblend-Animation nur beim Tab-Wechsel, nicht bei jedem Daten-Update
   const enter = page && lastTab !== vt;
   const dir = enter && lastTab ? Math.sign(TAB_KEYS.indexOf(vt) - TAB_KEYS.indexOf(lastTab)) : 0;
-  paint(document.getElementById('app'), header() + banner() + body(enter, dir));
+  paint(document.getElementById('app'), header() + banner() + newsHint() + body(enter, dir));
   if (page) lastTab = vt;
   renderTabs();
   hydrateProofs();
@@ -1017,6 +1017,28 @@ function banner() {
     <label class="row">Zeit <input type="datetime-local" id="demoTime" value="${v}"></label>
     <button class="link" data-act="demoMon">Nächster Mo 9:00</button>
     <button class="link" data-act="demoReset">Zurücksetzen</button></div>`;
+}
+/* Ohne Push: das, was sonst als Benachrichtigung käme, als kleine Leiste oben (alle Tabs außer Challenges).
+   Zuerst Neues bei den Challenges (wie newsMsg), sonst "deine Aufgabe / dein Vorschlag fehlt" (wie nudgeMsg).
+   × = Neues gilt als gesehen bzw. der Fehlt-Hinweis ist für heute weg (cdf-nhint-<uid> = Tag). */
+const CH_ICON = { task: 'challenges', team: 'team', challenge: 'bolt' };
+function newsHint() {
+  if (!S.ready || !S.member || !S.synced || viewTab() === 'challenges' || pushInfo() === 'on') return '';
+  const me = C[S.me]; if (!me || me.finished || curWeek() > CONFIG.weeks) return '';
+  const seen = chSeen(), fresh = chItems().filter(x => !seen.has(x.id));
+  const pushLink = !DEMO && pushInfo() === 'off' ? '<button class="link nh-push" data-act="profile">Push einschalten</button>' : '';
+  const box = (k, html, sub, act, off) => `<div class="nhint" role="status"><span class="fi k-${k}">${svg(CH_ICON[k])}</span><p>${html}<small>${sub}</small></p>
+    <div class="nhact">${act}${pushLink}<button class="iconbtn" data-act="${off}" aria-label="Hinweis ausblenden">${svg('close')}</button></div></div>`;
+  if (fresh.length) { const x = fresh[0];
+    return box(x.k, `${x.html}${fresh.length > 1 ? ` <span class="muted">+${fresh.length - 1} weitere</span>` : ''}`, x.sub, '<button class="btn ghost sm" data-act="toChal">Ansehen</button>', 'chSeen'); }
+  if (LS.getItem('cdf-nhint-' + S.me) === String(dayIdx())) return '';
+  const cw = curWeek(), ce = curEtappe(), de = nextDrawE();
+  const task = cw >= 1 && taskEditable(ce) && !S.tasks['e' + ce + '_' + S.me] && dayIdx() - (ce - 1) * CONFIG.etappeWeeks * 7 >= 2;
+  const idea = de && canSuggest(de) && !S.teamideas['e' + de + '_' + S.me] && drawTime(de) - now() < 3 * DAY;
+  if (!task && !idea) return '';
+  return box(task ? 'task' : 'team', task ? `<b>Deine Extra-Aufgabe für Etappe ${ce} fehlt noch.</b>` : `<b>Dein Team-Vorschlag für Etappe ${de} fehlt noch.</b>`,
+    task ? 'Die anderen haben ihre vielleicht schon gestellt.' : `Ziehung ${fmtDT(drawTime(de))}.`,
+    `<button class="btn ghost sm" data-act="toChal">${task ? 'Stellen' : 'Vorschlagen'}</button>`, 'nhintOff');
 }
 const toLocalInput = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const navBar = (act, cur, min, max, label) => `<div class="wnav"><button class="iconbtn" data-act="${act}" data-d="-1" ${cur <= min ? 'disabled' : ''} aria-label="Zurück">${svg('prev')}</button><b>${label}</b><button class="iconbtn" data-act="${act}" data-d="1" ${cur >= max ? 'disabled' : ''} aria-label="Weiter">${svg('next')}</button></div>`;
@@ -1367,14 +1389,14 @@ function chItems() {
 }
 function chNudgeCard(me) {
   if (!S.member || me.finished || curWeek() > CONFIG.weeks) return '';
-  const cw = curWeek(), ce = curEtappe(), seen = chSeen(), fresh = chItems().filter(x => !seen.has(x.id));
+  const cw = curWeek(), ce = curEtappe(), seen = chSeen();
+  const fresh = pushInfo() === 'on' ? chItems().filter(x => !seen.has(x.id)) : []; // ohne Push steht Neues oben in newsHint()
   const needTask = !S.tasks['e' + ce + '_' + S.me] && taskEditable(ce);
   const de = nextDrawE(), needIdea = de && canSuggest(de) && drawTime(de) - now() < 7 * DAY;
   const open = cw >= 1 ? Object.entries(S.tasks).filter(([id, t]) => t.etappe === ce && !C[t.createdBy]?.finished && [null, 'rej'].includes(tdState(S.taskDone[id + '_' + S.me]))) : [];
   if (!fresh.length && !needTask && !needIdea && !open.length) return '';
-  const ic = { task: 'challenges', team: 'team', challenge: 'bolt' };
   let h = `<section class="card chn${fresh.length ? ' new' : ''}" data-k="task" data-form="tasksH"><div class="hd"><h2>Challenges</h2>${fresh.length ? `<span class="pill">${fresh.length} neu</span>` : `<span class="aside">Etappe ${ce}</span>`}</div>`;
-  if (fresh.length) h += `<ul class="chnew">${fresh.slice(0, 4).map(x => `<li class="k-${x.k}"><span class="fi">${svg(ic[x.k])}</span><p>${x.html}<small>${x.sub}</small></p></li>`).join('')}</ul>`;
+  if (fresh.length) h += `<ul class="chnew">${fresh.slice(0, 4).map(x => `<li class="k-${x.k}"><span class="fi">${svg(CH_ICON[x.k])}</span><p>${x.html}<small>${x.sub}</small></p></li>`).join('')}</ul>`;
   if (needTask) h += `<div class="chme"><p class="small"><b>Deine Extra-Aufgabe für Etappe ${ce} fehlt noch.</b> Etwas raus aus der Komfortzone, alle dürfen sie machen.</p>
     <div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Extra-Aufgabe"><button class="btn ghost" data-act="addTask" data-e="${ce}">Stellen</button></div></div>`;
   if (needIdea) h += `<p class="small t2"><b>Dein Team-Vorschlag für Etappe ${de} fehlt.</b> Ziehung ${fmtDT(drawTime(de))}. <button class="link" data-act="toChal">Vorschlagen</button></p>`;
@@ -2876,6 +2898,7 @@ document.addEventListener('click', async ev => {
       case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); formSaved(form); toast('Aufgabe gestellt. Die anderen bekommen Bescheid.'); break; }
       case 'toChal': chMarkSeen(chItems().map(x => x.id)); go('challenges'); break;
       case 'chSeen': chMarkSeen(chItems().map(x => x.id)); render(); break;
+      case 'nhintOff': LS.setItem('cdf-nhint-' + S.me, String(dayIdx())); render(); break;
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'report': UI.report = el.dataset.id; UI.proofOpen = null; UI.force.add('tasks'); render(); break;
       case 'reportCancel': if (UI.report) { delete (UI.reportImg ||= {})[UI.report]; delete UI.drafts['tdNote-' + UI.report]; } UI.report = null; UI.force.add('tasks'); render(); break;
