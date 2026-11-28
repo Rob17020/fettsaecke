@@ -23,7 +23,7 @@ Die Screenshots zeigen den Demo-Modus mit erfundenen Daten.
 - **Team-Monat:** gezogene Gruppenziele, die nur alle zusammen schaffen.
 - **Streaks und Meilensteine,** persönliches Ziel mit Haltephase oder Ausstieg, Pause bei Krankheit oder Urlaub.
 - **Kasse:** Einsatz, Strafen, Wochenletzter; der Gesamtsieger bekommt den Topf.
-- **Push-Erinnerungen:** montags ans Wiegen, abends an offene Habits.
+- **Push-Erinnerungen:** montags ans Wiegen, abends an offene Habits, dazu Bescheid bei neuen Extra-Aufgaben, Team-Vorschlägen und Wochen-Challenges.
 - **Erklärungen:** ein ?-Knopf neben allem, was nicht selbsterklärend ist; dieselben Texte im Regeln-Tab.
 - **Demo-Modus** mit simulierten Mitspielern und frei einstellbarer Zeit.
 

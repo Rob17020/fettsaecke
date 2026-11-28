@@ -943,3 +943,45 @@ p.lead{font-size:clamp(16px,1.6cqi,19px);max-width:38ch} /* nur der Absatz auf d
 /* Abhaken mit Foto (Gruppe bestätigt) */
 .sheet.hpsheet{display:grid;gap:12px}
 .oklist .btn .ico{width:16px;height:16px}
+
+/* ---------- Challenges auf Heute (neu / fehlt noch) ---------- */
+.chn{border-color:color-mix(in srgb,var(--cyan) 30%,var(--line))}
+.chn.new{border-color:color-mix(in srgb,var(--cyan) 60%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--cyan) 25%,transparent),0 0 28px -12px var(--cyan)}
+.pill{padding:2px 9px;border-radius:999px;background:var(--cyan);color:#000;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+.chnew{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.chnew li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start}
+.chnew p{font-size:14px;color:var(--text-2)}
+.chnew p b{color:var(--text)}
+.chnew small{display:block;margin-top:2px;font-size:13px;color:var(--text-2);overflow-wrap:anywhere}
+.chme{display:grid;gap:8px;padding:12px;background:var(--card-2);border-radius:var(--r-sm)}
+.chme b{color:var(--text)}
+.chact{gap:12px;align-items:center}
+
+/* ---------- Habits der anderen ---------- */
+.ohc .oh{border-top:1px solid var(--line)}
+.ohc .oh:first-of-type{border-top:0}
+.ohc summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;list-style:none;font-size:15px}
+.ohc summary::-webkit-details-marker{display:none}
+.ohc summary>i{width:9px;height:9px;flex:none;border-radius:50%}
+.ohc summary>.muted{margin-left:auto;font-size:13px}
+.ohc summary::after{content:"";width:7px;height:7px;margin:0 4px 0 6px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .25s var(--spring)}
+.ohc details[open] summary::after{transform:rotate(-135deg)}
+.ohl{display:grid;gap:6px;margin:0 0 12px;padding:0;list-style:none}
+.ohl li{display:grid;grid-template-columns:minmax(0,1fr) auto 3.2em;gap:10px;align-items:center;font-size:14px}
+.ohl li.ch .ohn{color:var(--cyan)}
+.ohl li.x .ohn{color:var(--text-2)}
+.ohn{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ohl b{text-align:right;font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.ohl b.ok{color:var(--lime)}
+.ohd{display:flex;gap:4px}
+.ohd i{width:14px;height:14px;border-radius:4px;background:var(--card-3)}
+.ohd i.fut{background:var(--card-2)}
+.ohd i.on{background:var(--lime);box-shadow:0 0 8px -2px var(--lime-glow)}
+.ohl li.ch .ohd i.on{background:var(--cyan);box-shadow:0 0 8px -2px var(--cyan)}
+.ohl li.x .ohd i.on{background:color-mix(in srgb,var(--lime) 55%,var(--card-2));box-shadow:none}
+.ohd i.wait{background:transparent;box-shadow:inset 0 0 0 1.5px var(--lime)}
+.ohd i.td{outline:1px solid var(--text-2);outline-offset:1px}
+
+/* Habits der anderen: ab 4 Spalten links (Pane a), sonst unter dem eigenen Raster */
+.dash .ohc.oa{display:none}
+@container page (min-width:92rem){.dash .ohc.oa{display:block}.dash .ohc.ob{display:none}}

@@ -42,6 +42,8 @@ Firebase Cloud Messaging ist kostenlos, der Zeitplan läuft über GitHub Actions
 | --- | --- | --- |
 | Montag 8:00 | Wiegen bis 14 Uhr (nennt, wer schon gewogen hat) | wer für diese Woche noch nicht gewogen hat; wer sein Startgewicht verpasst hat, bekommt eine neue Start-Erinnerung |
 | täglich 21:00 | offene Habits mit Stand der Woche, z. B. „Kochen 2/4“, zum Sonntag hin dringlicher | wer ein Wochenziel noch nicht erreicht und das Habit heute nicht abgehakt hat |
+| alle 30 Min., 8–22 Uhr | neue Extra-Aufgabe, neuer Team-Vorschlag oder Wochen-Challenge (mehrere in einer Nachricht), mit Hinweis, wenn die eigene Aufgabe bzw. der eigene Vorschlag fehlt | alle außer dem, der es eingetragen hat (Stand in `reminderRuns/news_state`, beim ersten Lauf wird nur gemerkt) |
+| 18:00 an Etappentag 2, 6, 13, 20 bzw. 6, 2, 1 Tag vor der Ziehung | „Deine Extra-Aufgabe fehlt“ / „Team-Vorschlag fehlt“ | wer für die laufende Etappe noch keine Aufgabe bzw. für die nächste Ziehung keinen Vorschlag hat (einmal pro Tag, `reminderRuns/nudge_{datum}`) |
 
 Keine Erinnerungen in Pausenwochen und nach dem Ausstieg, in der Haltephase weiter beide. GitHub-Cron läuft in UTC, deshalb steht jede Zeit zweimal im Workflow (Sommer- und Winterzeit); das Skript prüft die Uhrzeit in Berlin und merkt sich in `reminderRuns/{art}_{datum}`, dass schon verschickt wurde. Abgemeldete Geräte werden automatisch aus `players/{uid}/private/tokens` entfernt.
 

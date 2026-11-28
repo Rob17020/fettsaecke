@@ -7,13 +7,14 @@ on:
   schedule:
     - cron: '0 6,7 * * 1'    # Montag 08:00 Berlin: Wiegen bis 14 Uhr
     - cron: '0 19,20 * * *'  # täglich 21:00 Berlin: Habits noch offen
+    - cron: '15,45 5-21 * * *'  # alle 30 Min.: neue Extra-Aufgaben/Team-Vorschläge/Wochen-Challenge (Skript sendet nur 8–22 Uhr Berlin), 18 Uhr: eigene fehlt
     - cron: '30 22 * * 0'    # Sonntag 23:30 (Winter) bzw. Montag 00:30 (Sommer) Berlin: Backup
   workflow_dispatch:
     inputs:
       kind:
         description: 'Art der Nachricht (backup = nur Backup)'
         type: choice
-        options: [test, weigh, habits, auto, backup]
+        options: [test, weigh, habits, news, auto, backup]
         default: test
       dry_run:
         description: 'Nur zählen, nichts senden (gilt nicht fürs Backup)'
@@ -47,7 +48,7 @@ jobs:
         run: node send.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || 'auto' }}
+          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || github.event.schedule == '15,45 5-21 * * *' && 'news' || 'auto' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
 

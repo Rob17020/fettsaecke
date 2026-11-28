@@ -1343,9 +1343,73 @@ function viewHeute() {
   // Heatmap und Meilensteine nur ab 2 Spalten (style.css), damit die Startseite auf großen Schirmen nicht leer wirkt.
   // Ist heute Wiegen fällig, steht die Wiege-Karte (Pane a) vor dem Liveticker
   return `<div class="view">${feedStrip()}<div class="board dash${wc.due ? ' wdue' : ''}${me.active ? '' : ' pre'}">
-    <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : statusCard(me) + potCard(me, 'p1') + loserCard()))}</div></div>
-    <div class="grp gB">${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : ''))}
+    <div class="grp gL"><div class="grp gF">${pane('f', feedCard(true))}${pane('a', (me.finished ? '' : goalChoiceCard(me)) + wc.html + (me.finished ? '' : chNudgeCard(me) + statusCard(me) + potCard(me, 'p1') + loserCard() + othersHabitsCard(me, 'oa')))}</div></div>
+    <div class="grp gB">${pane('b', (me.finished ? '' : habitsCard(me, p, !wc.due)) + (me.active ? heatCard(me, p) : '') + othersHabitsCard(me, 'ob'))}
     <div class="grp gR">${pane('c', (me.finished ? '' : potCard(me, 'pn')) + confirmCard(me) + weeklyCard(me))}${pane('d', teamCard(me) + (me.active ? msCard(me) : ''))}</div></div></div></div>`;
+}
+/* ---------- Challenges auf Heute: was neu ist und was von dir noch fehlt ----------
+   Neu = Extra-Aufgaben der laufenden Etappe, Team-Vorschläge für die nächste Ziehung und die Wochen-Challenge dieser Woche,
+   jeweils von anderen und noch nicht gesehen (Liste pro Gerät, cdf-chseen-<uid>; der Challenges-Tab gilt als gesehen).
+   Dazu: eigene Aufgabe fehlt (direkt hier stellen), Team-Vorschlag fehlt (Ziehung in den nächsten 7 Tagen), offene Aufgaben. */
+const chSeenKey = () => 'cdf-chseen-' + S.me;
+function chSeen() { try { return new Set(JSON.parse(LS.getItem(chSeenKey())) || []); } catch { return new Set(); } }
+function chMarkSeen(ids) { const s = chSeen(), n = s.size; ids.forEach(i => s.add(i)); if (s.size !== n) LS.setItem(chSeenKey(), JSON.stringify([...s].slice(-300))); }
+const curEtappe = () => { const cw = curWeek(); return cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks)); };
+function chItems() {
+  const cw = curWeek(), ce = curEtappe(), de = nextDrawE(), out = [];
+  for (const [id, t] of Object.entries(S.tasks)) if (t.etappe === ce && t.createdBy !== S.me && !C[t.createdBy]?.finished)
+    out.push({ id: 't:' + id, k: 'task', by: t.createdBy, html: `<b>${esc(t.createdByName || '?')}</b> hat eine Extra-Aufgabe gestellt`, sub: `„${esc(t.text)}“ · +${CONFIG.taskPts} P.`, ts: tsNum(t.ts) });
+  if (de) for (const x of ideasFor(S, de)) if (x.setBy !== S.me)
+    out.push({ id: 'i:' + x.id, k: 'team', by: x.setBy, html: `<b>${esc(x.setByName || '?')}</b> hat ein Team-Ziel vorgeschlagen`, sub: `${esc(x.text)}, ${ideaRate(x)}`, ts: tsNum(x.ts) });
+  const ch = cw >= 1 && cw <= CONFIG.weeks ? S.weekly[cw] : null;
+  if (ch && ch.setBy !== S.me) out.push({ id: 'w:' + cw, k: 'challenge', by: ch.setBy, html: `<b>${esc(ch.setByName || '?')}</b> hat die Wochen-Challenge gewählt`, sub: `„${esc(ch.text)}“ · ${chLabel(ch)}`, ts: tsNum(ch.ts) });
+  return out.sort((a, b) => b.ts - a.ts);
+}
+function chNudgeCard(me) {
+  if (!S.member || me.finished || curWeek() > CONFIG.weeks) return '';
+  const cw = curWeek(), ce = curEtappe(), seen = chSeen(), fresh = chItems().filter(x => !seen.has(x.id));
+  const needTask = !S.tasks['e' + ce + '_' + S.me] && taskEditable(ce);
+  const de = nextDrawE(), needIdea = de && canSuggest(de) && drawTime(de) - now() < 7 * DAY;
+  const open = cw >= 1 ? Object.entries(S.tasks).filter(([id, t]) => t.etappe === ce && !C[t.createdBy]?.finished && [null, 'rej'].includes(tdState(S.taskDone[id + '_' + S.me]))) : [];
+  if (!fresh.length && !needTask && !needIdea && !open.length) return '';
+  const ic = { task: 'challenges', team: 'team', challenge: 'bolt' };
+  let h = `<section class="card chn${fresh.length ? ' new' : ''}" data-k="task" data-form="tasksH"><div class="hd"><h2>Challenges</h2>${fresh.length ? `<span class="pill">${fresh.length} neu</span>` : `<span class="aside">Etappe ${ce}</span>`}</div>`;
+  if (fresh.length) h += `<ul class="chnew">${fresh.slice(0, 4).map(x => `<li class="k-${x.k}"><span class="fi">${svg(ic[x.k])}</span><p>${x.html}<small>${x.sub}</small></p></li>`).join('')}</ul>`;
+  if (needTask) h += `<div class="chme"><p class="small"><b>Deine Extra-Aufgabe für Etappe ${ce} fehlt noch.</b> Etwas raus aus der Komfortzone, alle dürfen sie machen.</p>
+    <div class="row"><input class="inp grow" id="tText" maxlength="80" placeholder="z. B. 1 Stunde schwimmen" aria-label="Deine Extra-Aufgabe"><button class="btn ghost" data-act="addTask" data-e="${ce}">Stellen</button></div></div>`;
+  if (needIdea) h += `<p class="small t2"><b>Dein Team-Vorschlag für Etappe ${de} fehlt.</b> Ziehung ${fmtDT(drawTime(de))}. <button class="link" data-act="toChal">Vorschlagen</button></p>`;
+  if (open.length) h += `<p class="small t2">${open.length === 1 ? '1 Extra-Aufgabe ist' : `${open.length} Extra-Aufgaben sind`} für dich noch offen, je +${CONFIG.taskPts} P. <button class="link" data-act="toChal">Ansehen</button></p>`;
+  if (fresh.length) h += `<div class="row chact"><button class="btn ghost sm" data-act="toChal">Zu den Challenges</button><button class="link" data-act="chSeen">Gesehen</button></div>`;
+  return h + `</section>`;
+}
+
+/* ---------- Habits der anderen (Heute): Wochenziele und Haken dieser Woche, nur lesen ----------
+   Gleiche Woche wie das eigene Raster (UI.habitWeek). Gestrichelt = Haken wartet auf Bestätigung. Zugeklappt merkt sich UI.ohClosed. */
+// Zweimal im HTML wie der Topf: 'ob' unter dem eigenen Raster (bis 3 Spalten), 'oa' links unter dem Wochenstand (4 Spalten)
+function othersHabitsCard(me, where) {
+  const cw = curWeek(); if (cw < 1 || cw > CONFIG.weeks) return '';
+  const others = Object.values(C).filter(o => o.uid !== S.me && o.active && !o.finished);
+  if (!others.length) return '';
+  const w = clamp(UI.habitWeek ?? cw, 1, cw), d0 = 7 * (w - 1), today = dayIdx(), ch = S.weekly[w];
+  const closed = UI.ohClosed || (UI.ohClosed = new Set(others.length > 3 ? others.map(o => o.uid) : []));
+  const dots = (on, wait) => Array.from({ length: 7 }, (_, i) => { const d = d0 + i, o = on(d); return `<i class="${o ? (wait(d) ? 'wait' : 'on') : d > today ? 'fut' : ''}${d === today ? ' td' : ''}"></i>`; }).join('');
+  const row = (name, on, wait, n, t, cls = '') => `<li class="${cls}"><span class="ohn" title="${esc(name)}">${esc(name)}</span><span class="ohd" aria-hidden="true">${dots(on, wait)}</span><b class="${n >= t ? 'ok' : ''}">${n}/${t}</b></li>`;
+  const blocks = others.sort((a, b) => ((b.weeks[w]?.habits || 0) - (a.weeks[w]?.habits || 0)) || a.name.localeCompare(b.name)).map(o => {
+    const pl = S.players[o.uid], wk = o.weeks[w];
+    let body;
+    if (w <= o.js) body = `<p class="small muted">Startet in Woche ${o.js + 1}.</p>`;
+    else if (wk?.paused) body = `<p class="small muted">Pause in Woche ${w}.</p>`;
+    else {
+      const H = habitsFor(pl, w), cnt = tickCounts(o.hl, w, H, o.uid), X = extrasOf(pl), xc = extraCounts(o.xl, w, X, o.uid);
+      body = '<ul class="ohl">' + H.map((h, i) => row(h.name, d => !!o.hl[d]?.[i], d => h.confirm && !isOk(o.uid, d, String(i)), cnt[i], h.target)).join('')
+        + (ch ? row('Challenge: ' + ch.text, d => !!o.hl[d]?.[3], () => false, cnt[3], chTarget(ch), 'ch') : '')
+        + X.map((h, i) => row(h.name, d => !!o.xl[d]?.[i], d => h.confirm && !isOk(o.uid, d, 'x' + i), xc[i], h.target, 'x')).join('') + '</ul>';
+    }
+    const st = o.streak?.cur >= 2 ? ` · Streak ${o.streak.cur}` : '';
+    return `<details class="oh" data-oh="${esc(o.uid)}"${closed.has(o.uid) ? '' : ' open'}><summary><i style="background:${o.color}"></i><b>${esc(o.name)}</b><span class="muted">${wk && !wk.paused ? `${wk.habits}/${habitMax()} P.` : ''}${st}</span></summary>${body}</details>`;
+  }).join('');
+  return `<section class="card ohc ${where}" data-k="habits"><div class="hd"><h2>Habits der anderen</h2><span class="aside">${w === cw ? 'diese Woche' : 'Woche ' + w}</span></div>${blocks}
+    <p class="small muted">Gestrichelt: Haken wartet noch auf Bestätigung.</p></section>`;
 }
 function finishedCard(me) {
   const f = fees(me, null);
@@ -1761,6 +1825,7 @@ function feedEvents() {
     else if (td.rejectedBy && tsNum(td.rejectedAt)) ev.push({ id: 'rj' + id + tsNum(td.rejectedAt), k: 'task', t: tsNum(td.rejectedAt), html: `${nm(td.rejectedBy)} hat die Aufgabe von ${nm(td.uid)} abgelehnt`, sub: `${tx}${td.rejectReason ? ` · „${esc(td.rejectReason)}“` : ''}` });
     else if (!td.confirmedBy && rt) ev.push({ id: 'r' + id + rt, k: 'task', t: rt, html: `${nm(td.uid)} hat ${tx} gemeldet${td.proof ? ', mit Foto' : ''}`, sub: 'wartet auf Bestätigung' });
   }
+  for (const [id, t] of Object.entries(S.tasks)) if (tsNum(t.ts) && C[t.createdBy]) ev.push({ id: 'tk' + id, k: 'task', t: tsNum(t.ts), html: `${nm(t.createdBy)} hat eine Extra-Aufgabe gestellt`, sub: `Etappe ${t.etappe} · „${esc(t.text)}“ · +${CONFIG.taskPts} P.` });
   for (const p of Object.values(C)) if (p.finished && p.finishedAt) ev.push({ id: 'x' + p.uid, k: 'weigh', t: p.finishedAt, html: `${nm(p.uid)} ist mit erreichtem Ziel ausgestiegen`, sub: frozenLine(p) });
   for (const [w, ch] of Object.entries(S.weekly)) if (tsNum(ch.ts)) ev.push({ id: 'ch' + w, k: 'challenge', t: tsNum(ch.ts), html: `${nm(ch.setBy)} hat die Challenge für Woche ${w} gewählt`, sub: esc(ch.text) });
   for (const [id, x] of Object.entries(S.teamideas)) if (tsNum(x.ts) && x.setBy) ev.push({ id: 'ti' + id, k: 'team', t: tsNum(x.ts), html: `${nm(x.setBy)} hat ein Ziel für den Team-Monat vorgeschlagen`, sub: `Etappe ${x.etappe} · ${esc(x.text)}, ${ideaRate(x)}` });
@@ -1905,6 +1970,7 @@ function explain(key, intro, html) { // html = Eintrag aus HELP
 }
 document.addEventListener('toggle', ev => {
   const g = ev.target; if (g.matches?.('details[data-gal]')) { const e = +g.dataset.gal; if (g.open !== (UI.galOpen === e)) { UI.galOpen = g.open ? e : null; UI.force.add('tasks'); render(); } return; }
+  if (g.matches?.('details[data-oh]')) { const c = UI.ohClosed || (UI.ohClosed = new Set()); g.open ? c.delete(g.dataset.oh) : c.add(g.dataset.oh); return; }
   const d = ev.target; if (!d.matches?.('details[data-expl]')) return;
   const s = new Set(explClosed()); d.open ? s.delete(d.dataset.expl) : s.add(d.dataset.expl);
   LS.setItem(EXPL_KEY, JSON.stringify([...s]));
@@ -2055,6 +2121,7 @@ function photoHtml(fresh) {
 }
 
 function viewChallenges() {
+  if (S.member) chMarkSeen(chItems().map(x => x.id)); // alles Neue gilt hier als gesehen
   const cw = curWeek(); const ce = cw === 0 ? 1 : etappeOf(Math.min(cw, CONFIG.weeks));
   if (UI.etView === null) UI.etView = ce;
   const e = UI.etView;
@@ -2473,6 +2540,7 @@ const HELP = {
   push: () => hx([
     `Im Profil einschalten: <b>Montag 8:00 Uhr</b>, wenn du noch nicht gewogen hast, und <b>täglich 21:00 Uhr</b>, wenn ein Wochenziel offen ist und das Habit heute noch nicht abgehakt ist.`,
     `Auch in der Haltephase, aber nicht in Pausenwochen und nicht nach dem Ausstieg.`,
+    `Dazu eine Nachricht, sobald jemand eine Extra-Aufgabe, einen Team-Vorschlag oder die Wochen-Challenge einträgt (8–22 Uhr), und um 18 Uhr ein Hinweis, wenn deine eigene Aufgabe oder dein Vorschlag noch fehlt.`,
     `Auf dem iPhone nur aus der installierten App (Teilen → „Zum Home-Bildschirm“, ab iOS 16.4).`],
     `Donnerstag 21:00 Uhr, „Kochen“ steht bei 2/4 und ist heute nicht abgehakt: du bekommst „Kochen 2/4“.`),
   late: () => hx([
@@ -2805,7 +2873,9 @@ document.addEventListener('click', async ev => {
         await DB.setTeamLog(d, e, vals); formSaved(form); toast(`Eingetragen für ${fmtD(dayDate(d))}.`); break;
       }
       case 'reload': location.reload(); break;
-      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); formSaved(form); break; }
+      case 'addTask': { const t = val('tText'); if (!t) return toast('Text fehlt.'); document.activeElement?.blur(); await DB.addTask(+el.dataset.e, t); formSaved(form); toast('Aufgabe gestellt. Die anderen bekommen Bescheid.'); break; }
+      case 'toChal': chMarkSeen(chItems().map(x => x.id)); go('challenges'); break;
+      case 'chSeen': chMarkSeen(chItems().map(x => x.id)); render(); break;
       case 'delTask': await DB.deleteTask(el.dataset.id); break;
       case 'report': UI.report = el.dataset.id; UI.proofOpen = null; UI.force.add('tasks'); render(); break;
       case 'reportCancel': if (UI.report) { delete (UI.reportImg ||= {})[UI.report]; delete UI.drafts['tdNote-' + UI.report]; } UI.report = null; UI.force.add('tasks'); render(); break;

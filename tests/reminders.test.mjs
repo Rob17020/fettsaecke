@@ -78,5 +78,30 @@ eq('letzter Montag (Slot 24): keine Start-Erinnerung mehr für Fritz', 'fritz' i
 has('Mo 17.5.2027: kein Wiege-Montag mehr', run('2027-05-17T08:05:00+02:00', '--dry-run').text, 'kein Wiege-Montag');
 has('Mo 10.5.2027 21:05: Habits außerhalb der Saison', run('2027-05-10T21:05:00+02:00', '--dry-run').text, 'Außerhalb der Saison');
 
+console.log('\nNeuigkeiten (Extra-Aufgaben, Team-Vorschläge, Wochen-Challenge) und fehlende eigene Beiträge');
+{
+  const { Timestamp } = await import('firebase-admin/firestore');
+  const at = s => Timestamp.fromDate(new Date(s));
+  has('erster Lauf merkt sich nur den Stand', run('2026-12-02T10:00:00+01:00', '--kind=news').text, 'erster Lauf');
+  await db.doc('tasks/e1_bob').set({ etappe: 1, text: 'Eisbaden', createdBy: 'bob', createdByName: 'Bob', ts: at('2026-12-02T10:10:00+01:00') });
+  await db.doc('teamideas/e2_alice').set({ etappe: 2, text: 'Schritte', kind: 'sum', per: 8000, period: 'day', unit: 'Schritte', setBy: 'alice', setByName: 'Alice Muster', ts: at('2026-12-02T10:15:00+01:00') });
+  await db.doc('weekly/2').set({ text: 'Treppe statt Aufzug', kind: 'daily', target: 7, setBy: 'bob', setByName: 'Bob', ts: at('2026-12-02T10:20:00+01:00') });
+  r = run('2026-12-02T10:30:00+01:00', '--kind=news', '--dry-run');
+  eq('alle außer den Erstellern und Ausgestiegenen', ['alice', 'bob', 'carol'].map(u => u in r.to), [true, true, false]);
+  has('Alice: Aufgabe + Challenge von Bob zusammen, ihre Aufgabe fehlt', r.to.alice, 'Deine Aufgabe für Etappe 1 fehlt');
+  eq('Alice bekommt ihren eigenen Vorschlag nicht', r.to.alice.includes('Schritte'), false);
+  has('Bob: Team-Vorschlag von Alice mit Ziehung', r.to.bob, 'Mo 21.12., 14 Uhr');
+  has('Bob: sein Vorschlag fehlt', r.to.bob, 'Vorschlag fehlt');
+  run('2026-12-02T10:30:00+01:00', '--kind=news');
+  eq('nächster Lauf: nichts doppelt', Object.keys(run('2026-12-02T11:00:00+01:00', '--kind=news', '--dry-run').to).length, 0);
+  has('nachts nichts', run('2026-12-02T23:00:00+01:00', '--kind=news', '--dry-run').text, 'Nachtruhe');
+  r = run('2026-11-29T18:05:00+01:00', '--kind=news', '--dry-run');
+  eq('So 29.11. 18 Uhr: Aufgabe fehlt (Bob hat eine, Erin startet später)', ['alice', 'bob', 'erin', 'carol'].map(u => u in r.to), [true, false, false, false]);
+  has('nennt, wer schon eine gestellt hat', r.to.alice, 'Bob');
+  r = run('2026-12-19T18:05:00+01:00', '--kind=news', '--dry-run');
+  eq('Sa 19.12. 18 Uhr: Team-Vorschlag fehlt (Alice hat einen)', ['alice', 'bob'].map(u => u in r.to), [false, true]);
+  eq('Di 1.12. 18 Uhr: kein Erinnerungstag', Object.keys(run('2026-12-01T18:05:00+01:00', '--kind=news', '--dry-run').to).length, 0);
+}
+
 console.log(`\n${oks} ok, ${fails} FAIL`);
 process.exit(fails ? 1 : 0);
